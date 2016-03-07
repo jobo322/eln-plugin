@@ -16,5 +16,8 @@
   "bugs": {
     "url": "https://github.com/cheminfo/eln-plugin/issues"
   },
-  "homepage": "https://github.com/cheminfo/eln-plugin#readme"
+  "homepage": "https://github.com/cheminfo/eln-plugin#readme",
+  "devDependencies": {
+    "browserify": "^13.0.0"
+  }
 }
