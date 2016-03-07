@@ -1,0 +1,20 @@
+{
+  "name": "eln-plugin",
+  "version": "0.0.1",
+  "description": "Extract metainfo from chemical file formats into a well defined json structure",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "mkdir -p dist && browserify src/index.js --standalone=elnPlugin > dist/eln-plugin.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cheminfo/eln-plugin.git"
+  },
+  "author": "Daniel Kostro",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/cheminfo/eln-plugin/issues"
+  },
+  "homepage": "https://github.com/cheminfo/eln-plugin#readme"
+}
