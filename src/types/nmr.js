@@ -22,10 +22,10 @@ module.exports = {
         if(isFt.test(filename)) {
             return 'jcampFT';
         }
+        return 'jcamp';
     },
 
     process(filename, content) {
-        console.log(content)
         return getNmrMetadata(content);
     }
 };
@@ -40,9 +40,11 @@ function getFilename(nmr) {
 }
 
 function getReference(filename) {
+    const reg0 = /.*\/([^\/]*$)/;
     const reg1 = /\.[0-9]+$/;
     const reg2 = /(.*)\.(.*)/
-    let reference = filename.replace(reg1, '');
+    let reference = filename.replace(reg0, '$1');
+    reference = reference.replace(reg1, '');
     //const extension = reference.replace(reg2, '$2');
     reference = reference.replace(reg2, '$1');
 
