@@ -1,6 +1,6 @@
 'use strict';
 
-const types = require('./types/types');
+const types = require('./types');
 
 const jpaths = {
     nmr: ['$content', 'spectra', 'nmr']

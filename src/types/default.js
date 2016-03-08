@@ -1,5 +1,6 @@
 'use strict';
 
+
 module.exports = {
     getExtension(filename) {
         const reg1 = /\.[0-9]+$/;
