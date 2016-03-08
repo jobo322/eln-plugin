@@ -5,7 +5,10 @@
   "main": "src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "mkdir -p dist && browserify src/index.js --standalone=elnPlugin > dist/eln-plugin.js"
+    "fake-require": "node bin/require-types.js",
+    "clean": "rm -f src/req.js",
+    "browserify": "mkdir -p dist && browserify src/index.js --require=./src/req.js --standalone=elnPlugin > dist/eln-plugin.js",
+    "build": "npm run fake-require && npm run browserify && npm run clean"
   },
   "repository": {
     "type": "git",
