@@ -27,7 +27,9 @@ module.exports = {
 
     process(filename, content) {
         return getNmrMetadata(content);
-    }
+    },
+
+    jpath: ['spectra', 'nmr']
 };
 
 function getFilename(nmr) {

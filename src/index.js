@@ -2,16 +2,12 @@
 
 const types = require('./types');
 
-const jpaths = {
-    nmr: ['$content', 'spectra', 'nmr']
-};
-
 module.exports = {
     process: function (type, doc, content, customMetadata) {
         let filename = content.filename;
 
-        const arr = createFromJpath(doc, jpaths[type]);
         const typeProcessor = types(type);
+        const arr = createFromJpath(doc, typeProcessor.jpath);
         const entry = typeProcessor.find(arr, filename);
         const property = typeProcessor.getProperty(filename, content);
         if(property === undefined) {
@@ -36,8 +32,10 @@ module.exports = {
     },
 
     getFilename(type, filename) {
-        if(!jpaths[type]) throw new Error('No such type');
-        return jpaths[type].concat(filename).join('/')
+        const typeProcessor = types(type);
+        const jpath = typeProcessor.jpath;
+        if(!jpath) throw new Error('No such type or no jpath');
+        return jpath.concat(filename).join('/');
     }
 };
 
