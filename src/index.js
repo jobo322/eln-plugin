@@ -53,7 +53,6 @@ module.exports = {
 
     defaults(kind, content) {
         var empty = module.exports.getEmpty(kind);
-        console.log('empty', empty);
         defaults(true, content, empty);
         return content;
     }
