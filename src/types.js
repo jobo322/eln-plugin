@@ -1,7 +1,7 @@
 'use strict';
 
 const bulk = require('bulk-require');
-const types = bulk(__dirname, 'types/*.js');
+const lib = bulk(__dirname, 'types/*.js');
 
 
 module.exports = {
