@@ -7,7 +7,7 @@ module.exports = {
         let filename = content.filename;
 
         const typeProcessor = types.getType(type);
-        const arr = createFromJpath(doc, typeProcessor.jpath);
+        const arr = createFromJpath(doc, typeProcessor);
         const entry = typeProcessor.find(arr, filename);
         const property = typeProcessor.getProperty(filename, content);
         if(property === undefined) {
@@ -44,20 +44,21 @@ module.exports = {
         const typeProcessors = types.getAllTypes();
         if(!content) content = {};
         for(let i=0; i<typeProcessors.length; i++) {
-            createFromJpath(content, typeProcessors[i].jpath);
+            createFromJpath(content, typeProcessors[i]);
         }
         return content;
     }
 };
 
-function createFromJpath(doc, jpath) {
+function createFromJpath(doc, typeProcessor) {
+    const jpath = typeProcessor.jpath;
     if(!jpath) throw new Error('createFromJpath: undefined jpath argument');
     for (let i = 0; i < jpath.length; i++) {
         if (doc[jpath[i]] === undefined) {
             if (i !== jpath.length - 1) {
                 doc[jpath[i]] = {};
             } else {
-                doc[jpath[i]] = [];
+                doc[jpath[i]] = typeProcessor.getEmpty();
             }
         }
         doc = doc[jpath[i]];
