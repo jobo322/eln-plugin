@@ -40,8 +40,8 @@ module.exports = {
         return jpath.concat(filename).join('/');
     },
 
-    getEmpty(content) {
-        const typeProcessors = types.getAllTypes();
+    getEmpty(kind, content) {
+        const typeProcessors = types.getAllTypes(kind);
         if(!content) content = {};
         for(let i=0; i<typeProcessors.length; i++) {
             createFromJpath(content, typeProcessors[i]);
@@ -62,6 +62,9 @@ function createFromJpath(doc, typeProcessor) {
             }
         }
         doc = doc[jpath[i]];
+    }
+    if(jpath.length === 0) {
+        doc = Object.assign(doc, typeProcessor.getEmpty());
     }
     return doc;
 }
