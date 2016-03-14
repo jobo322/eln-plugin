@@ -6,7 +6,7 @@ module.exports = {
     process: function (type, doc, content, customMetadata) {
         let filename = content.filename;
 
-        const typeProcessor = types(type);
+        const typeProcessor = types.getType(type);
         const arr = createFromJpath(doc, typeProcessor.jpath);
         const entry = typeProcessor.find(arr, filename);
         const property = typeProcessor.getProperty(filename, content);
@@ -34,10 +34,19 @@ module.exports = {
     getFilename(type, filename) {
         var match = /[^\/]*$/.exec(filename);
         if(match) filename = match[0];
-        const typeProcessor = types(type);
+        const typeProcessor = types.getType(type);
         const jpath = typeProcessor.jpath;
         if(!jpath) throw new Error('No such type or no jpath');
         return jpath.concat(filename).join('/');
+    },
+
+    getEmpty(content) {
+        const typeProcessors = types.getAllTypes();
+        if(!content) content = {};
+        for(let i=0; i<typeProcessors.length; i++) {
+            createFromJpath(content, typeProcessors[i].jpath);
+        }
+        return content;
     }
 };
 

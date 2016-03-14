@@ -1,10 +1,23 @@
 'use strict';
 
 const bulk = require('bulk-require');
-const lib = bulk(__dirname, 'types/*.js');
+const types = bulk(path.join(__dirname, 'types'), '*.js');
 
-module.exports = function (type, custom) {
-    var x = Object.assign({}, lib.types.default, lib.types[type], custom);
-    console.log(x);
-    return x;
+
+module.exports = {
+    getType(type, custom) {
+        return Object.assign({}, types.default, types[type], custom);
+    },
+
+    getAllTypes(custom) {
+        var all = [];
+
+        for(var type in types) {
+            if(type !== 'default') {
+                all.push(module.exports.getType(type, custom));
+            }
+        }
+
+        return all;
+    }
 };
