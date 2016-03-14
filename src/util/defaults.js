@@ -74,7 +74,7 @@ module.exports = function defaults() {
                         }
 
                         // Never move original objects, clone them
-                        if(typeof target[name] === undefined) {
+                        if(typeof target[name] === 'undefined') {
                             target[name] = defaults(deep, clone, copy);
                         } else {
                             defaults(deep, clone, copy);

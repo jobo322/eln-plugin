@@ -1,6 +1,7 @@
 'use strict';
 
 const types = require('./types');
+const defaults = require('./util/defaults');
 
 module.exports = {
     process: function (type, doc, content, customMetadata) {
@@ -46,6 +47,14 @@ module.exports = {
         for(let i=0; i<typeProcessors.length; i++) {
             createFromJpath(content, typeProcessors[i]);
         }
+
+        return content;
+    },
+
+    defaults(kind, content) {
+        var empty = module.exports.getEmpty(kind);
+        console.log('empty', empty);
+        defaults(true, content, empty);
         return content;
     }
 };

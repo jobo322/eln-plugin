@@ -3,7 +3,6 @@
 const bulk = require('bulk-require');
 const lib = bulk(__dirname, 'types/**/*.js');
 
-console.log(lib.types);
 module.exports = {
     getType(type, kind, custom) {
         if(kind) {
