@@ -32,6 +32,8 @@ module.exports = {
     },
 
     getFilename(type, filename) {
+        var match = /[^\/]*$/.exec(filename);
+        if(match) filename = match[0];
         const typeProcessor = types(type);
         const jpath = typeProcessor.jpath;
         if(!jpath) throw new Error('No such type or no jpath');
