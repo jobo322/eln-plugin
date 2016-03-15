@@ -32,6 +32,11 @@ module.exports = {
         return doc;
     },
 
+    getType: function(type, doc, kind) {
+        const typeProcessor = types.getType(type, kind);
+        return getFromJpath(doc, typeProcessor);
+    },
+
     getFilename(type, filename) {
         var match = /[^\/]*$/.exec(filename);
         if(match) filename = match[0];
@@ -73,6 +78,19 @@ function createFromJpath(doc, typeProcessor) {
     }
     if(jpath.length === 0) {
         doc = Object.assign(doc, typeProcessor.getEmpty());
+    }
+    return doc;
+}
+
+function getFromJpath(doc, typeProcessor) {
+    if(!doc) return;
+    const jpath = typeProcessor.jpath;
+    if(!jpath) throw new Error('getFromJpath: undefined jpath argument');
+    for (let i = 0; i < jpath.length; i++) {
+        if (doc[jpath[i]] === undefined) {
+            return undefined;
+        }
+        doc = doc[jpath[i]];
     }
     return doc;
 }
