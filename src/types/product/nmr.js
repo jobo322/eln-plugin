@@ -42,6 +42,7 @@ function getFilename(nmr) {
 }
 
 function getReference(filename) {
+    if(typeof filename === 'undefined') return;
     const reg0 = /.*\/([^\/]*$)/;
     const reg1 = /\.[0-9]+$/;
     const reg2 = /(.*)\.(.*)/

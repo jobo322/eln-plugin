@@ -1,5 +1,6 @@
 /*
- Copyright (c) 2014 Stefan Thomas
+    Modified from https://github.com/justmoon/node-extend
+    Copyright (c) 2014 Stefan Thomas
  */
 
 
