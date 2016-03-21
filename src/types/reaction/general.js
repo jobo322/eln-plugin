@@ -11,7 +11,8 @@ module.exports = {
             products: [],
             reagents: [],
             remarks: '',
-            title: ''
+            title: '',
+            reactionRXN: '$RXN\n\n\n\n  0  0\n'
         };
     }
 };
