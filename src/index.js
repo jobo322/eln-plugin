@@ -6,6 +6,7 @@ const defaults = require('./util/defaults');
 module.exports = {
     process: function (type, doc, content, customMetadata) {
         let filename = content.filename;
+        let fileContent = getTextContent(content.content);
 
         const typeProcessor = types.getType(type);
         const arr = createFromJpath(doc, typeProcessor);
@@ -14,7 +15,7 @@ module.exports = {
         if(property === undefined) {
             throw new Error(`Could not get property of ${filename} (type ${type}`);
         }
-        const metadata = typeProcessor.process(filename, content.content);
+        const metadata = typeProcessor.process(filename, fileContent);
 
         // process
         metadata[property] = {
@@ -95,3 +96,11 @@ function getFromJpath(doc, typeProcessor) {
     return doc;
 }
 
+function getTextContent(content) {
+    switch(content.readtype) {
+        case 'base64':
+            return atob(content.content)
+        default:
+            return content.content;
+    }
+}
