@@ -5,6 +5,8 @@ const isFt = /[^a-z]ft[^a-z]/i;
 const replaceFid = /[^a-z]fid[^a-z]?/i;
 const replaceFt = /[^a-z]ft[^a-z]?/i;
 
+const jcampConverter = require('jcampconverter');
+
 
 module.exports = {
     find(nmr, filename) {
@@ -90,54 +92,24 @@ function getNmrMetadata(filecontent) {
         nucleus: []
     };
 
-    var line;
-    if (line = getLineIfExist(filecontent, '##.SOLVENT NAME= ')) {
-        metadata.solvent = line;
-    }
-    if (line = getLineIfExist(filecontent, '##.PULPROG= ')) {
-        metadata.pulse = line;
-    } else if (line = getLineIfExist(filecontent, '##.PULSE SEQUENCE= ')) {
-        metadata.pulse = line;
-    }
-    if (line = getLineIfExist(filecontent, '##.OBSERVE FREQUENCY= ')) {
-        metadata.frequency = parseFloat(line);
-    }
-    if (line = getLineIfExist(filecontent, '##.TE= ')) {
-        metadata.temperature = parseFloat(line);
-    }
-    if (line = getLineIfExist(filecontent, '##NUM DIM= ')) {
-        metadata.dimension = parseInt(line);
-    } else {
-        metadata.dimension = 1;
-    }
-    if (metadata.dimension === 1) {
-        if (line = getLineIfExist(filecontent, '##.OBSERVE NUCLEUS= ')) {
-            metadata.nucleus.push(line.replace('^', ''));
+    var jcamp = jcampConverter.convert(filecontent);
+    metadata.solvent = jcamp['.SOLVENTNAME'];
+    metadata.pulse = jcamp['.PULSESEQUENCE'] || jcamp['.PULPROG'];
+    metadata.dimension = jcamp['.NUMDIM'] || 1;
+    metadata.temperature = jcamp['.TE'];
+    metadata.frequency = jcamp['.OBSERVEFREQUENCY'];
+    metadata.title = jcamp['TITLE'];
+
+    if(metadata.dimension === 1) {
+        var nucleus = jcamp['.OBSERVENUCLEUS'];
+        if(nucleus) {
+            metadata.nucleus.push(nucleus);
         }
     } else {
-        if (line = getLineIfExist(filecontent, '##.NUCLEUS= ')) {
-            const split = line.split(',');
-            for (let j = 0; j < split.length; j++) {
-                metadata.nucleus.push(split[j].trim());
-            }
+        nucleus = jcamp['.NUCLEUS'];
+        if(nucleus) {
+            metadata.nucleus = metadata.nucleus.concat(nucleus.split(','));
         }
-    }
-    if (line = getLineIfExist(filecontent, '##TITLE=')) {
-        const resReg = anReg.exec(line);
-        metadata.title = resReg ? parseInt(resReg[0]) : -1;
-    }
-    if (line = getLineIfExist(filecontent, '$$ Date_')) {
-        let date = line.trim();
-        const theDate = new Date(0);
-        theDate.setDate(parseInt(date.substr(-2, 2)));
-        theDate.setMonth(parseInt(date.substr(-4, 2)) - 1);
-        theDate.setYear(parseInt(date.substr(0, date.length - 4)));
-        if (line = getLineIfExist(filecontent, '$$ Time')) {
-            date = line.trim().split('.');
-            theDate.setHours(parseInt(date[0]));
-            theDate.setMinutes(parseInt(date[1]));
-        }
-        metadata.date = theDate;
     }
 
     return metadata;
