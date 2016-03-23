@@ -97,9 +97,9 @@ function getFromJpath(doc, typeProcessor) {
 }
 
 function getTextContent(content) {
-    switch(content.readtype) {
+    switch(content.encoding) {
         case 'base64':
-            return atob(content.content)
+            return atob(content.content);
         default:
             return content.content;
     }
