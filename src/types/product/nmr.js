@@ -92,7 +92,9 @@ function getNmrMetadata(filecontent) {
         nucleus: []
     };
 
-    var jcamp = jcampConverter.convert(filecontent);
+    var jcamp = jcampConverter.convert(filecontent, {
+        keepRecordsRegExp: /.*/
+    });
     var info = jcamp.info;
     metadata.solvent = info['.SOLVENTNAME'];
     metadata.pulse = info['.PULSESEQUENCE'] || info['.PULPROG'];
