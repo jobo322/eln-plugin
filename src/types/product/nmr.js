@@ -93,20 +93,21 @@ function getNmrMetadata(filecontent) {
     };
 
     var jcamp = jcampConverter.convert(filecontent);
-    metadata.solvent = jcamp['.SOLVENTNAME'];
-    metadata.pulse = jcamp['.PULSESEQUENCE'] || jcamp['.PULPROG'];
-    metadata.dimension = jcamp['.NUMDIM'] || 1;
-    metadata.temperature = jcamp['.TE'];
-    metadata.frequency = jcamp['.OBSERVEFREQUENCY'];
-    metadata.title = jcamp['TITLE'];
+    var info = jcamp.info;
+    metadata.solvent = info['.SOLVENTNAME'];
+    metadata.pulse = info['.PULSESEQUENCE'] || info['.PULPROG'];
+    metadata.dimension = info['.NUMDIM'] || 1;
+    metadata.temperature = info['.TE'];
+    metadata.frequency = info['.OBSERVEFREQUENCY'];
+    metadata.title = info['TITLE'];
 
     if(metadata.dimension === 1) {
-        var nucleus = jcamp['.OBSERVENUCLEUS'];
+        var nucleus = info['.OBSERVENUCLEUS'];
         if(nucleus) {
             metadata.nucleus.push(nucleus);
         }
     } else {
-        nucleus = jcamp['.NUCLEUS'];
+        nucleus = info['.NUCLEUS'];
         if(nucleus) {
             metadata.nucleus = metadata.nucleus.concat(nucleus.split(','));
         }
