@@ -6,7 +6,7 @@ const defaults = require('./util/defaults');
 module.exports = {
     process: function (type, doc, content, customMetadata) {
         let filename = content.filename;
-        let fileContent = getTextContent(content.content);
+        let fileContent = getTextContent(content);
 
         const typeProcessor = types.getType(type);
         const arr = createFromJpath(doc, typeProcessor);
