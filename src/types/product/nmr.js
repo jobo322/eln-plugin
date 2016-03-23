@@ -16,17 +16,28 @@ module.exports = {
     },
 
     getProperty(filename, content) {
-        if(isFid.test(filename)) {
-            return 'jcampFID';
+        const extension = getExtension(filename);
+        if(extension === 'jdx' || extension === 'dx') {
+            if(isFid.test(filename)) {
+                return 'jcampFID';
+            }
+            if(isFt.test(filename)) {
+                return 'jcampFT';
+            }
+            return 'jcamp';
+        } else if(extension === 'pdf') {
+            return 'pdf';
         }
-        if(isFt.test(filename)) {
-            return 'jcampFT';
-        }
-        return 'jcamp';
+        return 'file';
+
     },
 
     process(filename, content) {
-        return getNmrMetadata(content);
+        const extension = getExtension(filename);
+        if(extension === 'jdx' || extension === 'dx') {
+            return getNmrMetadata(content);
+        }
+        return {};
     },
 
     jpath: ['spectra', 'nmr']
@@ -41,11 +52,24 @@ function getFilename(nmr) {
     }
 }
 
+function getExtension(filename) {
+    let extension = filename.replace(reg0, '$1');
+    extension = extension.replace(reg1, '');
+    return extension.replace(reg2, '$2');
+}
+
+function getBase(filename) {
+    let base = filename.replace(reg0, '$1');
+    base = base.replace(reg1, '');
+}
+
+const reg0 = /.*\/([^\/]*$)/;
+const reg1 = /\.[0-9]+$/;
+const reg2 = /(.*)\.(.*)/;
+
 function getReference(filename) {
     if(typeof filename === 'undefined') return;
-    const reg0 = /.*\/([^\/]*$)/;
-    const reg1 = /\.[0-9]+$/;
-    const reg2 = /(.*)\.(.*)/
+
     let reference = filename.replace(reg0, '$1');
     reference = reference.replace(reg1, '');
     //const extension = reference.replace(reg2, '$2');
