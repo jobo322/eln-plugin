@@ -5,6 +5,8 @@ const isFt = /[^a-z]ft[^a-z]/i;
 const replaceFid = /[^a-z]fid[^a-z]?/i;
 const replaceFt = /[^a-z]ft[^a-z]?/i;
 
+const common = require('../common');
+
 const jcampConverter = require('jcampconverter');
 
 
@@ -13,12 +15,12 @@ module.exports = {
         let reference = getReference(filename);
 
         return nmr.find(nmr => {
-            return getReference(getFilename(nmr)) === reference;
+            return getReference(common.getFilename(nmr)) === reference;
         });
     },
 
     getProperty(filename, content) {
-        const extension = getExtension(filename);
+        const extension = common.getExtension(filename);
         if(extension === 'jdx' || extension === 'dx') {
             if(isFid.test(filename)) {
                 return 'jcampFID';
@@ -31,11 +33,10 @@ module.exports = {
             return 'pdf';
         }
         return 'file';
-
     },
 
     process(filename, content) {
-        const extension = getExtension(filename);
+        const extension = common.getExtension(filename);
         if(extension === 'jdx' || extension === 'dx') {
             return getNmrMetadata(content);
         }
@@ -45,36 +46,12 @@ module.exports = {
     jpath: ['spectra', 'nmr']
 };
 
-function getFilename(nmr) {
-    let keys = Object.keys(nmr);
-    for(let i=0; i<keys.length; i++) {
-        if(nmr[keys[i]].filename) {
-            return nmr[keys[i]].filename;
-        }
-    }
-}
-
-function getExtension(filename) {
-    let extension = filename.replace(reg0, '$1');
-    extension = extension.replace(reg1, '');
-    return extension.replace(reg2, '$2');
-}
-
-function getBase(filename) {
-    let base = filename.replace(reg0, '$1');
-    base = base.replace(reg1, '');
-}
-
-const reg0 = /.*\/([^\/]*$)/;
-const reg1 = /\.[0-9]+$/;
 const reg2 = /(.*)\.(.*)/;
 
 function getReference(filename) {
     if(typeof filename === 'undefined') return;
 
-    let reference = filename.replace(reg0, '$1');
-    reference = reference.replace(reg1, '');
-    //const extension = reference.replace(reg2, '$2');
+    let reference = common.getBasename(filename);
     reference = reference.replace(reg2, '$1');
 
 
@@ -86,7 +63,6 @@ function getReference(filename) {
     return reference;
 }
 
-const anReg = /[0-9]{5,}/;
 function getNmrMetadata(filecontent) {
     const metadata = {
         nucleus: []
