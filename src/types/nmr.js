@@ -17,7 +17,7 @@ nmr.getMetadata = function (filecontent) {
         metadata.pulse = info['.PULSESEQUENCE'] || info['.PULPROG'];
         metadata.dimension = info['.NUMDIM'] || 1;
         metadata.temperature = info['.TE'];
-        metadata.frequency = info['.OBSERVEFREQUENCY'];
+        metadata.frequency = parseFloat(info['.OBSERVEFREQUENCY']);
         metadata.title = info['TITLE'];
 
         if(metadata.dimension === 1) {
