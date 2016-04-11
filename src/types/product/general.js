@@ -5,7 +5,7 @@ module.exports = {
     getEmpty() {
         return {
             description: '',
-            iupac: [],
+            name: [],
             mf: '',
             molfile: '',
             mw: 0
