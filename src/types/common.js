@@ -13,7 +13,7 @@ common.getBasename = function (filename) {
 
 common.getExtension = function (filename) {
     let extension = common.getBasename(filename);
-    return extension.replace(reg2, '$2');
+    return extension.replace(reg2, '$2').toLowerCase();
 };
 
 
