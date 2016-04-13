@@ -28,7 +28,7 @@ nmr.getMetadata = function (filecontent) {
         } else {
             nucleus = info['.NUCLEUS'];
             if(nucleus) {
-                metadata.nucleus = metadata.nucleus.concat(nucleus.split(','));
+                metadata.nucleus = metadata.nucleus.concat(nucleus.split(',').map(nuc => nuc.trim());
             }
         }
 
