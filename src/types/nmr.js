@@ -23,7 +23,7 @@ nmr.getMetadata = function (filecontent) {
         if(metadata.dimension === 1) {
             var nucleus = info['.OBSERVENUCLEUS'];
             if(nucleus) {
-                metadata.nucleus.push(nucleus);
+                metadata.nucleus.push(nucleus.replace(/[^A-Za-z0-9]/g,''));
             }
         } else {
             nucleus = info['.NUCLEUS'];
