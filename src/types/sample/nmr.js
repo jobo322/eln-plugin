@@ -36,10 +36,19 @@ module.exports = {
 
     process(filename, content) {
         const extension = common.getExtension(filename);
+        var metaData = {};
         if(extension === 'jdx' || extension === 'dx') {
-            return nmrLib.getMetadata(content);
+            metaData =  nmrLib.getMetadata(content);
         }
-        return {};
+
+        var types = ["1H", "13C", "HSQC", "HMBC", "HMQC", "JRES", "COSY", "TOCSY", "HSQCTOCSY2D", "NOESY", "ROESY", "19F", "31P", "DEPT", "APTJMOD", "other"].join("|")
+
+        var reg = new RegExp(`(${types})[^a-zA-Z0-9]`,'i');
+        var m = filename.match(reg);
+        if(m) {
+            metaData.experiment = m[1].toUpperCase();
+        }
+        return metaData;
     },
 
     jpath: ['spectra', 'nmr']
