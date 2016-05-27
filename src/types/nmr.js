@@ -32,7 +32,9 @@ nmr.getMetadata = function (filecontent) {
             }
         }
 
-        metadata.experiment = getSpectraType(metadata.pulse)
+        metadata.experiment = getSpectraType(metadata.pulse);
+        if(info['$DATE'])
+            metadata.date = (new Date(info['$DATE'] * 1000)).toISOString();
 
         return metadata;
     };
