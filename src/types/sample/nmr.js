@@ -40,14 +40,6 @@ module.exports = {
         if(extension === 'jdx' || extension === 'dx') {
             metaData =  nmrLib.getMetadata(content);
         }
-
-        var types = ["1H", "13C", "HSQC", "HMBC", "HMQC", "JRES", "COSY", "TOCSY", "HSQCTOCSY2D", "NOESY", "ROESY", "19F", "31P", "DEPT", "APTJMOD", "other"].join("|")
-
-        var reg = new RegExp(`(${types})[^a-zA-Z0-9]`,'i');
-        var m = filename.match(reg);
-        if(m) {
-            metaData.experiment = m[1].toUpperCase();
-        }
         return metaData;
     },
 
@@ -70,4 +62,3 @@ function getReference(filename) {
     }
     return reference;
 }
-
