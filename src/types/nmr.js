@@ -39,53 +39,49 @@ nmr.getMetadata = function (filecontent) {
 
 function getSpectraType(pulprog){
     pulprog = pulprog.toLowerCase();
-
-    if(contains(pulprog,"zg")){
+    
+    if(pulprog.includes("zg")){
         return "1d";
     }
 
-    if(contains(pulprog,"hsqct")||
-        (contains(pulprog,"invi")&&(contains(pulprog,"ml")||contains(pulprog,"di")))){
+    if(pulprog.includes("hsqct")||
+        (pulprog.includes("invi")&&(pulprog.includes("ml")||pulprog.includes("di")))){
         return "hsqctocsy";
     }
 
-    if(contains(pulprog,"hsqc")||contains(pulprog,"invi")){
+    if(pulprog.includes("hsqc")||pulprog.contains("invi")){
         return "hsqc";
     }
 
-    if(contains(pulprog,"hmbc")||(contains(pulprog,"inv4")&&contains(pulprog,"lp"))){
+    if(pulprog.includes("hmbc")||(pulprog.includes("inv4")&&pulprog.includes("lp"))){
         return "hmbc";
     }
 
-    if(contains(pulprog,"cosy")){
+    if(pulprog.includes("cosy")){
         return "cosy";
     }
 
-    if(contains(pulprog,"jres")){
+    if(pulprog.includes("jres")){
         return "jres";
     }
 
-    if(contains(pulprog,"tocsy")||contains(pulprog,"mlev")||contains(pulprog,"dipsi")){
+    if(pulprog.includes("tocsy")||pulprog.includes("mlev")||pulprog.includes("dipsi")){
         return "tocsy";
     }
 
-    if(contains(pulprog,"noesy")){
+    if(pulprog.includes("noesy")){
         return "noesy";
     }
 
-    if(contains(pulprog,"roesy")){
+    if(pulprog.includes("roesy")){
         return "roesy";
     }
-    if(contains(pulprog,"dept")){
+    if(pulprog.includes("dept")){
         return "dept";
     }
 
-    if(contains(pulprog,"jmod")||contains(pulprog,"apt")){
+    if(pulprog.includes("jmod")||pulprog.includes("apt")){
         return "aptjmod";
     }
     return "";
-}
-
-function  contains(name, pattern) {
-    return name.indexOf(pattern)>=0;
 }
