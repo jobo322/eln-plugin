@@ -49,7 +49,7 @@ function getSpectraType(pulprog){
         return "hsqctocsy";
     }
 
-    if(pulprog.includes("hsqc")||pulprog.contains("invi")){
+    if(pulprog.includes("hsqc")||pulprog.includes("invi")){
         return "hsqc";
     }
 
