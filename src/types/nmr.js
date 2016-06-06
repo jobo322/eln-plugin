@@ -14,7 +14,7 @@ nmr.getMetadata = function (filecontent) {
         });
         var info = jcamp.info;
         metadata.solvent = info['.SOLVENTNAME'];
-        metadata.pulse = info['.PULSESEQUENCE'] || info['.PULPROG'];
+        metadata.pulse = info['.PULSESEQUENCE'] || info['.PULPROG']||info['$PULPROG'];
         metadata.dimension = jcamp.twoD ? 2 : 1;
         metadata.temperature = info['.TE'];
         metadata.frequency = parseFloat(info['.OBSERVEFREQUENCY']);
@@ -40,6 +40,8 @@ nmr.getMetadata = function (filecontent) {
     };
 
 function getSpectraType(pulprog){
+    if(!pulprog)
+        return "empty";
     pulprog = pulprog.toLowerCase();
     
     if(pulprog.includes("zg")){
