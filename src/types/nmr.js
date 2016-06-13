@@ -30,14 +30,14 @@ exports.getMetadata = function (filecontent) {
         }
     }
     
-    metadata.experiment = getSpectraType(metadata.pulse);
+    metadata.experiment = getSpectrumType(metadata.pulse);
     if(info['$DATE'])
         metadata.date = (new Date(info['$DATE'] * 1000)).toISOString();
     
     return metadata;
 };
 
-function getSpectraType(pulprog){
+function getSpectrumType(pulprog){
     if(!pulprog)
         return "empty";
     pulprog = pulprog.toLowerCase();
@@ -88,4 +88,16 @@ function getSpectraType(pulprog){
     return "";
 }
 
-exports.getSpectraType = getSpectraType;
+function getNucleusFrom2DExperiment(experiment) {
+    experiment = experiment.toLowerCase();
+    if (experiment.includes('jres')) {
+        return ['1H'];
+    }
+    if (experiment.includes('hmbc') || experiment.includes('hsqc')) {
+        return ['1H', '13C'];
+    }
+    return ['1H', '1H'];
+}
+
+exports.getSpectrumType = getSpectrumType;
+exports.getNucleusFrom2DExperiment = getNucleusFrom2DExperiment;
