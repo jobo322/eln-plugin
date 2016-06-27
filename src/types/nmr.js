@@ -8,7 +8,8 @@ exports.getMetadata = function (filecontent) {
     };
     
     var jcamp = jcampConverter.convert(filecontent, {
-        keepRecordsRegExp: /.*/
+        keepRecordsRegExp: /.*/,
+        withoutXY: true
     });
     var info = jcamp.info;
     metadata.solvent = info['.SOLVENTNAME'];
