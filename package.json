@@ -23,6 +23,6 @@
   },
   "dependencies": {
     "bulk-require": "^0.2.1",
-    "jcampconverter": "^2.5.0"
+    "nmr-metadata": "^1.0.0"
   }
 }
