@@ -10,6 +10,8 @@ module.exports = {
             procedure: '',
             products: [],
             reagents: [],
+            conditions: '',
+            keywords: [],
             remarks: '',
             title: '',
             reactionRXN: '$RXN\n\n\n\n  0  0\n'
