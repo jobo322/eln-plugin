@@ -5,5 +5,5 @@ const common = require('../common');
 module.exports = {
     jpath: ['spectra', 'raman'],
     find: common.basenameFind,
-    getProperty: common.jcampGetProperty
+    getProperty: common.getTargetProperty
 };

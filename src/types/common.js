@@ -1,19 +1,15 @@
 'use strict';
 
-const reg0 = /.*\/([^\/]*$)/;
-const reg1 = /\.[0-9]+$/;
-const reg2 = /(.*)\.(.*)/;
-
-var common = module.exports = {};
+const common = module.exports = {};
 
 common.getBasename = function (filename) {
-    let base = filename.replace(reg0, '$1');
-    return base.replace(reg1, '');
+    let base = filename.replace(/.*\//, '');
+    return base.replace(/\.[0-9]+$/, '');
 };
 
 common.getExtension = function (filename) {
     let extension = common.getBasename(filename);
-    return extension.replace(reg2, '$2').toLowerCase();
+    return extension.replace(/.*\./, '').toLowerCase();
 };
 
 
@@ -34,12 +30,26 @@ common.basenameFind = function (typeEntries, filename) {
     });
 };
 
-common.jcampGetProperty = function (filename) {
-    const extension = common.getExtension(filename);
-    if(extension === 'jdx' || extension === 'dx') {
-        return 'jcamp';
-    } else if(extension === 'pdf') {
-        return 'pdf';
+common.getTargetProperty = function (filename) {
+    switch (common.getExtension(filename)) {
+        case 'jdx':
+        case 'dx':
+        case 'jcamp':
+            return 'jcamp';
+        case 'png':
+        case 'jpg':
+        case 'jpeg':
+        case 'tif':
+        case 'tiff':
+            return 'image';
+        case 'xml':
+            return 'xml';
+        case 'cdf':
+        case 'netcdf':
+            return 'cdf';
+        case 'pdf':
+            return 'pdf';
+        default :
+            return 'file'
     }
-    return 'file';
 };

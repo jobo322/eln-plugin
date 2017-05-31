@@ -1,9 +1,7 @@
 'use strict';
 
 const isFid = /[^a-z]fid[^a-z]/i;
-const isFt = /[^a-z]ft[^a-z]/i;
 const replaceFid = /[^a-z]fid[^a-z]?/i;
-const replaceFt = /[^a-z]ft[^a-z]?/i;
 
 const common = require('../common');
 const nmrLib = require('../nmr');
@@ -24,14 +22,8 @@ module.exports = {
             if(isFid.test(filename)) {
                 return 'jcampFID';
             }
-            if(isFt.test(filename)) {
-                return 'jcampFT';
-            }
-            return 'jcamp';
-        } else if(extension === 'pdf') {
-            return 'pdf';
         }
-        return 'file';
+        return common.getTargetProperty(filename);
     },
 
     process(filename, content) {
@@ -57,8 +49,6 @@ function getReference(filename) {
 
     if(isFid.test(filename)) {
         reference = reference.replace(replaceFid, '');
-    } else if(isFt.test(filename)) {
-        reference = reference.replace(replaceFt, '');
     }
     return reference;
 }
