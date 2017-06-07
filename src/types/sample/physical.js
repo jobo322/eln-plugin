@@ -3,11 +3,6 @@
 module.exports = {
     jpath: ['physical'],
     getEmpty() {
-        return {
-            bp: [],
-            density: [],
-            mp: [],
-            nd: []
-        }
+        return {}
     }
 };

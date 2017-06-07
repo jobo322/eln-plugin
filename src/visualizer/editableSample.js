@@ -42,6 +42,9 @@ define(['src/util/api', 'src/util/ui', 'OCLE', 'ExpandableMolecule','../index'],
                 API.setVariable('nmr', sampleVar, ['$content', 'spectra', 'nmr']);
                 API.setVariable('ir', sampleVar, ['$content', 'spectra', 'ir']);
                 API.setVariable('mass', sampleVar, ['$content', 'spectra', 'mass']);
+                API.setVariable('chromatogram', sampleVar, ['$content', 'spectra', 'chromatogram']);
+                API.setVariable('xray', sampleVar, ['$content', 'spectra', 'xray']);
+                API.setVariable('image', sampleVar, ['$content', 'image']);
                 updateAttachments(sample);
 
                 var expandableMolecule = new ExpandableMolecule(sample);
