@@ -1,4 +1,4 @@
-const common = require('../common');
+const common = require('../src/types/common');
 
 
 test('common.js', () => {
