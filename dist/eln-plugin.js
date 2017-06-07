@@ -39000,11 +39000,11 @@ function getTextContent(content) {
             return content.content;
     }
 }
-},{"./types":162,"./util/defaults":177}],162:[function(require,module,exports){
+},{"./types":162,"./util/defaults":176}],162:[function(require,module,exports){
 'use strict';
 
 
-const lib = ({"types":({"__tests__":({"common":require("./types/__tests__/common.js")}),"common":require("./types/common.js"),"default":require("./types/default.js"),"nmr":require("./types/nmr.js"),"reaction":({"general":require("./types/reaction/general.js")}),"sample":({"chromatogram":require("./types/sample/chromatogram.js"),"general":require("./types/sample/general.js"),"image":require("./types/sample/image.js"),"ir":require("./types/sample/ir.js"),"mass":require("./types/sample/mass.js"),"nmr":require("./types/sample/nmr.js"),"physical":require("./types/sample/physical.js"),"raman":require("./types/sample/raman.js"),"xray":require("./types/sample/xray.js")})})});
+const lib = ({"types":({"common":require("./types/common.js"),"default":require("./types/default.js"),"nmr":require("./types/nmr.js"),"reaction":({"general":require("./types/reaction/general.js")}),"sample":({"chromatogram":require("./types/sample/chromatogram.js"),"general":require("./types/sample/general.js"),"image":require("./types/sample/image.js"),"ir":require("./types/sample/ir.js"),"mass":require("./types/sample/mass.js"),"nmr":require("./types/sample/nmr.js"),"physical":require("./types/sample/physical.js"),"raman":require("./types/sample/raman.js"),"xray":require("./types/sample/xray.js")})})});
 
 module.exports = {
     getType(type, kind, custom) {
@@ -39034,38 +39034,7 @@ module.exports = {
         return all;
     }
 };
-},{"./types/__tests__/common.js":163,"./types/common.js":164,"./types/default.js":165,"./types/nmr.js":166,"./types/reaction/general.js":167,"./types/sample/chromatogram.js":168,"./types/sample/general.js":169,"./types/sample/image.js":170,"./types/sample/ir.js":171,"./types/sample/mass.js":172,"./types/sample/nmr.js":173,"./types/sample/physical.js":174,"./types/sample/raman.js":175,"./types/sample/xray.js":176}],163:[function(require,module,exports){
-const common = require('../common');
-
-
-test('common.js', () => {
-    "use strict";
-
-    expect(common.getBasename('./ab/cd/ef.ext')).toBe('ef.ext');
-    expect(common.getExtension('./ab/cd/ef.ext')).toBe('ext');
-    expect(common.getExtension('./ab/cd/ef.EXT')).toBe('ext');
-    expect(common.getExtension('./ab/cd/ef.EXT.1234')).toBe('ext');
-
-
-    expect(common.getTargetProperty('./ab/cd/ef.jdx')).toBe('jcamp');
-    expect(common.getTargetProperty('./ab/cd/ef.dx')).toBe('jcamp');
-    expect(common.getTargetProperty('./ab/cd/ef.jcamp')).toBe('jcamp');
-    expect(common.getTargetProperty('./ab/cd/ef.pdf')).toBe('pdf');
-    expect(common.getTargetProperty('./ab/cd/ef.xml')).toBe('xml');
-    expect(common.getTargetProperty('./ab/cd/ef.cdf')).toBe('cdf');
-    expect(common.getTargetProperty('./ab/cd/ef.tiff')).toBe('image');
-    expect(common.getTargetProperty('./ab/cd/ef.tif')).toBe('image');
-    expect(common.getTargetProperty('./ab/cd/ef.png')).toBe('image');
-    expect(common.getTargetProperty('./ab/cd/ef.jpg')).toBe('image');
-    expect(common.getTargetProperty('./ab/cd/ef.jpeg')).toBe('image');
-    expect(common.getTargetProperty('./ab/cd/ef.doc')).toBe('file');
-    expect(common.getTargetProperty('./ab/cd/ef.xls')).toBe('file');
-    expect(common.getTargetProperty('./ab/cd/ef.ppt')).toBe('file');
-
-
-
-});
-},{"../common":164}],164:[function(require,module,exports){
+},{"./types/common.js":163,"./types/default.js":164,"./types/nmr.js":165,"./types/reaction/general.js":166,"./types/sample/chromatogram.js":167,"./types/sample/general.js":168,"./types/sample/image.js":169,"./types/sample/ir.js":170,"./types/sample/mass.js":171,"./types/sample/nmr.js":172,"./types/sample/physical.js":173,"./types/sample/raman.js":174,"./types/sample/xray.js":175}],163:[function(require,module,exports){
 'use strict';
 
 const common = module.exports = {};
@@ -39125,7 +39094,7 @@ common.getTargetProperty = function (filename) {
             return 'file'
     }
 };
-},{}],165:[function(require,module,exports){
+},{}],164:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39137,7 +39106,7 @@ module.exports = {
         return [];
     }
 };
-},{}],166:[function(require,module,exports){
+},{}],165:[function(require,module,exports){
 'use strict';
 
 const nmrMetadata = require('nmr-metadata');
@@ -39146,7 +39115,7 @@ exports.getMetadata = nmrMetadata.parseJcamp;
 exports.getSpectrumType = nmrMetadata.getSpectrumType;
 exports.getNucleusFrom2DExperiment = nmrMetadata.getNucleusFrom2DExperiment;
 
-},{"nmr-metadata":103}],167:[function(require,module,exports){
+},{"nmr-metadata":103}],166:[function(require,module,exports){
 'use strict';
 
 
@@ -39168,7 +39137,7 @@ module.exports = {
     }
 };
 
-},{}],168:[function(require,module,exports){
+},{}],167:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39178,7 +39147,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":164}],169:[function(require,module,exports){
+},{"../common":163}],168:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39193,7 +39162,7 @@ module.exports = {
         }
     }
 };
-},{}],170:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39203,7 +39172,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":164}],171:[function(require,module,exports){
+},{"../common":163}],170:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39213,7 +39182,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":164}],172:[function(require,module,exports){
+},{"../common":163}],171:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39223,7 +39192,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":164}],173:[function(require,module,exports){
+},{"../common":163}],172:[function(require,module,exports){
 'use strict';
 
 const isFid = /[^a-z]fid[^a-z]/i;
@@ -39279,7 +39248,7 @@ function getReference(filename) {
     return reference;
 }
 
-},{"../common":164,"../nmr":166}],174:[function(require,module,exports){
+},{"../common":163,"../nmr":165}],173:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39288,7 +39257,7 @@ module.exports = {
         return {}
     }
 };
-},{}],175:[function(require,module,exports){
+},{}],174:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39299,7 +39268,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":164}],176:[function(require,module,exports){
+},{"../common":163}],175:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39309,7 +39278,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":164}],177:[function(require,module,exports){
+},{"../common":163}],176:[function(require,module,exports){
 /*
     Modified from https://github.com/justmoon/node-extend
     Copyright (c) 2014 Stefan Thomas
