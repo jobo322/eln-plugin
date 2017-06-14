@@ -29102,7 +29102,9 @@ class SpinSystem {
     }
 
     static fromPrediction(input) {
+        // console.log(JSON.stringify(input))
         let predictions = SpinSystem.ungroupAtoms(input);
+        // console.log(JSON.stringify(predictions));
         const nSpins = predictions.length;
         const cs = new Array(nSpins);
         const jc = Matrix.zeros(nSpins, nSpins);
@@ -29117,7 +29119,6 @@ class SpinSystem {
             cs[i] = predictions[i].delta;
             j = predictions[i].j;
             for (k = 0; k < j.length; k++) {
-                //console.log(ids[result[i].atomIDs[0]],ids[j[k].assignment]);
                 jc[ids[predictions[i].atomIDs[0]]][ids[j[k].assignment]] = j[k].coupling;
                 jc[ids[j[k].assignment]][ids[predictions[i].atomIDs[0]]] = j[k].coupling;
             }
@@ -29134,8 +29135,19 @@ class SpinSystem {
             let atomIDs = pred.atomIDs;
             for (let i = 0; i < atomIDs.length; i++) {
                 let tempPred = JSON.parse(JSON.stringify(pred));
+                let nmrJ = [];
                 tempPred.atomIDs = [atomIDs[i]];
                 tempPred.integral = 1;
+                for (let j = 0; j < tempPred.j.length; j++) {
+                    let assignment = tempPred.j[j].assignment;
+                    for (let k = 0; k < assignment.length; k++) {
+                        let tempJ = JSON.parse(JSON.stringify(tempPred.j[j]));
+                        tempJ.assignment = assignment[k];
+                        nmrJ.push(tempJ);
+                    }
+                }
+                tempPred.j = nmrJ;
+                delete tempPred.nbAtoms;
                 result.push(tempPred);
             }
         });
@@ -29207,8 +29219,10 @@ class SpinSystem {
 
     /**
      * Recursively split the clusters until the maxClusterSize criteria has been ensured.
-     * @param cluster
-     * @param clusterList
+     * @param {Array} cluster
+     * @param {Array} clusterList
+     * @param {number} maxClusterSize
+     * @param  {boolean} force
      */
     _splitCluster(cluster, clusterList, maxClusterSize, force) {
         if (!force && cluster.index.length <= maxClusterSize) {
@@ -29978,7 +29992,7 @@ process.umask = function() { return 0; };
 },{}],132:[function(require,module,exports){
 module.exports={
   "name": "spectra-data",
-  "version": "3.1.1",
+  "version": "3.1.4",
   "description": "spectra-data project - manipulate spectra",
   "keywords": [
     "spectra-data",
@@ -29989,11 +30003,11 @@ module.exports={
     "Michaël Zasso",
     "Luc Patiny"
   ],
-  "repository": "cheminfo-js/spectra-data",
+  "repository": "cheminfo-js/spectra",
   "bugs": {
-    "url": "https://github.com/cheminfo-js/spectra-data/issues"
+    "url": "https://github.com/cheminfo-js/spectra/issues"
   },
-  "homepage": "https://github.com/cheminfo-js/spectra-data",
+  "homepage": "https://github.com/cheminfo-js/spectra/packages/spectra-data",
   "license": "MIT",
   "main": "./src/index.js",
   "scripts": {
@@ -30010,20 +30024,24 @@ module.exports={
     "eslint-plugin-no-only-tests": "^1.1.0",
     "mocha": "^3.1.2",
     "mocha-better-spec-reporter": "^3.0.1",
-    "nmr-predictor": "https://github.com/cheminfo-js/nmr-predictor/",
+    "nmr-predictor": "^1.0.6",
     "should": "^11.1.1"
   },
   "dependencies": {
+    "babel-core": "^6.24.1",
+    "babel-loader": "^7.0.0",
     "brukerconverter": "^1.0.1",
     "jcampconverter": "^2.4.5",
     "ml-array-utils": "^0.3.0",
-    "ml-curve-fitting": "0.0.7",
+    "ml-curve-fitting": "^0.0.7",
     "ml-fft": "^1.3.5",
     "ml-gsd": "^2.0.1",
     "ml-matrix-peaks-finder": "^0.2.1",
-    "ml-simple-clustering": "0.1.0",
+    "ml-simple-clustering": "^0.1.0",
     "ml-stat": "^1.3.0",
-    "nmr-simulation": "^1.0.0"
+    "nmr-simulation": "^1.0.2",
+    "spectra-data-ranges": "^0.0.2",
+    "spectra-nmr-utilities": "^0.0.2"
   }
 }
 
@@ -30110,10 +30128,8 @@ class NMR extends SD {
         options = Object.assign({}, {xy: true, keepSpectra: true, keepRecordsRegExp: /^.+$/}, options);
         var brukerSpectra = null;
         if (Array.isArray(brukerFile)) {
-            //It is a folder
             brukerSpectra = Brukerconverter.converFolder(brukerFile, options);
         } else {
-            //It is a zip
             brukerSpectra = Brukerconverter.convertZip(brukerFile, options);
         }
         if (brukerSpectra) {
@@ -30409,12 +30425,11 @@ class NMR extends SD {
      * @option stdev: Number of standard deviation of the noise for the threshold calculation if a threshold is not specified.
      * @return {*}
      */
-    getRanges(options) {
+    getRanges(options = {}) {
         if (this.ranges) {
             return this.ranges;
         } else {
             var peaks = this.getPeaks(options);
-            options = Object.assign({}, {nH: this.totalIntegral}, options);
             var ranges = peaks2Ranges(this, peaks, options);
             return ranges;
         }
@@ -30855,7 +30870,7 @@ module.exports = NMR2D;
 },{"./SD":135,"./filters/Filters.js":136,"./peakPicking/peakOptimizer":149,"./peakPicking/peakPicking2D":151,"brukerconverter":3,"ml-stat":99,"nmr-simulation":125}],135:[function(require,module,exports){
 'use strict';
 // small note on the best way to define array
-// http://jsperf.com/lp-array-and-loops/2
+    // http://jsperf.com/lp-array-and-loops/2
 
 const StatArray = require('ml-stat').array;
 const ArrayUtils = require('ml-array-utils');
@@ -30899,7 +30914,7 @@ class SD {
      * @param {object} options - Optional parameters
      * @return {SD} SD instance from x and y data
      */
-    static fromXY(x, y, options) {
+    static fromXY(x, y, options = {}) {
         const result = {};
         result.profiling = [];
         result.logs = [];
@@ -30995,8 +31010,7 @@ class SD {
      * @param {i} i of sub-spectrum
      * @return {number | *}
      */
-    getFirstX(i) {
-        if (i === undefined) i = this.activeElement;
+    getFirstX(i = this.activeElement) {
         return this.sd.spectra[i].firstX;
     }
 
@@ -31005,8 +31019,7 @@ class SD {
      * @param {number} x - The value for firstX
      * @param {number} i sub-spectrum Default:activeSpectrum
      */
-    setFirstX(x, i) {
-        if (i === undefined) i = this.activeElement;
+    setFirstX(x, i = this.activeElement) {
         this.sd.spectra[i].firstX = x;
     }
 
@@ -31015,8 +31028,7 @@ class SD {
      * @param {number} i - sub-spectrum Default:activeSpectrum
      * @return {number}
      */
-    getLastX(i) {
-        if (i === undefined) i = this.activeElement;
+    getLastX(i = this.activeElement) {
         return this.sd.spectra[i].lastX;
     }
 
@@ -31026,8 +31038,7 @@ class SD {
      * @param {number} x - The value for lastX
      * @param {number} i - sub-spectrum Default:activeSpectrum
      */
-    setLastX(x, i) {
-        if (i === undefined) i = this.activeElement;
+    setLastX(x, i = this.activeElement) {
         this.sd.spectra[i].lastX = x;
     }
 
@@ -31038,8 +31049,7 @@ class SD {
      * @param {number} i - sub-spectrum Default:activeSpectrum
      * @return {number}
      */
-    getFirstY(i) {
-        if (i === undefined) i = this.activeElement;
+    getFirstY(i = this.activeElement) {
         return this.sd.spectra[i].firstY;
     }
 
@@ -31048,8 +31058,7 @@ class SD {
      * @param {number} y - the value of firstY
      * @param {number} i - sub-spectrum Default: activeSpectrum
      */
-    setFirstY(y, i) {
-        if (i === undefined) i = this.activeElement;
+    setFirstY(y, i = this.activeElement) {
         this.sd.spectra[i].firstY = y;
     }
 
@@ -31058,8 +31067,7 @@ class SD {
      * @param {number} i - sub-spectrum Default: activeSpectrum
      * @return {number}
      */
-    getLastY(i) {
-        if (i === undefined) i = this.activeElement;
+    getLastY(i = this.activeElement) {
         return this.sd.spectra[i].lastY;
     }
 
@@ -31068,8 +31076,7 @@ class SD {
      * @param {number} y - the value of firstY
      * @param {number} i - sub-spectrum Default:activeSpectrum
      */
-    setLastY(y, i) {
-        if (i === undefined) i = this.activeElement;
+    setLastY(y, i = this.activeElement) {
         this.sd.spectra[i].lastY = y;
     }
 
@@ -31133,8 +31140,7 @@ class SD {
      * @param {number} i - sub-spectrum Default:activeSpectrum
      * @return {object}
      */
-    getSpectrumData(i) {
-        if (i === undefined) i = this.activeElement;
+    getSpectrumData(i = this.activeElement) {
         return this.sd.spectra[i].data[0];
     }
 
@@ -31143,8 +31149,7 @@ class SD {
      * @param {number} i - sub-spectrum Default:activeSpectrum
      * @return {object}
      */
-    getSpectrum(i) {
-        if (i === undefined) i = this.activeElement;
+    getSpectrum(i = this.activeElement) {
         return this.sd.spectra[i];
     }
 
@@ -31249,10 +31254,19 @@ class SD {
 
     /**
      * Get the noise threshold level of the current spectrum. It uses median instead of the mean
+     * @param {object} options
+     * @param {number} options.from - lower limit in ppm to compute noise level
+     * @param {number} options.to - upper limit in ppm to compute noise level
      * @return {number}
      */
-    getNoiseLevel() {
-        var median = StatArray.median(this.getYData());
+    getNoiseLevel(options = {}) {
+        let data;
+        if (options.from && options.to) {
+            data = this.getVector(options.from, options.to);
+        } else {
+            data = this.getYData();
+        }
+        var median = StatArray.median(data);
         return median * this.getNMRPeakThreshold(this.getNucleus(1));
     }
 
@@ -31282,7 +31296,7 @@ class SD {
             var upperLimit = this.getNbPoints() - 1;
             var lowerLimit = 0;
             var midPoint;
-            //If inverted scale
+
             if (this.getFirstX() > this.getLastX()) {
                 upperLimit = 0;
                 lowerLimit = this.getNbPoints() - 1;
@@ -31304,7 +31318,6 @@ class SD {
 
             while (Math.abs(upperLimit - lowerLimit) > 1) {
                 midPoint = Math.round(Math.floor((upperLimit + lowerLimit) / 2));
-                //x=this.getX(midPoint);
                 if (this.getX(midPoint) === inValue) {
                     return midPoint;
                 }
@@ -31398,29 +31411,19 @@ class SD {
      * @param {number} value - value with which to fill
      */
     fill(from, to, value) {
-        var tmp, start, end, x, y;
-        if (from > to) {
-            tmp = from;
-            from = to;
-            to = tmp;
-        }
+        var start, end, x, y;
 
         for (var i = 0; i < this.getNbSubSpectra(); i++) {
             this.setActiveElement(i);
+
             x = this.getXData();
             y = this.getYData();
+
             start = this.unitsToArrayPoint(from);
             end = this.unitsToArrayPoint(to);
+
             if (start > end) {
-                tmp = start;
-                start = end;
-                end = tmp;
-            }
-            if (start < 0) {
-                start = 0;
-            }
-            if (end >= this.getNbPoints) {
-                end = this.getNbPoints - 1;
+                [start, end] = [end, start];
             }
 
             if (typeof value !== 'number') {
@@ -31443,6 +31446,12 @@ class SD {
     suppressZone(from, to) {
         this.fill(from, to);
         this.setDataClass(DATACLASS_PEAK);
+    }
+
+    suppressZones(zones = []) {
+        for (var i = 0; i < zones.length; i++) {
+            this.suppressZone(zones[i].from, zones[i].to);
+        }
     }
 
 
@@ -31592,13 +31601,11 @@ class SD {
         var i0 = this.unitsToArrayPoint(from);
         var ie = this.unitsToArrayPoint(to);
         var area = 0;
+
         if (i0 > ie) {
-            i0 = i0 + ie;
-            ie = i0 - ie;
-            i0 = i0 - ie;
+            [i0, ie] = [ie, i0];
         }
-        i0 = i0 < 0 ? 0 : i0;
-        ie = ie >= this.getNbPoints() ? this.getNbPoints() - 1 : ie;
+
         for (var i = i0; i < ie; i++) {
             area += this.getY(i);
         }
@@ -31645,10 +31652,11 @@ class SD {
      * This will convert the data in equally spaces X.
      * @param {number} from - one limit in spectrum units
      * @param {number} to - one limit in spectrum units
-     * @param {number} nbPoints - number of points to return(!!!sometimes it is not possible to return exactly the required nbPoints)
+     * @param {object} options
+     * @param {number} options.nbPoints - number of points to return(!!!sometimes it is not possible to return exactly the required nbPoints)
      * @return {this}
      */
-    reduceData(from, to, nbPoints) {
+    reduceData(from, to, options = {}) {
         if (!this.isDataClassXY()) {
             throw Error('reduceData can only apply on equidistant data');
         }
@@ -31656,20 +31664,16 @@ class SD {
         for (let i = 0; i < this.getNbSubSpectra(); i++) {
             this.setActiveElement(i);
             if (this.getXUnits().toLowerCase() !== 'hz') {
-                if (typeof nbPoints !== 'undefined') {
+                if (options.nbPoints) {
                     let x = this.getSpectraDataX();
                     let y = this.getSpectraDataY();
 
                     if (x[0] > x[1] && from < to) {
-                        from = from + to;
-                        to = from - to;
-                        from = from - to;
+                        [from, to] = [to, from];
                     } else if (from > to) {
-                        from = from + to;
-                        to = from - to;
-                        from = from - to;
+                        [from, to] = [to, from];
                     }
-                    y = ArrayUtils.getEquallySpacedData(x, y, {from: from, to: to, numberOfPoints: nbPoints});
+                    y = ArrayUtils.getEquallySpacedData(x, y, {from: from, to: to, numberOfPoints: options.nbPoints});
 
                     let step = (to - from) / (y.length - 1);
                     x = new Array(y.length).fill(from);
@@ -31679,15 +31683,13 @@ class SD {
 
                     this.sd.spectra[i].data[0].x = x;
                     this.sd.spectra[i].data[0].y = y;
-                    this.setFirstX(x[0]);
-                    this.setLastX(x[x.length - 1]);
+                    this.setFirstX(x[0]); this.setLastX(x[x.length - 1]);
                     this.sd.spectra[i].nbPoints = y.length;
                 } else {
                     var xyData = this.getPointsInWindow(from, to);
                     this.sd.spectra[i].data[0].x = xyData[0];
                     this.sd.spectra[i].data[0].y = xyData[1];
-                    this.setFirstX(xyData[0][0]);
-                    this.setLastX(xyData[0][xyData[0].length - 1]);
+                    this.setFirstX(xyData[0][0]); this.setLastX(xyData[0][xyData[0].length - 1]);
                     this.sd.spectra[i].nbPoints = xyData[1].length;
                 }
             }
@@ -31701,10 +31703,11 @@ class SD {
      * Not tested, you have to know what you are doing
      * @param {number} from - index of a limit of the desired window.
      * @param {number} to - index of a limit of the desired window
-     * @param {number} nPoints - number of points in the desired window.
-     * @return {Array} XYarray data of the desired window.
+     * @param {object} options
+     * @param {boolean} options.withoutX
+     * @return {Array} XYarray/Yarray data of the desired window.
      */
-    getPointsInWindow(from, to) {
+    getPointsInWindow(from, to, options = {}) {
         if (!this.isDataClassXY()) {
             throw Error('getPointsInWindow can only apply on equidistant data');
         }
@@ -31713,14 +31716,15 @@ class SD {
         var indexOfTo = this.unitsToArrayPoint(to);
 
         if (indexOfFrom > indexOfTo) {
-            indexOfFrom = indexOfFrom + indexOfTo;
-            indexOfTo = indexOfFrom - indexOfTo;
-            indexOfFrom = indexOfFrom - indexOfTo;
+            [indexOfFrom, indexOfTo] = [indexOfTo, indexOfFrom];
         }
         if (indexOfFrom >= 0 && indexOfTo <= this.getNbPoints() - 2) {
-            var y = this.getSpectraDataY().slice(indexOfFrom, indexOfTo + 1);
-            var x = this.getSpectraDataX().slice(indexOfFrom, indexOfTo + 1);
-            return [x, y];
+            var data = this.getSpectraDataY().slice(indexOfFrom, indexOfTo + 1);
+            if (!options.withoutX) {
+                var x = this.getSpectraDataX().slice(indexOfFrom, indexOfTo + 1);
+                data = [x, data];
+            }
+            return data;
         } else {
             throw Error('values outside this in range');
         }
@@ -31782,7 +31786,7 @@ class SD {
      * @param {object} options - parameters to calculation of peakPicking
      * @return {*}
      */
-    createPeaks(options) {
+    createPeaks(options = {}) {
         this.peaks = peakPicking(this, options);
         return this.peaks;
     }
@@ -31792,7 +31796,7 @@ class SD {
      * @param {object} options - parameters to calculation of peakPicking
      * @return {*}
      */
-    getPeaks(options) {
+    getPeaks(options = {}) {
         let peaks;
         if (this.peaks) {
             peaks = this.peaks;
@@ -32170,8 +32174,9 @@ exports.SD = require('./SD');
 exports.NMR = require('./NMR');
 exports.NMR2D = require('./NMR2D');
 exports.Ranges = require('./range/Ranges');
+exports.GUI = require('./range/visualizer/index');
 
-},{"./NMR":133,"./NMR2D":134,"./SD":135,"./range/Ranges":153}],144:[function(require,module,exports){
+},{"./NMR":133,"./NMR2D":134,"./SD":135,"./range/Ranges":153,"./range/visualizer/index":156}],144:[function(require,module,exports){
 'use strict';
 
 const Encoder = require('./VectorEncoder');
@@ -32937,11 +32942,10 @@ function checkImpurity(peakList, impurity, options) {
         j = peakList.length;
         while (j--) {
             if (!peakList[j].asymmetric) {
-                tolerance = options.error + Math.abs(peakList[j].from - peakList[j].to) / 2;
-                diference = Math.abs(impurity[i].shift - Math.abs(peakList[j].from + peakList[j].to) / 2);
+                tolerance = options.error + peakList[j].width;
+                diference = Math.abs(impurity[i].shift - peakList[j].x);
                 if (diference < tolerance) { // && (impurity[i].multiplicity === '' || (impurity[i].multiplicity.indexOf(peakList[j].multiplicity)) { // some impurities has multiplicities like 'bs' but at presents it is unsupported
                     peakList.splice(j, 1);
-                    break;
                 }
             }
         }
@@ -32951,8 +32955,6 @@ function checkImpurity(peakList, impurity, options) {
 function removeImpurities(peakList, options = {}) {
     var {
         solvent = '',
-        nH = 99,
-        sumObserved = 0,
         error = 0.025
     } = options;
     solvent = solvent.toLowerCase();
@@ -32962,17 +32964,6 @@ function removeImpurities(peakList, options = {}) {
         for (let impurity of toCheck) {
             let impurityShifts = solventImpurities[impurity.toLowerCase()];
             checkImpurity(peakList, impurityShifts, {error: error});
-        }
-
-        for (var i = 0; i < peakList.length; i++) {
-            sumObserved += peakList[i].integral;
-        }
-
-        if (sumObserved !== nH) {
-            sumObserved = nH / sumObserved;
-            while (i--) {
-                peakList[i].integral *= sumObserved;
-            }
         }
     }
     return peakList;
@@ -36132,18 +36123,14 @@ module.exports = {
      * @private
      */
     compilePattern: function (signal) {
-        //if (DEBUG) console.log('Debugin...');
-
-        signal.multiplicity = 'm';//By default the multiplicity is massive
+        signal.multiplicity = 'm';
         // 1.1 symmetrize
         // It will add a set of peaks(signal.peaksComp) to the signal that will be used during
         // the compilation process. The unit of those peaks will be in Hz
         signal.symRank = symmetrizeChoiseBest(signal, maxErrorIter1, 1);
         signal.asymmetric = true;
-       // console.log(signal.delta1+" "+signal.symRank);
         //Is the signal symmetric?
         if (signal.symRank >= 0.95 && signal.peaksComp.length < 32) {
-            //if (DEBUG)console.log(signal.delta1 + ' nbPeaks ' + signal.peaksComp.length);
             signal.asymmetric = false;
             var i, j, n, P1, n2, maxFlagged;
             var k = 1;
@@ -36151,7 +36138,6 @@ module.exports = {
 
             //Loop over the possible number of coupling contributing to the multiplet
             for (n = 0; n < 9; n++) {
-                //if (DEBUG)console.log('Trying ' + n + ' couplings');
                 //1.2 Normalize. It makes a deep copy of the peaks before to modify them.
                 var peaks = normalize(signal, n);
                 //signal.peaksCompX = peaks;
@@ -36168,21 +36154,12 @@ module.exports = {
                 var ranges = getRanges(peaks);
                 n2 = Math.pow(2, n);
 
-                /*if (DEBUG) {
-                    console.log('ranges: ' + JSON.stringify(ranges));
-                    console.log('Target sum: ' + n2);
-                }*/
-
                 // 1.4 Find a combination of integer heights Hi, one from each Si, that sums to 2^n.
                 var heights = null;
-                while (!validPattern && (heights = getNextCombination(ranges, n2)) !== null) {
-
-                    /*if (DEBUG) {
-                        console.log('Possible pattern found with ' + n + ' couplings!!!');
-                        console.log(heights);
-                    }*/
+                var counter = 1;
+                while (!validPattern && (heights = getNextCombination(ranges, n2)) !== null && counter < 400) {
                     // 2.1 Number the components of the multiplet consecutively from 1 to 2n,
-                    //starting at peak 1
+                    // starting at peak 1
                     var numbering = new Array(heights.length);
                     k = 1;
                     for (i = 0; i < heights.length; i++) {
@@ -36191,8 +36168,6 @@ module.exports = {
                             numbering[i][j] = k++;
                         }
                     }
-
-                    //if (DEBUG) console.log('Numbering: ' + JSON.stringify(numbering));
 
                     Jc = []; //The array to store the detected j-coupling
                     // 2.2 Set j = 1; J1 = P2 - P1. Flag components 1 and 2 as accounted for.
@@ -36205,10 +36180,7 @@ module.exports = {
                     var nFlagged = 2;
                     maxFlagged = Math.pow(2, n) - 1;
                     while (Jc.length < n && nFlagged < maxFlagged && k < peaks.length) {
-                        /*if (DEBUG) {
-                            console.log('New Jc' + JSON.stringify(Jc));
-                            console.log('Aval. numbering ' + JSON.stringify(numbering));
-                        }*/
+                        counter += 1;
                         // 4.1. Increment j. Set k to the number of the first unflagged component.
                         j++;
                         while (k < peaks.length && numbering[k].length === 0) {
@@ -36248,13 +36220,6 @@ module.exports = {
                             validPattern = false;
                         }
                     }
-                    //More verbosity of the process
-                    /*if (DEBUG) {
-                        console.log('Jc ' + JSON.stringify(Jc));
-                        console.log('Heights ' + JSON.stringify(heights));
-                        console.log('pattern ' + JSON.stringify(pattern));
-                        console.log('Valid? ' + validPattern);
-                    }*/
                 }
                 //If we found a valid pattern we should inform about the pattern.
                 if (validPattern) {
@@ -36262,7 +36227,6 @@ module.exports = {
                 }
             }
         }
-
         //Before to return, change the units of peaksComp from Hz to PPM again
         for (i = 0; i < signal.peaksComp.length; i++) {
             signal.peaksComp[i].x /= signal.observe;
@@ -37041,6 +37005,7 @@ const defaultOptions = {
     broadRatio: 0.00025,
     smoothY: true,
     widthFactor: 4,
+    realTop: true,
     functionName: 'gaussian',
     broadWidth: 0.25,
     sgOptions: {windowSize: 9, polynomial: 3}
@@ -37049,8 +37014,10 @@ const defaultOptions = {
 
 function extractPeaks(spectrum, options = {}) {
     options = Object.assign({}, defaultOptions, options, {optimize: false, broadWidth: false});
-    var noiseLevel = options.noiseLevel ||
-        Math.abs(spectrum.getNoiseLevel()) * (options.thresholdFactor);
+
+    if (!options.noiseLevel) {
+        options.noiseLevel = Math.abs(spectrum.getNoiseLevel()) * (options.thresholdFactor);
+    }
 
     var data = spectrum.getXYData();
 
@@ -37058,7 +37025,7 @@ function extractPeaks(spectrum, options = {}) {
         data = spectrum.getVector(options.from, options.to);
     }
     var peakList = GSD.gsd(data[0], data[1], options);
-
+    // console.log(peakList)
     if (options.broadWidth) {
         peakList = GSD.post.joinBroadPeaks(peakList, {width: options.broadWidth});
     }
@@ -37066,7 +37033,7 @@ function extractPeaks(spectrum, options = {}) {
         peakList = GSD.post.optimizePeaks(peakList, data[0], data[1], options);
     }
 
-    return clearList(peakList, noiseLevel);
+    return clearList(peakList, options.noiseLevel);
 }
 
 /**
@@ -37265,7 +37232,14 @@ const impurityRemover = require('./ImpurityRemover');
 const defaultOptions = {
     nH: 100,
     idPrefix: '',
+    clean: 0.5,
+    thresholdFactor: 1,
+    compile: true,
+    integralType: 'sum',
+    optimize: true,
+    frequencyCluster: 16,
 };
+
 /**
  * This function clustering peaks and calculate the integral value for each range from the peak list returned from extractPeaks function.
  * @param {SD} spectrum - SD instance
@@ -37284,6 +37258,7 @@ function createRanges(spectrum, peakList, options) {
     options = Object.assign({}, defaultOptions, options);
     var i, j;
     var nH = options.nH;
+    peakList = impurityRemover(peakList, options.removeImpurity);
     var signals = detectSignals(spectrum, peakList, options);
 
     if (options.clean) {
@@ -37370,7 +37345,6 @@ function createRanges(spectrum, peakList, options) {
         signals[i]._highlight = [signals[i].signalID];
     }
 
-
     let ranges = new Array(signals.length);
     for (i = 0; i < signals.length; i++) {
         var signal = signals[i];
@@ -37397,7 +37371,7 @@ function createRanges(spectrum, peakList, options) {
             ranges[i].signal[0].delta = signal.delta1;
         }
     }
-    ranges = impurityRemover(ranges, options.removeImpurity);
+
     return new Ranges(ranges);
 }
 
@@ -37504,7 +37478,8 @@ module.exports = createRanges;
 const acs = require('./acs/acs');
 const peak2Vector = require('./peak2Vector');
 const GUI = require('./visualizer/index');
-const joinCoupling = require('./utils').joinCoupling;
+const utils = require('spectra-nmr-utilities');
+const arrayUtils = require('ml-stat').array;
 class Ranges extends Array {
 
     constructor(ranges) {
@@ -37531,56 +37506,33 @@ class Ranges extends Array {
     static fromSignals(signals, options) {
         options = Object.assign({}, {lineWidth: 1, frequency: 400, nucleus: '1H'}, options);
         //1. Collapse all the equivalent predictions
-        const nPredictions = signals.length;
-        const ids = new Array(nPredictions);
-        var i,
-            j,
-            diaIDs,
-            prediction,
-            width,
-            center,
-            jc;
-        for (i = 0; i < nPredictions; i++) {
-            if (!ids[signals[i].diaIDs[0]]) {
-                ids[signals[i].diaIDs[0]] = [i];
-            } else {
-                ids[signals[i].diaIDs[0]].push(i);
-            }
-        }
-        const idsKeys = Object.keys(ids);
-        const result = new Array(idsKeys.length);
 
-        for (i = 0; i < idsKeys.length; i++) {
-            diaIDs = ids[idsKeys[i]];
-            prediction = signals[diaIDs[0]];
+        signals = utils.group(signals, options);
+        const nSignals = signals.length;
+        var i, j, signal, width, center, jc;
+
+        const result = new Array(nSignals);
+
+        for (i = 0; i < nSignals; i++) {
+            signal = signals[i];
             width = 0;
-            jc = prediction.j;
+            jc = signal.j;
             if (jc) {
                 for (j = 0; j < jc.length; j++) {
                     width += jc[j].coupling;
                 }
             }
 
-            width += 2 * options.lineWidth;//Add 2 times the spectral lineWidth
+            width += 2 * options.lineWidth;
 
             width /= options.frequency;
 
             result[i] = {
-                from: prediction.delta - width,
-                to: prediction.delta + width,
-                integral: prediction.integral,
-                signal: [signals[diaIDs[0]]]
+                from: signal.delta - width,
+                to: signal.delta + width,
+                integral: signal.nbAtoms,
+                signal: [signal]
             };
-
-            result[i].multiplicity = '';
-
-            for (var k = 1; k < diaIDs.length; k++) {
-                result[i].signal.push(signals[diaIDs[k]]);
-                for (var kk = 0; kk < signals[diaIDs[k]].j.length; kk++) {
-                    result[i].multiplicity += signals[diaIDs[k]].j[kk].multiplicity;
-                }
-                result[i].integral++;
-            }
         }
 
         //2. Merge the overlaping ranges
@@ -37592,10 +37544,9 @@ class Ranges extends Array {
                 //Does it overlap?
                 if (Math.abs(center - (result[j].from + result[j].to) / 2)
                     <= Math.abs(width + Math.abs(result[j].from - result[j].to)) / 2) {
-                    result[i].multiplicity = 'm';
                     result[i].from = Math.min(result[i].from, result[j].from);
                     result[i].to = Math.max(result[i].to, result[j].to);
-                    result[i].integral = result[i].integral + result[j].integral;
+                    result[i].integral += result[j].integral;
                     result[i]._highlight.push(result[j].signal[0].diaIDs[0]);
                     result[j].signal.forEach(a => {
                         result[i].signal.push(a);
@@ -37616,53 +37567,23 @@ class Ranges extends Array {
     /**
      * This function return Ranges instance from a SD instance
      * @param {SD} spectrum - SD instance
-     * @param {object} opt - options object to extractPeaks function
+     * @param {object} options - options object to extractPeaks function
      * @return {Ranges}
      */
-    static fromSpectrum(spectrum, opt) {
-        this.options = Object.assign({}, {
-            nH: 99,
-            clean: 0.5,
-            realTop: false,
-            thresholdFactor: 1,
-            compile: true,
-            integralType: 'sum',
-            optimize: true,
-            idPrefix: '',
-            frequencyCluster: 16,
-        }, opt);
-
-        return spectrum.getRanges(this.options);
+    static fromSpectrum(spectrum, options = {}) {
+        return spectrum.getRanges(options);
     }
 
-    /**
-     * This function put signal.multiplicity with respect to
-     * @return {Ranges}
-     */
-    updateMultiplicity() {
-        for (let i = 0; i < this.length; i++) {
-            var range = this[i];
-            for (let j = 0; j < range.signal.length; j++) {
-                var signal = range.signal[j];
-                if (Array.isArray(signal.j) && !signal.multiplicity) {
-                    signal.multiplicity = '';
-                    for (let k = 0; k < signal.j.length; k++) {
-                        signal.multiplicity += signal.j[k].multiplicity;
-                    }
-                }
-            }
-        }
-        return this;
-    }
 
     /**
+     * TODO it is the same code that updateIntegrals in Range class
      * This function normalize or scale the integral data
      * @param {object} options - object with the options
      * @param {boolean} [options.sum] - anything factor to normalize the integrals, Similar to the number of proton in the molecule for a nmr spectrum
      * @param {number} [options.factor] - Factor that multiply the intensities, if [options.sum] is defined it is override
      * @return {Ranges}
      */
-    updateIntegrals(options) {
+    updateIntegrals(options = {}) {
         var factor = options.factor || 1;
         var i;
         if (options.sum) {
@@ -37685,7 +37606,11 @@ class Ranges extends Array {
      * @return {object} - {x: Array, y: Array}
      */
     getVector(options) {
-        return peak2Vector(this.getPeakList(), options);
+        if (this[0].signal[0].peak) {
+            return peak2Vector(this.getPeakList(), options);
+        } else {
+            throw Error('This method is only for signals with peaks');
+        }
     }
 
     /**
@@ -37693,16 +37618,18 @@ class Ranges extends Array {
      * @return {Array}
      */
     getPeakList() {
-        var peaks = [];
-        var i,
-            j;
-        for (i = 0; i < this.length; i++) {
-            var range = this[i];
-            for (j = 0; j < range.signal.length; j++) {
-                peaks = peaks.concat(range.signal[j].peak);
+        if (this[0].signal[0].peak) {
+            var peaks = [];
+            for (var i = 0; i < this.length; i++) {
+                var range = this[i];
+                for (var j = 0; j < range.signal.length; j++) {
+                    peaks = peaks.concat(range.signal[j].peak);
+                }
             }
+            return peaks;
+        } else {
+            throw Error('This method is only for signals with peaks');
         }
-        return peaks;
     }
 
     /**
@@ -37718,26 +37645,28 @@ class Ranges extends Array {
         return GUI.annotations1D(this, options);
     }
 
-    /**
-     * Return an array of deltas and multiplicity for an index database
-     * @param {object} options - options object for toIndex function
-     * @return {Array} [{delta, multiplicity},...]
-     */
+
     toIndex(options = {}) {
         var index = [];
-        if (options.compactPattern) this.joinCouplings(options);
-
+        if (options.joinCouplings) {
+            this.joinCouplings(options);
+        }
         for (let range of this) {
             if (Array.isArray(range.signal) && range.signal.length > 0) {
-                for (let s of range.signal) {
-                    index.push({
-                        multiplicity: s.multiplicity || joinCoupling(s, 0.05),
-                        delta: s.delta
-                    });
+                let l = range.signal.length;
+                var delta = new Array(l);
+                for (let i = 0; i < l; i++) {
+                    delta[i] = range.signal[i].delta;
                 }
+                index.push({
+                    multiplicity: (l > 1) ? 'm' : (range.signal[0].multiplicity ||
+                    utils.joinCoupling(range.signal[0], options.tolerance)),
+                    delta: arrayUtils.arithmeticMean(delta) || (range.to + range.from) * 0.5,
+                    integral: range.integral
+                });
             } else {
                 index.push({
-                    delta: (range.to + range.from) / 2,
+                    delta: (range.to + range.from) * 0.5,
                     multiplicity: 'm'
                 });
             }
@@ -37752,12 +37681,9 @@ class Ranges extends Array {
      * @param {number} [options.tolerance=0.05]
      */
     joinCouplings(options = {}) {
-        var {
-            tolerance = 0.05
-        } = options;
         this.forEach(range => {
             range.signal.forEach(signal => {
-                signal.multiplicity = joinCoupling(signal, tolerance);
+                signal.multiplicity = utils.joinCoupling(signal, options.tolerance);
             });
         });
     }
@@ -37770,7 +37696,7 @@ class Ranges extends Array {
 
 module.exports = Ranges;
 
-},{"./acs/acs":154,"./peak2Vector":155,"./utils":156,"./visualizer/index":157}],154:[function(require,module,exports){
+},{"./acs/acs":154,"./peak2Vector":155,"./visualizer/index":156,"ml-stat":99,"spectra-nmr-utilities":157}],154:[function(require,module,exports){
 'use strict';
 /**
  * nbDecimalsDelta : default depends nucleus H, F: 2 otherwise 1
@@ -37781,7 +37707,7 @@ module.exports = Ranges;
  * detailSeparator : ', '
  */
 
-const joinCoupling = require('../utils').joinCoupling;
+const joinCoupling = require('spectra-nmr-utilities').joinCoupling;
 var globalOptions = {
     h: {
         nucleus: '1H',
@@ -37986,7 +37912,7 @@ function pushAssignment(signal, parenthesis) {
 }
 module.exports = toAcs;
 
-},{"../utils":156}],155:[function(require,module,exports){
+},{"spectra-nmr-utilities":157}],155:[function(require,module,exports){
 'use strict';
 /**
  * This function converts an array of peaks [{x, y, width}] in a vector equally x,y vector from a given window
@@ -38005,7 +37931,7 @@ function peak2Vector(peaks, options = {}) {
     var {
         from = null,
         to = null,
-        nbPoints = 16384,
+        nbPoints = 1024,
         functionName = '',
         nWidth = 4
     } = options;
@@ -38079,142 +38005,52 @@ module.exports = peak2Vector;
 },{}],156:[function(require,module,exports){
 'use strict';
 
-const acs = require('./acs/acs');
-const patterns = ['s', 'd', 't', 'q', 'quint', 'h', 'sept', 'o', 'n'];
-
-function nmrJ(Js, options = {}) {
-    var jString = '';
-    options = Object.assign({}, {separator: ', ', nbDecimal: 2}, options);
-    let j, i;
-    for (i = 0; i < Js.length; i++) {
-        j = Js[i];
-        if (j.length > 11) {
-            j += options.separator;
-        }
-        jString += j.multiplicity + ' ' + j.coupling.toFixed(options.nbDecimal);
-    }
-    return jString;
-}
-
-function toACS(ranges, options) {
-    return acs(ranges, options);
-}
-
-function joinCoupling(signal, tolerance) {
-    var jc = signal.j;
-    var cont = 1;
-    var pattern = '';
-    var newNmrJs = [];
-    var diaIDs = [];
-    var atoms = [];
-    if (jc && jc.length > 0) {
-        jc.sort(function (a, b) {
-            return b.coupling - a.coupling;
-        });
-        if (jc[0].diaID) {
-            diaIDs = [jc[0].diaID];
-        }
-        if (jc[0].assignment) {
-            atoms = [jc[0].assignment];
-        }
-        for (var i = 0; i < jc.length - 1; i++) {
-            if (Math.abs(jc[i].coupling - jc[i + 1].coupling) < tolerance) {
-                cont++;
-                diaIDs.push(jc[i].diaID);
-                atoms.push(jc[i].assignment);
-            } else {
-                let jTemp = {
-                    coupling: Math.abs(jc[i].coupling),
-                    multiplicity: patterns[cont]
-                };
-                if (diaIDs.length > 0) {
-                    jTemp.diaID = diaIDs;
-                }
-                if (atoms.length > 0) {
-                    jTemp.assignment = atoms;
-                }
-                newNmrJs.push(jTemp);
-                if (jc[0].diaID) {
-                    diaIDs = [jc[i].diaID];
-                }
-                if (jc[0].assignment) {
-                    atoms = [jc[i].assignment];
-                }
-                pattern += patterns[cont];
-                cont = 1;
-            }
-        }
-        let jTemp = {
-            coupling: Math.abs(jc[i].coupling),
-            multiplicity: patterns[cont]
-        };
-        if (diaIDs.length > 0) {
-            jTemp.diaID = diaIDs;
-        }
-        if (atoms.length > 0) {
-            jTemp.assignment = atoms;
-        }
-        newNmrJs.push(jTemp);
-
-        pattern += patterns[cont];
-        signal.j = newNmrJs;
-
-    } else if (signal.delta) {
-        pattern = 's';
-    } else {
-        pattern = 'm';
-    }
-    return pattern;
-}
-
-module.exports = {toACS, nmrJ, joinCoupling};
-module.exports.peak2Vector = require('./peak2Vector');
-
-},{"./acs/acs":154,"./peak2Vector":155}],157:[function(require,module,exports){
-'use strict';
-
-/**
- * Created by acastillo on 5/25/16.
- */
-
-var options1D = {type: 'rect', line: 0, lineLabel: 1, labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: 0.05, height: 10, toFixed: 1};
+var options1D = {type: 'rect', line: 0, lineLabel: 1, labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: 0.05, height: 10, toFixed: 1, maxLines: Number.MAX_VALUE, selectable: true, fromToc: false};
 var options2D = {type: 'rect', labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: '6px', height: '6px'};
 
 function annotations1D(ranges, optionsG) {
     var options = Object.assign({}, options1D, optionsG);
     var height = options.height;
     var annotations = [];
+
     for (var i = 0; i < ranges.length; i++) {
-        var prediction = ranges[i];
+        var index = ranges[i];
         var annotation = {};
 
         annotations.push(annotation);
         annotation.line = options.line;
-        annotation._highlight = prediction._highlight;
-        if (!annotation._highlight || annotation._highlight.length === 0) {
-            annotation._highlight = [prediction.signalID];
-            prediction.signal.forEach(function (signal) {
-                for (let j = 0; j < signal.diaID.length; j++) {
-                    annotation._highlight.push(signal.diaID[j]);
-                }
-            });
+        annotation._highlight = index._highlight;
+
+        if (options.fromToc) {
+            let line = options.line < options.maxLines ? options.line : options.maxLines - 1;
+            annotation._highlight = [options.line];
+            annotation.position = [{x: index.delta - options.width, y: (line * height) + 'px'},
+                {x: index.delta + options.width, y: (line * height + 3) + 'px'}];
+        } else {
+            if (!annotation._highlight || annotation._highlight.length === 0) {
+                annotation._highlight = [index.signalID];
+                index.signal.forEach(function (signal) {
+                    for (let j = 0; j < signal.diaID.length; j++) {
+                        annotation._highlight.push(signal.diaID[j]);
+                    }
+                });
+            }
+            if (!index.to || !index.from || index.to === index.from) {
+                annotation.position = [{x: index.signal[0].delta - options.width, y: (options.line * height) + 'px'},
+                    {x: index.signal[0].delta + options.width, y: (options.line * height + 3) + 'px'}];
+            } else {
+                annotation.position = [{x: index.to, y: (options.line * height) + 'px'},
+                    {x: index.from, y: (options.line * height + 3) + 'px'}];
+            }
         }
 
-        prediction._highlight = annotation._highlight;
+        index._highlight = annotation._highlight;
 
         annotation.type = options.type;
 
-        if (!prediction.to || !prediction.from || prediction.to === prediction.from) {
-            annotation.position = [{x: prediction.signal[0].delta - options.width, y: (options.line * height) + 'px'},
-                {x: prediction.signal[0].delta + options.width, y: (options.line * height + 3) + 'px'}];
-        } else {
-            annotation.position = [{x: prediction.to, y: (options.line * height) + 'px'},
-                {x: prediction.from, y: (options.line * height + 3) + 'px'}];
-        }
-
-        if (!options.noLabel && prediction.integral) {
+        if (!options.noLabel && index.integral) {
             annotation.label = {
-                text: prediction.integral.toFixed(options.toFixed),
+                text: index.integral.toFixed(options.toFixed),
                 size: '11px',
                 anchor: 'middle',
                 color: options.labelColor,
@@ -38223,11 +38059,11 @@ function annotations1D(ranges, optionsG) {
             };
         }
 
-
+        annotation.selectable = options.selectable;
         annotation.strokeColor = options.strokeColor;
         annotation.strokeWidth = options.strokeWidth;
         annotation.fillColor = options.fillColor;
-        annotation.info = prediction;
+        annotation.info = index;
     }
     return annotations;
 }
@@ -38269,6 +38105,159 @@ function annotations2D(zones, optionsG) {
 }
 
 module.exports = {annotations2D: annotations2D, annotations1D: annotations1D};
+
+
+},{}],157:[function(require,module,exports){
+'use strict';
+
+const patterns = ['s', 'd', 't', 'q', 'quint', 'h', 'sept', 'o', 'n'];
+
+module.exports.nmrJ = function nmrJ(Js, options = {}) {
+    var jString = '';
+    options = Object.assign({}, {separator: ', ', nbDecimal: 2}, options);
+    let j, i;
+    for (i = 0; i < Js.length; i++) {
+        j = Js[i];
+        if (j.length > 11) {
+            j += options.separator;
+        }
+        jString += j.multiplicity + ' ' + j.coupling.toFixed(options.nbDecimal);
+    }
+    return jString;
+};
+
+module.exports.joinCoupling = function joinCoupling(signal, tolerance = 0.05) {
+    var jc = signal.j;
+    if (jc && jc.length > 0) {
+        var cont = jc[0].assignment ? jc[0].assignment.length : 1;
+        var pattern = '';
+        var newNmrJs = [];
+        var diaIDs = [];
+        var atoms = [];
+        jc.sort(function (a, b) {
+            return b.coupling - a.coupling;
+        });
+        if (jc[0].diaID) {
+            diaIDs = [jc[0].diaID];
+        }
+        if (jc[0].assignment) {
+            atoms = jc[0].assignment;
+        }
+        for (var i = 0; i < jc.length - 1; i++) {
+            if (Math.abs(jc[i].coupling - jc[i + 1].coupling) < tolerance) {
+                cont += jc[i + 1].assignment ? jc[i + 1].assignment.length : 1;
+                diaIDs.push(jc[i].diaID);
+                atoms = atoms.concat(jc[i + 1].assignment);
+            } else {
+                let jTemp = {
+                    coupling: Math.abs(jc[i].coupling),
+                    multiplicity: patterns[cont]
+                };
+                if (diaIDs.length > 0) {
+                    jTemp.diaID = diaIDs;
+                }
+                if (atoms.length > 0) {
+                    jTemp.assignment = atoms;
+                }
+                newNmrJs.push(jTemp);
+                if (jc[0].diaID) {
+                    diaIDs = [jc[i].diaID];
+                }
+                if (jc[0].assignment) {
+                    atoms = jc[i].assignment;
+                }
+                pattern += patterns[cont];
+                cont = jc[i + 1].assignment ? jc[i + 1].assignment.length : 1;
+            }
+        }
+        let jTemp = {
+            coupling: Math.abs(jc[i].coupling),
+            multiplicity: patterns[cont]
+        };
+        if (diaIDs.length > 0) {
+            jTemp.diaID = diaIDs;
+        }
+        if (atoms.length > 0) {
+            jTemp.assignment = atoms;
+        }
+        newNmrJs.push(jTemp);
+
+        pattern += patterns[cont];
+        signal.j = newNmrJs;
+
+    } else if (signal.delta) {
+        pattern = 's';
+    } else {
+        pattern = 'm';
+    }
+    return pattern;
+};
+
+module.exports.group = function group(signals, options = {}) {
+    var i, k;
+    for (i = 0; i < signals.length; i++) {
+        var j = signals[i].j;
+        if (j && j.length > 0) {
+            for (k = j.length - 2; k >= 0; k--) {
+                for (var m = j.length - 1; m > k; m--) {
+                    if (j[k].diaID === j[m].diaID &&
+                        j[k].coupling === j[m].coupling &&
+                        j[k].distance === j[m].distance) {
+                        j[k].assignment = j[k].assignment.concat(j[m].assignment);
+                        j.splice(m, 1);
+                    }
+                }
+            }
+        }
+    }
+    signals.sort((a, b) => {
+        if (a.diaIDs[0] < b.diaIDs[0]) return -1;
+        if (a.diaIDs[0] > b.diaIDs[0]) return 1;
+        return 0;
+    });
+
+    for (i = signals.length - 2; i >= 0; i--) {
+        if (signals[i].diaIDs[0] === signals[i + 1].diaIDs[0]) {
+            signals[i].nbAtoms += signals[i + 1].nbAtoms;
+            signals[i].atomIDs = signals[i].atomIDs.concat(signals[i + 1].atomIDs);
+            signals.splice(i + 1, 1);
+        }
+    }
+    for (i = 0; i < signals.length; i++) {
+        j = signals[i].j;
+        for (k = 0; k < j.length; k++) {
+            j[k].multiplicity = patterns[j[k].assignment.length];
+        }
+        signals[i].multiplicity = module.exports.compilePattern(signals[i], options.tolerance);
+    }
+    return signals;
+};
+
+
+module.exports.compilePattern = function compilePattern(signal, tolerance = 0.05) {
+    var jc = signal.j;
+    var pattern = '';
+    if (jc && jc.length > 0) {
+        var cont = jc[0].assignment ? jc[0].assignment.length : 0;
+        jc.sort(function (a, b) {
+            return b.coupling - a.coupling;
+        });
+        for (var i = 0; i < jc.length - 1; i++) {
+            if (Math.abs(jc[i].coupling - jc[i + 1].coupling) < tolerance) {
+                cont += jc[i + 1].assignment ? jc[i + 1].assignment.length : 1;
+            } else {
+                pattern += patterns[cont];
+                cont = jc[i + 1].assignment ? jc[i + 1].assignment.length : 1;
+            }
+        }
+        pattern += patterns[cont];
+    } else if (signal.delta) {
+        pattern = 's';
+    } else {
+        pattern = 'm';
+    }
+    return pattern;
+};
 
 
 },{}],158:[function(require,module,exports){
