@@ -34,22 +34,22 @@ function placeHoldersCount (b64) {
 
 function byteLength (b64) {
   // base64 is 4/3 + up to two characters of the original data
-  return b64.length * 3 / 4 - placeHoldersCount(b64)
+  return (b64.length * 3 / 4) - placeHoldersCount(b64)
 }
 
 function toByteArray (b64) {
-  var i, j, l, tmp, placeHolders, arr
+  var i, l, tmp, placeHolders, arr
   var len = b64.length
   placeHolders = placeHoldersCount(b64)
 
-  arr = new Arr(len * 3 / 4 - placeHolders)
+  arr = new Arr((len * 3 / 4) - placeHolders)
 
   // if there are placeholders, only get up to the last complete 4 chars
   l = placeHolders > 0 ? len - 4 : len
 
   var L = 0
 
-  for (i = 0, j = 0; i < l; i += 4, j += 3) {
+  for (i = 0; i < l; i += 4) {
     tmp = (revLookup[b64.charCodeAt(i)] << 18) | (revLookup[b64.charCodeAt(i + 1)] << 12) | (revLookup[b64.charCodeAt(i + 2)] << 6) | revLookup[b64.charCodeAt(i + 3)]
     arr[L++] = (tmp >> 16) & 0xFF
     arr[L++] = (tmp >> 8) & 0xFF
@@ -2534,17 +2534,17 @@ var isPlainObject = function isPlainObject(obj) {
 	// Own properties are enumerated firstly, so to speed up,
 	// if last one is own, then all properties are own.
 	var key;
-	for (key in obj) {/**/}
+	for (key in obj) { /**/ }
 
 	return typeof key === 'undefined' || hasOwn.call(obj, key);
 };
 
 module.exports = function extend() {
-	var options, name, src, copy, copyIsArray, clone,
-		target = arguments[0],
-		i = 1,
-		length = arguments.length,
-		deep = false;
+	var options, name, src, copy, copyIsArray, clone;
+	var target = arguments[0];
+	var i = 1;
+	var length = arguments.length;
+	var deep = false;
 
 	// Handle a deep copy situation
 	if (typeof target === 'boolean') {
@@ -2552,7 +2552,8 @@ module.exports = function extend() {
 		target = arguments[1] || {};
 		// skip the boolean and the target
 		i = 2;
-	} else if ((typeof target !== 'object' && typeof target !== 'function') || target == null) {
+	}
+	if (target == null || (typeof target !== 'object' && typeof target !== 'function')) {
 		target = {};
 	}
 
@@ -2591,7 +2592,6 @@ module.exports = function extend() {
 	// Return the modified object
 	return target;
 };
-
 
 },{}],7:[function(require,module,exports){
 module.exports = require('./lib/heap');
@@ -14251,7 +14251,7 @@ module.exports = {
 };
 
 
-},{"ml-stat":99}],54:[function(require,module,exports){
+},{"ml-stat":100}],54:[function(require,module,exports){
 'use strict';
 
 /**
@@ -14535,7 +14535,7 @@ function SNV(data) {
     return result;
 }
 
-},{"ml-stat":99}],57:[function(require,module,exports){
+},{"ml-stat":100}],57:[function(require,module,exports){
 'use strict';
 
 /**
@@ -15225,6 +15225,94 @@ exports.FFT = require('./fftlib');
 },{"./FFTUtils":60,"./fftlib":61}],63:[function(require,module,exports){
 'use strict';
 
+var hasOwn = Object.prototype.hasOwnProperty;
+var toStr = Object.prototype.toString;
+
+var isArray = function isArray(arr) {
+	if (typeof Array.isArray === 'function') {
+		return Array.isArray(arr);
+	}
+
+	return toStr.call(arr) === '[object Array]';
+};
+
+var isPlainObject = function isPlainObject(obj) {
+	if (!obj || toStr.call(obj) !== '[object Object]') {
+		return false;
+	}
+
+	var hasOwnConstructor = hasOwn.call(obj, 'constructor');
+	var hasIsPrototypeOf = obj.constructor && obj.constructor.prototype && hasOwn.call(obj.constructor.prototype, 'isPrototypeOf');
+	// Not own constructor property must be Object
+	if (obj.constructor && !hasOwnConstructor && !hasIsPrototypeOf) {
+		return false;
+	}
+
+	// Own properties are enumerated firstly, so to speed up,
+	// if last one is own, then all properties are own.
+	var key;
+	for (key in obj) {/**/}
+
+	return typeof key === 'undefined' || hasOwn.call(obj, key);
+};
+
+module.exports = function extend() {
+	var options, name, src, copy, copyIsArray, clone,
+		target = arguments[0],
+		i = 1,
+		length = arguments.length,
+		deep = false;
+
+	// Handle a deep copy situation
+	if (typeof target === 'boolean') {
+		deep = target;
+		target = arguments[1] || {};
+		// skip the boolean and the target
+		i = 2;
+	} else if ((typeof target !== 'object' && typeof target !== 'function') || target == null) {
+		target = {};
+	}
+
+	for (; i < length; ++i) {
+		options = arguments[i];
+		// Only deal with non-null/undefined values
+		if (options != null) {
+			// Extend the base object
+			for (name in options) {
+				src = target[name];
+				copy = options[name];
+
+				// Prevent never-ending loop
+				if (target !== copy) {
+					// Recurse if we're merging plain objects or arrays
+					if (deep && copy && (isPlainObject(copy) || (copyIsArray = isArray(copy)))) {
+						if (copyIsArray) {
+							copyIsArray = false;
+							clone = src && isArray(src) ? src : [];
+						} else {
+							clone = src && isPlainObject(src) ? src : {};
+						}
+
+						// Never move original objects, clone them
+						target[name] = extend(deep, clone, copy);
+
+					// Don't bring in undefined values
+					} else if (typeof copy !== 'undefined') {
+						target[name] = copy;
+					}
+				}
+			}
+		}
+	}
+
+	// Return the modified object
+	return target;
+};
+
+
+},{}],64:[function(require,module,exports){
+'use strict';
+
 const extend = require('extend');
 const SG = require('ml-savitzky-golay-generalized');
 
@@ -15515,13 +15603,13 @@ function realTopDetection(peakList, x, y) {
 
 module.exports = gsd;
 
-},{"extend":6,"ml-savitzky-golay-generalized":95}],64:[function(require,module,exports){
+},{"extend":63,"ml-savitzky-golay-generalized":96}],65:[function(require,module,exports){
 'use strict';
 
 module.exports.post = require('../src/optimize');
 module.exports.gsd = require('../src/gsd');
 
-},{"../src/gsd":63,"../src/optimize":65}],65:[function(require,module,exports){
+},{"../src/gsd":64,"../src/optimize":66}],66:[function(require,module,exports){
 /**
  * Created by acastillo on 9/6/15.
  */
@@ -15794,7 +15882,7 @@ if(options.broadRatio>0){
 module.exports = {optimizePeaks: optimizePeaks, joinBroadPeaks: joinBroadPeaks};
 
 
-},{"ml-optimize-lorentzian":91}],66:[function(require,module,exports){
+},{"ml-optimize-lorentzian":92}],67:[function(require,module,exports){
 'use strict';
 
 const newArray = require('new-array');
@@ -16099,7 +16187,7 @@ function chooseShrinkCapacity(size, minLoad, maxLoad) {
     return nextPrime(Math.max(size + 1, (4 * size / (minLoad + 3 * maxLoad)) | 0));
 }
 
-},{"./primeFinder":67,"new-array":101}],67:[function(require,module,exports){
+},{"./primeFinder":68,"new-array":102}],68:[function(require,module,exports){
 const binarySearch = require('binary-search');
 const sortAsc = require('num-sort').asc;
 
@@ -16187,7 +16275,7 @@ function nextPrime(value) {
 exports.nextPrime = nextPrime;
 exports.largestPrime = largestPrime;
 
-},{"binary-search":2,"num-sort":129}],68:[function(require,module,exports){
+},{"binary-search":2,"num-sort":130}],69:[function(require,module,exports){
 'use strict';
 
 const Heap = require('heap');
@@ -16270,7 +16358,7 @@ Cluster.prototype.traverse = function (cb) {
 
 module.exports = Cluster;
 
-},{"heap":7}],69:[function(require,module,exports){
+},{"heap":7}],70:[function(require,module,exports){
 'use strict';
 
 const Cluster = require('./Cluster');
@@ -16287,7 +16375,7 @@ util.inherits(ClusterLeaf, Cluster);
 
 module.exports = ClusterLeaf;
 
-},{"./Cluster":68,"util":160}],70:[function(require,module,exports){
+},{"./Cluster":69,"util":162}],71:[function(require,module,exports){
 'use strict';
 
 const euclidean = require('ml-distance-euclidean');
@@ -16532,7 +16620,7 @@ function agnes(data, options) {
 
 module.exports = agnes;
 
-},{"./Cluster":68,"./ClusterLeaf":69,"ml-distance-euclidean":58,"ml-distance-matrix":59}],71:[function(require,module,exports){
+},{"./Cluster":69,"./ClusterLeaf":70,"ml-distance-euclidean":58,"ml-distance-matrix":59}],72:[function(require,module,exports){
 'use strict';
 
 const euclidean = require('ml-distance-euclidean');
@@ -16840,7 +16928,7 @@ function diana(data, options) {
 
 module.exports = diana;
 
-},{"./Cluster":68,"./ClusterLeaf":69,"ml-distance-euclidean":58}],72:[function(require,module,exports){
+},{"./Cluster":69,"./ClusterLeaf":70,"ml-distance-euclidean":58}],73:[function(require,module,exports){
 'use strict';
 
 exports.agnes = require('./agnes');
@@ -16849,7 +16937,7 @@ exports.diana = require('./diana');
 //exports.cure = require('./cure');
 //exports.chameleon = require('./chameleon');
 
-},{"./agnes":70,"./diana":71}],73:[function(require,module,exports){
+},{"./agnes":71,"./diana":72}],74:[function(require,module,exports){
 'use strict'
 
 var FFT = require('./fftlib');
@@ -17163,11 +17251,11 @@ var FFTUtils= {
 
 module.exports = FFTUtils;
 
-},{"./fftlib":74}],74:[function(require,module,exports){
+},{"./fftlib":75}],75:[function(require,module,exports){
 arguments[4][61][0].apply(exports,arguments)
-},{"dup":61}],75:[function(require,module,exports){
+},{"dup":61}],76:[function(require,module,exports){
 arguments[4][62][0].apply(exports,arguments)
-},{"./FFTUtils":73,"./fftlib":74,"dup":62}],76:[function(require,module,exports){
+},{"./FFTUtils":74,"./fftlib":75,"dup":62}],77:[function(require,module,exports){
 'use strict;'
 /**
  * Created by acastillo on 7/7/16.
@@ -17324,7 +17412,7 @@ module.exports = {
     kernelFactory:{LoG:LoG},
     matrix2Array:matrix2Array
 };
-},{"ml-fft":75}],77:[function(require,module,exports){
+},{"ml-fft":76}],78:[function(require,module,exports){
 'use strict'
 
 const DisjointSet = require('ml-disjoint-set');
@@ -17412,7 +17500,7 @@ function ccLabeling(mask, width, height, options) {
 
 module.exports = ccLabeling;
 
-},{"ml-disjoint-set":57}],78:[function(require,module,exports){
+},{"ml-disjoint-set":57}],79:[function(require,module,exports){
 'use strict'
 /**
  * Created by acastillo on 7/7/16.
@@ -17597,7 +17685,7 @@ module.exports={
     findPeaks2DMax:findPeaks2DMax
 };
 
-},{"./ccLabeling":77,"ml-matrix-convolution":76,"ml-stat":99}],79:[function(require,module,exports){
+},{"./ccLabeling":78,"ml-matrix-convolution":77,"ml-stat":100}],80:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -17688,7 +17776,7 @@ CholeskyDecomposition.prototype = {
 
 module.exports = CholeskyDecomposition;
 
-},{"../matrix":87}],80:[function(require,module,exports){
+},{"../matrix":88}],81:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -18456,7 +18544,7 @@ function cdiv(xr, xi, yr, yi) {
 
 module.exports = EigenvalueDecomposition;
 
-},{"../matrix":87,"./util":84}],81:[function(require,module,exports){
+},{"../matrix":88,"./util":85}],82:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -18627,7 +18715,7 @@ LuDecomposition.prototype = {
 
 module.exports = LuDecomposition;
 
-},{"../matrix":87}],82:[function(require,module,exports){
+},{"../matrix":88}],83:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -18779,7 +18867,7 @@ QrDecomposition.prototype = {
 
 module.exports = QrDecomposition;
 
-},{"../matrix":87,"./util":84}],83:[function(require,module,exports){
+},{"../matrix":88,"./util":85}],84:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -19278,7 +19366,7 @@ SingularValueDecomposition.prototype = {
 
 module.exports = SingularValueDecomposition;
 
-},{"../matrix":87,"./util":84}],84:[function(require,module,exports){
+},{"../matrix":88,"./util":85}],85:[function(require,module,exports){
 'use strict';
 
 exports.hypotenuse = function hypotenuse(a, b) {
@@ -19294,7 +19382,7 @@ exports.hypotenuse = function hypotenuse(a, b) {
     return 0;
 };
 
-},{}],85:[function(require,module,exports){
+},{}],86:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix');
@@ -19336,13 +19424,13 @@ module.exports = {
     solve: solve
 };
 
-},{"./dc/cholesky":79,"./dc/evd":80,"./dc/lu":81,"./dc/qr":82,"./dc/svd":83,"./matrix":87}],86:[function(require,module,exports){
+},{"./dc/cholesky":80,"./dc/evd":81,"./dc/lu":82,"./dc/qr":83,"./dc/svd":84,"./matrix":88}],87:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./matrix');
 module.exports.Decompositions = module.exports.DC = require('./decompositions');
 
-},{"./decompositions":85,"./matrix":87}],87:[function(require,module,exports){
+},{"./decompositions":86,"./matrix":88}],88:[function(require,module,exports){
 'use strict';
 
 var Asplice = Array.prototype.splice,
@@ -20814,7 +20902,7 @@ Matrix.prototype.abs = function abs() {
 
 module.exports = Matrix;
 
-},{}],88:[function(require,module,exports){
+},{}],89:[function(require,module,exports){
 /**
  * Created by acastillo on 8/5/15.
  */
@@ -21332,7 +21420,7 @@ var LM = {
 };
 
 module.exports = LM;
-},{"./algebra":89,"ml-matrix":86}],89:[function(require,module,exports){
+},{"./algebra":90,"ml-matrix":87}],90:[function(require,module,exports){
 /**
  * Created by acastillo on 8/24/15.
  */
@@ -21586,14 +21674,14 @@ module.exports = {
     eye:eye
 };
 
-},{"ml-matrix":86}],90:[function(require,module,exports){
+},{"ml-matrix":87}],91:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./LM');
 module.exports.Matrix = require('ml-matrix');
 module.exports.Matrix.algebra = require('./algebra');
 
-},{"./LM":88,"./algebra":89,"ml-matrix":86}],91:[function(require,module,exports){
+},{"./LM":89,"./algebra":90,"ml-matrix":87}],92:[function(require,module,exports){
 'use strict';
 
 var LM = require('ml-curve-fitting');
@@ -22052,7 +22140,7 @@ module.exports.singleGaussian = singleGaussian;
 module.exports.singleLorentzian = singleLorentzian;
 module.exports.optimizeGaussianTrain = optimizeGaussianTrain;
 module.exports.optimizeLorentzianTrain = optimizeLorentzianTrain;
-},{"ml-curve-fitting":90,"ml-matrix":86}],92:[function(require,module,exports){
+},{"ml-curve-fitting":91,"ml-matrix":87}],93:[function(require,module,exports){
 'use strict';
 
 function compareNumbers(a, b) {
@@ -22507,13 +22595,13 @@ exports.cumulativeSum = function cumulativeSum(array) {
     return result;
 };
 
-},{}],93:[function(require,module,exports){
+},{}],94:[function(require,module,exports){
 'use strict';
 
 exports.array = require('./array');
 exports.matrix = require('./matrix');
 
-},{"./array":92,"./matrix":94}],94:[function(require,module,exports){
+},{"./array":93,"./matrix":95}],95:[function(require,module,exports){
 'use strict';
 var arrayStat = require('./array');
 
@@ -23035,7 +23123,7 @@ module.exports = {
     weightedScatter: weightedScatter
 };
 
-},{"./array":92}],95:[function(require,module,exports){
+},{"./array":93}],96:[function(require,module,exports){
 //Code translate from Pascal source in http://pubs.acs.org/doi/pdf/10.1021/ac00205a007
 var extend = require('extend');
 var stat = require('ml-stat');
@@ -23206,7 +23294,7 @@ function guessWindowSize(data, h){
 module.exports = SavitzkyGolay;
  
 
-},{"extend":6,"ml-stat":93}],96:[function(require,module,exports){
+},{"extend":6,"ml-stat":94}],97:[function(require,module,exports){
 /**
  * Created by acastillo on 8/8/16.
  */
@@ -23316,7 +23404,7 @@ function fullClusterGeneratorVector(conn){
     }
     return clusterList;
 }
-},{}],97:[function(require,module,exports){
+},{}],98:[function(require,module,exports){
 const HashTable = require('ml-hash-table');
 
 class SparseMatrix {
@@ -23610,7 +23698,7 @@ function fillTemplateFunction(template, values) {
     return template;
 }
 
-},{"ml-hash-table":66}],98:[function(require,module,exports){
+},{"ml-hash-table":67}],99:[function(require,module,exports){
 'use strict';
 
 function compareNumbers(a, b) {
@@ -24091,9 +24179,9 @@ exports.cumulativeSum = function cumulativeSum(array) {
     return result;
 };
 
-},{}],99:[function(require,module,exports){
-arguments[4][93][0].apply(exports,arguments)
-},{"./array":98,"./matrix":100,"dup":93}],100:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
+arguments[4][94][0].apply(exports,arguments)
+},{"./array":99,"./matrix":101,"dup":94}],101:[function(require,module,exports){
 'use strict';
 
 var arrayStat = require('./array');
@@ -24706,7 +24794,7 @@ exports.weightedScatter = function weightedScatter(matrix, weights, means, facto
     return cov;
 };
 
-},{"./array":98}],101:[function(require,module,exports){
+},{"./array":99}],102:[function(require,module,exports){
 module.exports = newArray
 
 function newArray (n, value) {
@@ -24718,7 +24806,7 @@ function newArray (n, value) {
   return array
 }
 
-},{}],102:[function(require,module,exports){
+},{}],103:[function(require,module,exports){
 'use strict';
 
 /**
@@ -24780,7 +24868,7 @@ module.exports = function getSpectrumType(pulse) {
     return '';
 };
 
-},{}],103:[function(require,module,exports){
+},{}],104:[function(require,module,exports){
 'use strict';
 
 const jcampconverter = require('jcampconverter');
@@ -24924,7 +25012,7 @@ function maybeAdd(obj, name, value) {
     }
 }
 
-},{"./getSpectrumType":102,"jcampconverter":11,"spectra-data":143}],104:[function(require,module,exports){
+},{"./getSpectrumType":103,"jcampconverter":11,"spectra-data":149}],105:[function(require,module,exports){
 'use strict';
 
 module.exports = abstractMatrix;
@@ -26744,7 +26832,7 @@ function abstractMatrix(superCtor) {
     return Matrix;
 }
 
-},{"./dc/lu":107,"./dc/svd":109,"./util":115,"./views/column":117,"./views/flipColumn":118,"./views/flipRow":119,"./views/row":120,"./views/selection":121,"./views/sub":122,"./views/transpose":123,"ml-array-utils":55}],105:[function(require,module,exports){
+},{"./dc/lu":108,"./dc/svd":110,"./util":116,"./views/column":118,"./views/flipColumn":119,"./views/flipRow":120,"./views/row":121,"./views/selection":122,"./views/sub":123,"./views/transpose":124,"ml-array-utils":55}],106:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -26836,7 +26924,7 @@ CholeskyDecomposition.prototype = {
 
 module.exports = CholeskyDecomposition;
 
-},{"../matrix":113}],106:[function(require,module,exports){
+},{"../matrix":114}],107:[function(require,module,exports){
 'use strict';
 
 const Matrix = require('../matrix').Matrix;
@@ -27618,7 +27706,7 @@ function cdiv(xr, xi, yr, yi) {
 
 module.exports = EigenvalueDecomposition;
 
-},{"../matrix":113,"./util":110}],107:[function(require,module,exports){
+},{"../matrix":114,"./util":111}],108:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -27794,7 +27882,7 @@ LuDecomposition.prototype = {
 
 module.exports = LuDecomposition;
 
-},{"../matrix":113}],108:[function(require,module,exports){
+},{"../matrix":114}],109:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -27948,7 +28036,7 @@ QrDecomposition.prototype = {
 
 module.exports = QrDecomposition;
 
-},{"../matrix":113,"./util":110}],109:[function(require,module,exports){
+},{"../matrix":114,"./util":111}],110:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -28464,7 +28552,7 @@ SingularValueDecomposition.prototype = {
 
 module.exports = SingularValueDecomposition;
 
-},{"../matrix":113,"./util":110}],110:[function(require,module,exports){
+},{"../matrix":114,"./util":111}],111:[function(require,module,exports){
 'use strict';
 
 exports.hypotenuse = function hypotenuse(a, b) {
@@ -28503,7 +28591,7 @@ exports.getFilled2DArray = function (rows, columns, value) {
     return array;
 };
 
-},{}],111:[function(require,module,exports){
+},{}],112:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix').Matrix;
@@ -28567,13 +28655,13 @@ module.exports = {
     solve: solve
 };
 
-},{"./dc/cholesky":105,"./dc/evd":106,"./dc/lu":107,"./dc/qr":108,"./dc/svd":109,"./matrix":113}],112:[function(require,module,exports){
+},{"./dc/cholesky":106,"./dc/evd":107,"./dc/lu":108,"./dc/qr":109,"./dc/svd":110,"./matrix":114}],113:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./matrix').Matrix;
 module.exports.Decompositions = module.exports.DC = require('./decompositions');
 
-},{"./decompositions":111,"./matrix":113}],113:[function(require,module,exports){
+},{"./decompositions":112,"./matrix":114}],114:[function(require,module,exports){
 'use strict';
 
 require('./symbol-species');
@@ -28716,14 +28804,14 @@ class Matrix extends abstractMatrix(Array) {
 exports.Matrix = Matrix;
 Matrix.abstractMatrix = abstractMatrix;
 
-},{"./abstractMatrix":104,"./symbol-species":114,"./util":115}],114:[function(require,module,exports){
+},{"./abstractMatrix":105,"./symbol-species":115,"./util":116}],115:[function(require,module,exports){
 'use strict';
 
 if (!Symbol.species) {
     Symbol.species = Symbol.for('@@species');
 }
 
-},{}],115:[function(require,module,exports){
+},{}],116:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix');
@@ -28867,7 +28955,7 @@ exports.sumAll = function sumAll(matrix) {
     return v;
 };
 
-},{"./matrix":113}],116:[function(require,module,exports){
+},{"./matrix":114}],117:[function(require,module,exports){
 'use strict';
 
 var abstractMatrix = require('../abstractMatrix');
@@ -28888,7 +28976,7 @@ class BaseView extends abstractMatrix() {
 
 module.exports = BaseView;
 
-},{"../abstractMatrix":104,"../matrix":113}],117:[function(require,module,exports){
+},{"../abstractMatrix":105,"../matrix":114}],118:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -28911,7 +28999,7 @@ class MatrixColumnView extends BaseView {
 
 module.exports = MatrixColumnView;
 
-},{"./base":116}],118:[function(require,module,exports){
+},{"./base":117}],119:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -28933,7 +29021,7 @@ class MatrixFlipColumnView extends BaseView {
 
 module.exports = MatrixFlipColumnView;
 
-},{"./base":116}],119:[function(require,module,exports){
+},{"./base":117}],120:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -28955,7 +29043,7 @@ class MatrixFlipRowView extends BaseView {
 
 module.exports = MatrixFlipRowView;
 
-},{"./base":116}],120:[function(require,module,exports){
+},{"./base":117}],121:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -28978,7 +29066,7 @@ class MatrixRowView extends BaseView {
 
 module.exports = MatrixRowView;
 
-},{"./base":116}],121:[function(require,module,exports){
+},{"./base":117}],122:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -29004,7 +29092,7 @@ class MatrixSelectionView extends BaseView {
 
 module.exports = MatrixSelectionView;
 
-},{"../util":115,"./base":116}],122:[function(require,module,exports){
+},{"../util":116,"./base":117}],123:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -29030,7 +29118,7 @@ class MatrixSubView extends BaseView {
 
 module.exports = MatrixSubView;
 
-},{"../util":115,"./base":116}],123:[function(require,module,exports){
+},{"../util":116,"./base":117}],124:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -29052,7 +29140,7 @@ class MatrixTransposeView extends BaseView {
 
 module.exports = MatrixTransposeView;
 
-},{"./base":116}],124:[function(require,module,exports){
+},{"./base":117}],125:[function(require,module,exports){
 'use strict';
 
 const Matrix = require('ml-matrix');
@@ -29102,9 +29190,7 @@ class SpinSystem {
     }
 
     static fromPrediction(input) {
-        // console.log(JSON.stringify(input))
         let predictions = SpinSystem.ungroupAtoms(input);
-        // console.log(JSON.stringify(predictions));
         const nSpins = predictions.length;
         const cs = new Array(nSpins);
         const jc = Matrix.zeros(nSpins, nSpins);
@@ -29338,14 +29424,14 @@ class SpinSystem {
 
 module.exports = SpinSystem;
 
-},{"ml-hclust":72,"ml-matrix":112,"ml-simple-clustering":96,"new-array":101}],125:[function(require,module,exports){
+},{"ml-hclust":73,"ml-matrix":113,"ml-simple-clustering":97,"new-array":102}],126:[function(require,module,exports){
 'use strict';
 
 exports.SpinSystem = require('./SpinSystem');
 exports.simulate1D = require('./simulate1D');
 exports.simulate2D = require('./simulate2D');
 
-},{"./SpinSystem":124,"./simulate1D":127,"./simulate2D":128}],126:[function(require,module,exports){
+},{"./SpinSystem":125,"./simulate1D":128,"./simulate2D":129}],127:[function(require,module,exports){
 'use strict';
 
 const SparseMatrix = require('ml-sparse-matrix');
@@ -29388,7 +29474,7 @@ function getPauli(mult) {
 
 module.exports = getPauli;
 
-},{"ml-sparse-matrix":97}],127:[function(require,module,exports){
+},{"ml-sparse-matrix":98}],128:[function(require,module,exports){
 'use strict';
 
 const Matrix = require('ml-matrix');
@@ -29424,7 +29510,7 @@ function simulate1d(spinSystem, options) {
     const b = lnPoints / 2;
     const c = lineWidthPoints * lineWidthPoints * 2;
     for (i = 0; i < gaussianLength; i++) {
-        gaussian[i] = 1e12 * Math.exp(-((i - b) * (i - b)) / c);
+        gaussian[i] = 1e9 * Math.exp(-((i - b) * (i - b)) / c);
     }
 
     const result = new newArray(nbPoints, 0);
@@ -29683,12 +29769,15 @@ function _getX(from, to, nbPoints) {
 
 module.exports = simulate1d;
 
-},{"./pauli":126,"binary-search":2,"ml-matrix":112,"ml-sparse-matrix":97,"new-array":101,"num-sort":129}],128:[function(require,module,exports){
+},{"./pauli":127,"binary-search":2,"ml-matrix":113,"ml-sparse-matrix":98,"new-array":102,"num-sort":130}],129:[function(require,module,exports){
 'use strict';
 
 const Matrix = require('ml-matrix');
 
-let defOptions = {'H': {frequency: 400, lineWidth: 10}, 'C': {frequency: 100, lineWidth: 10}};
+let defOptions = {
+    H: {frequency: 400, lineWidth: 10},
+    C: {frequency: 100, lineWidth: 10}
+};
 
 function simule2DNmrSpectrum(table, options) {
     var i;
@@ -29775,7 +29864,7 @@ function addPeak(matrix, peak) {
 
 module.exports = simule2DNmrSpectrum;
 
-},{"ml-matrix":112}],129:[function(require,module,exports){
+},{"ml-matrix":113}],130:[function(require,module,exports){
 'use strict';
 var numberIsNan = require('number-is-nan');
 
@@ -29797,13 +29886,13 @@ exports.desc = function (a, b) {
 	return b - a;
 };
 
-},{"number-is-nan":130}],130:[function(require,module,exports){
+},{"number-is-nan":131}],131:[function(require,module,exports){
 'use strict';
 module.exports = Number.isNaN || function (x) {
 	return x !== x;
 };
 
-},{}],131:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -29989,14 +30078,672 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],132:[function(require,module,exports){
+},{}],133:[function(require,module,exports){
+'use strict';
+/**
+ * nbDecimalsDelta : default depends nucleus H, F: 2 otherwise 1
+ * nbDecimalsJ : default depends nucleus H, F: 1, otherwise 0
+ * ascending : true / false
+ * format : default "AIMJ" or when 2D data is collected the default format may be "IMJA"
+ * deltaSeparator : ', '
+ * detailSeparator : ', '
+ */
+
+const joinCoupling = require('spectra-nmr-utilities').joinCoupling;
+var globalOptions = {
+    h: {
+        nucleus: '1H',
+        nbDecimalDelta: 2,
+        nbDecimalJ: 1,
+        observedFrequency: 400
+    },
+    c: {
+        nucleus: '13C',
+        nbDecimalDelta: 1,
+        nbDecimalJ: 1,
+        observedFrequency: 100
+    },
+    f: {
+        nucleus: '19F',
+        nbDecimalDelta: 2,
+        nbDecimalJ: 1,
+        observedFrequency: 400
+    }
+};
+
+function toAcs(ranges, options = {}) {
+    var nucleus = (options.nucleus || '1H').toLowerCase().replace(/[0-9]/g, '');
+    var defaultOptions = globalOptions[nucleus];
+    options = Object.assign({}, defaultOptions, {ascending: false, format: 'IMJA'}, options);
+
+    ranges = ranges.clone();
+    if (options.ascending === true) {
+        ranges.sort((a, b) => {
+            let fromA = Math.min(a.from, a.to);
+            let fromB = Math.min(b.from, b.to);
+            return fromA - fromB;
+        });
+    }
+    var acsString = formatAcs(ranges, options);
+
+    if (acsString.length > 0) acsString += '.';
+
+    return acsString;
+}
+
+function formatAcs(ranges, options) {
+    var acs = spectroInformation(options);
+    if (acs.length === 0) acs = 'δ ';
+    var acsRanges = [];
+    for (let range of ranges) {
+        pushDelta(range, acsRanges, options);
+    }
+    if (acsRanges.length > 0) {
+        return acs + acsRanges.join(', ');
+    } else {
+        return '';
+    }
+}
+
+function spectroInformation(options) {
+    let parenthesis = [];
+    let strings = formatNucleus(options.nucleus) + ' NMR';
+    if (options.solvent) {
+        parenthesis.push(formatMF(options.solvent));
+    }
+    if (options.frequencyObserved) {
+        parenthesis.push((options.frequencyObserved * 1).toFixed(0) + ' MHz');
+    }
+    if (parenthesis.length > 0) {
+        strings += ' (' + parenthesis.join(', ') + '): δ ';
+    } else {
+        strings += ': δ ';
+    }
+    return strings;
+}
+
+function pushDelta(range, acsRanges, options) {
+    var strings = '';
+    var parenthesis = [];
+    let fromTo = [range.from, range.to];
+    if (Array.isArray(range.signal) && range.signal.length > 0) {
+        var signals = range.signal;
+        if (signals.length > 1) {
+            if (options.ascending === true) {
+                signals.sort((a, b) => {
+                    return a.delta - b.delta;
+                });
+            }
+            strings += Math.min(...fromTo).toFixed(options.nbDecimalDelta) + '-'
+                     + Math.max(...fromTo).toFixed(options.nbDecimalDelta);
+            strings += ' (' + getIntegral(range, options);
+            for (let signal of signals) {
+                parenthesis = [];
+                if (signal.delta !== undefined) {
+                    strings = appendSeparator(strings);
+                    strings += signal.delta.toFixed(options.nbDecimalDelta);
+                }
+                switchFormat({}, signal, parenthesis, options);
+                if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
+            }
+            strings += ')';
+        } else {
+            parenthesis = [];
+            if (signals[0].delta !== undefined) {
+                strings += signals[0].delta.toFixed(options.nbDecimalDelta);
+                switchFormat(range, signals[0], parenthesis, options);
+                if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
+            } else {
+                strings += Math.min(...fromTo).toFixed(options.nbDecimalDelta) + '-' + Math.max(...fromTo).toFixed(options.nbDecimalDelta);
+                switchFormat(range, signals[0], parenthesis, options);
+                if (parenthesis.length > 0) strings += ' (' + parenthesis + ')';
+            }
+        }
+    } else {
+        strings += Math.min(...fromTo).toFixed(options.nbDecimalDelta) + '-' + Math.max(...fromTo).toFixed(options.nbDecimalDelta);
+        switchFormat(range, [], parenthesis, options);
+        if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
+    }
+    acsRanges.push(strings);
+}
+
+function getIntegral(range, options) {
+    let integral = '';
+    if (range.pubIntegral) {
+        integral = range.pubIntegral;
+    } else if (range.integral) {
+        integral = range.integral.toFixed(0) + options.nucleus[options.nucleus.length - 1];
+    }
+    return integral;
+}
+
+function pushIntegral(range, parenthesis, options) {
+    let integral = getIntegral(range, options);
+    if (integral.length > 0) parenthesis.push(integral);
+}
+
+function pushMultiplicityFromSignal(signal, parenthesis) {
+    let multiplicity = signal.multiplicity || joinCoupling(signal, 0.05);
+    if (multiplicity.length > 0) parenthesis.push(multiplicity);
+}
+
+function switchFormat(range, signal, parenthesis, options) {
+    for (const char of options.format) {
+        switch (char.toUpperCase()) {
+            case 'I':
+                pushIntegral(range, parenthesis, options);
+                break;
+            case 'M':
+                pushMultiplicityFromSignal(signal, parenthesis);
+                break;
+            case 'A':
+                pushAssignment(signal, parenthesis);
+                break;
+            case 'J':
+                pushCoupling(signal, parenthesis, options);
+                break;
+            default:
+                throw new Error('Unknow format letter: ' + char);
+        }
+    }
+}
+
+function formatMF(mf) {
+    return mf.replace(/([0-9]+)/g, '<sub>$1</sub>');
+}
+
+function formatNucleus(nucleus) {
+    return nucleus.replace(/([0-9]+)/g, '<sup>$1</sup>');
+}
+
+function appendSeparator(strings) {
+    if ((strings.length > 0) && (!strings.match(/ $/)) && (!strings.match(/\($/))) {
+        strings += ', ';
+    }
+    return strings;
+}
+
+function formatAssignment(assignment) {
+    assignment = assignment.replace(/([0-9]+)/g, '<sub>$1</sub>');
+    assignment = assignment.replace(/"([^"]*)"/g, '<i>$1</i>');
+    return assignment;
+}
+
+function pushCoupling(signal, parenthesis, options) {
+    if (Array.isArray(signal.j) && signal.j.length > 0) {
+        signal.j.sort(function (a, b) {
+            return b.coupling - a.coupling;
+        });
+
+        var values = [];
+        for (let j of signal.j) {
+            if (j.coupling !== undefined) {
+                values.push(j.coupling.toFixed(options.nbDecimalJ));
+            }
+        }
+        if (values.length > 0) parenthesis.push('<i>J</i> = ' + values.join(', ') + ' Hz');
+    }
+}
+
+function pushAssignment(signal, parenthesis) {
+    if (signal.pubAssignment) {
+        parenthesis.push(formatAssignment(signal.pubAssignment));
+    } else if (signal.assignment) {
+        parenthesis.push(formatAssignment(signal.assignment));
+    }
+}
+module.exports = toAcs;
+
+},{"spectra-nmr-utilities":159}],134:[function(require,module,exports){
+'use strict';
+
+module.exports.GUI = require('./visualizer/annotations');
+module.exports.Ranges = require('./range/Ranges');
+
+},{"./range/Ranges":135,"./visualizer/annotations":137}],135:[function(require,module,exports){
+'use strict';
+
+const acs = require('../acs/acs');
+const peak2Vector = require('./peak2Vector');
+const GUI = require('../visualizer/annotations');
+const utils = require('spectra-nmr-utilities');
+const arrayUtils = require('ml-stat').array;
+
+class Ranges extends Array {
+
+    constructor(ranges) {
+        if (Array.isArray(ranges)) {
+            super(ranges.length);
+            for (let i = 0; i < ranges.length; i++) {
+                this[i] = ranges[i];
+            }
+        } else if (typeof ranges === 'number') {
+            super(ranges);
+        } else {
+            super();
+        }
+    }
+
+    /**
+     * This function return a Range instance from predictions
+     * @param {object} signals - predictions of a spin system
+     * @param {object} options - options object
+     * @param {number} [options.lineWidth] - spectral line width
+     * @param {number} [options.frequency] - frequency to determine the [from, to] of a range
+     * @return {Ranges}
+     */
+    static fromSignals(signals, options) {
+        options = Object.assign({}, {lineWidth: 1, frequency: 400, nucleus: '1H'}, options);
+        //1. Collapse all the equivalent predictions
+
+        signals = utils.group(signals, options);
+        const nSignals = signals.length;
+        var i, j, signal, width, center, jc;
+
+        const result = new Array(nSignals);
+
+        for (i = 0; i < nSignals; i++) {
+            signal = signals[i];
+            width = 0;
+            jc = signal.j;
+            if (jc) {
+                for (j = 0; j < jc.length; j++) {
+                    width += jc[j].coupling;
+                }
+            }
+
+            width += 2 * options.lineWidth;
+
+            width /= options.frequency;
+
+            result[i] = {
+                from: signal.delta - width,
+                to: signal.delta + width,
+                integral: signal.nbAtoms,
+                signal: [signal]
+            };
+        }
+
+        //2. Merge the overlaping ranges
+        for (i = 0; i < result.length; i++) {
+            result[i]._highlight = result[i].signal[0].diaIDs;
+            center = (result[i].from + result[i].to) / 2;
+            width = Math.abs(result[i].from - result[i].to);
+            for (j = result.length - 1; j > i; j--) {
+                //Does it overlap?
+                if (Math.abs(center - (result[j].from + result[j].to) / 2)
+                    <= Math.abs(width + Math.abs(result[j].from - result[j].to)) / 2) {
+                    result[i].from = Math.min(result[i].from, result[j].from);
+                    result[i].to = Math.max(result[i].to, result[j].to);
+                    result[i].integral += result[j].integral;
+                    result[i]._highlight.push(result[j].signal[0].diaIDs[0]);
+                    result[j].signal.forEach(a => {
+                        result[i].signal.push(a);
+                    });
+                    result.splice(j, 1);
+                    j = result.length - 1;
+                    center = (result[i].from + result[i].to) / 2;
+                    width = Math.abs(result[i].from - result[i].to);
+                }
+            }
+        }
+        result.sort((a, b) => {
+            return a.from - b.from;
+        });
+        return new Ranges(result);
+    }
+
+    /**
+     * This function return Ranges instance from a SD instance
+     * @param {SD} spectrum - SD instance
+     * @param {object} options - options object to extractPeaks function
+     * @return {Ranges}
+     */
+    static fromSpectrum(spectrum, options = {}) {
+        return spectrum.getRanges(options);
+    }
+
+
+    /**
+     * TODO it is the same code that updateIntegrals in Range class
+     * This function normalize or scale the integral data
+     * @param {object} options - object with the options
+     * @param {boolean} [options.sum] - anything factor to normalize the integrals, Similar to the number of proton in the molecule for a nmr spectrum
+     * @param {number} [options.factor] - Factor that multiply the intensities, if [options.sum] is defined it is override
+     * @return {Ranges}
+     */
+    updateIntegrals(options = {}) {
+        var factor = options.factor || 1;
+        var i;
+        if (options.sum) {
+            var nH = options.sum || 1;
+            var sumObserved = 0;
+            for (i = 0; i < this.length; i++) {
+                sumObserved += this[i].integral;
+            }
+            factor = nH / sumObserved;
+        }
+        for (i = 0; i < this.length; i++) {
+            this[i].integral *= factor;
+        }
+        return this;
+    }
+
+    /**
+     * This function return the peak list as a object with x and y arrays
+     * @param {bject} options - See the options parameter in {@link #peak2vector} function documentation
+     * @return {object} - {x: Array, y: Array}
+     */
+    getVector(options) {
+        if (this[0].signal[0].peak) {
+            return peak2Vector(this.getPeakList(), options);
+        } else {
+            throw Error('This method is only for signals with peaks');
+        }
+    }
+
+    /**
+     * This function return the peaks of a Ranges instance into an array
+     * @return {Array}
+     */
+    getPeakList() {
+        if (this[0].signal[0].peak) {
+            var peaks = [];
+            for (var i = 0; i < this.length; i++) {
+                var range = this[i];
+                for (var j = 0; j < range.signal.length; j++) {
+                    peaks = peaks.concat(range.signal[j].peak);
+                }
+            }
+            return peaks;
+        } else {
+            throw Error('This method is only for signals with peaks');
+        }
+    }
+
+    /**
+     * This function return format for each range
+     * @param {object} options - options object for toAcs function
+     * @return {*}
+     */
+    getACS(options) {
+        return acs(this, options);
+    }
+
+    getAnnotations(options) {
+        return GUI.annotations1D(this, options);
+    }
+
+
+    toIndex(options = {}) {
+        var index = [];
+        if (options.joinCouplings) {
+            this.joinCouplings(options);
+        }
+        for (let range of this) {
+            if (Array.isArray(range.signal) && range.signal.length > 0) {
+                let l = range.signal.length;
+                var delta = new Array(l);
+                for (let i = 0; i < l; i++) {
+                    delta[i] = range.signal[i].delta;
+                }
+                index.push({
+                    multiplicity: (l > 1) ? 'm' : (range.signal[0].multiplicity ||
+                    utils.joinCoupling(range.signal[0], options.tolerance)),
+                    delta: arrayUtils.arithmeticMean(delta) || (range.to + range.from) * 0.5,
+                    integral: range.integral
+                });
+            } else {
+                index.push({
+                    delta: (range.to + range.from) * 0.5,
+                    multiplicity: 'm'
+                });
+            }
+        }
+        return index;
+    }
+
+
+    /**
+     * Joins coupling constants
+     * @param {object} [options]
+     * @param {number} [options.tolerance=0.05]
+     */
+    joinCouplings(options = {}) {
+        this.forEach(range => {
+            range.signal.forEach(signal => {
+                signal.multiplicity = utils.joinCoupling(signal, options.tolerance);
+            });
+        });
+    }
+
+    updateMultiplicity(options = {}) {
+        this.forEach(range => {
+            if (range.signal) {
+                let signal = range.signal;
+                if (signal.length === 1) {
+                    signal[0].multiplicity = utils.joinCoupling(signal[0], options.tolerance);
+                } else {
+                    signal.forEach(signal => signal.multiplicity = 'm');
+                }
+            }
+        });
+    }
+
+    clone() {
+        let newRanges = JSON.parse(JSON.stringify(this));
+        return new Ranges(newRanges);
+    }
+}
+
+module.exports = Ranges;
+
+},{"../acs/acs":133,"../visualizer/annotations":137,"./peak2Vector":136,"ml-stat":100,"spectra-nmr-utilities":159}],136:[function(require,module,exports){
+'use strict';
+/**
+ * This function converts an array of peaks [{x, y, width}] in a vector equally x,y vector from a given window
+ * TODO: This function is very general and should be placed somewhere else
+ * @param {Array} peaks - List of the peaks
+ * @param {object} options - it has some options to
+ * @param {number} [options.from] - one limit of given window
+ * @param {number} [options.to] - one limit of given window
+ * @param {string} [options.fnName] - function name to generate the signals form
+ * @param {number} [options.nWidth] - width factor of signal form
+ * @param {number} [options.nbPoints] - number of points that the vector will have
+ * @return {{x: Array, y: Array}}
+ */
+
+function peak2Vector(peaks, options = {}) {
+    var {
+        from = null,
+        to = null,
+        nbPoints = 1024,
+        functionName = '',
+        nWidth = 4
+    } = options;
+
+    var factor;
+    if (from === null) {
+        from = Number.MAX_VALUE;
+        for (let i = 0; i < peaks.length; i++) {
+            factor = peaks[i].x - peaks[i].width * nWidth;
+            if (factor < from) {
+                from = factor;
+            }
+        }
+    }
+    if (to === null) {
+        to = Number.MIN_VALUE;
+        for (let i = 0; i < peaks.length; i++) {
+            factor = peaks[i].x + peaks[i].width * nWidth;
+            if (factor > to) {
+                to = factor;
+            }
+        }
+    }
+
+    var x = new Array(nbPoints);
+    var y = new Array(nbPoints);
+    var dx = (to - from) / (nbPoints - 1);
+    for (let i = 0; i < nbPoints; i++) {
+        x[i] = from + i * dx;
+        y[i] = 0;
+    }
+
+    var intensity = peaks[0].y ? 'y' : 'intensity';
+
+    var functionToUse;
+    switch (functionName.toLowerCase()) {
+        case 'lorentzian':
+            functionToUse = lorentzian;
+            break;
+        default:
+            functionToUse = gaussian;
+    }
+
+    for (let i = 0; i < peaks.length; i++) {
+        var peak = peaks[i];
+        if (peak.x > from && peak.x < to) {
+            var index = Math.round((peak.x - from) / dx);
+            var w = Math.round(peak.width * nWidth / dx);
+            for (var j = index - w; j < index + w; j++) {
+                if (j >= 0 && j < nbPoints) {
+                    y[j] += functionToUse(peak[intensity], x[j], peak.width, peak.x);
+                }
+            }
+        }
+    }
+
+    function lorentzian(intensity, x, width, mean) {
+        var factor = intensity * Math.pow(width, 2) / 4;
+        return factor / (Math.pow(mean - x, 2) + Math.pow(width / 2, 2));
+    }
+
+    function gaussian(intensity, x, width, mean) {
+        return intensity * Math.exp(-0.5 * Math.pow((mean - x) / (width / 2), 2));
+    }
+
+    return {x: x, y: y};
+}
+
+module.exports = peak2Vector;
+
+},{}],137:[function(require,module,exports){
+'use strict';
+
+var options1D = {type: 'rect', line: 0, lineLabel: 1, labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: 0.05, height: 10, toFixed: 1, maxLines: Number.MAX_VALUE, selectable: true, fromToc: false};
+var options2D = {type: 'rect', labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: '6px', height: '6px'};
+
+function annotations1D(ranges, optionsG) {
+    var options = Object.assign({}, options1D, optionsG);
+    var height = options.height;
+    var annotations = [];
+
+    for (var i = 0; i < ranges.length; i++) {
+        var index = ranges[i];
+        var annotation = {};
+
+        annotations.push(annotation);
+        annotation.line = options.line;
+        annotation._highlight = index._highlight;
+
+        if (options.fromToc) {
+            let line = options.line < options.maxLines ? options.line : options.maxLines - 1;
+            annotation._highlight = [options.line];
+            annotation.position = [{x: index.delta - options.width, y: (line * height) + 'px'},
+                {x: index.delta + options.width, y: (line * height + 3) + 'px'}];
+        } else {
+            if (!annotation._highlight || annotation._highlight.length === 0) {
+                annotation._highlight = [index.signalID];
+                index.signal.forEach(function (signal) {
+                    for (let j = 0; j < signal.diaID.length; j++) {
+                        annotation._highlight.push(signal.diaID[j]);
+                    }
+                });
+            }
+            if (!index.to || !index.from || index.to === index.from) {
+                annotation.position = [{x: index.signal[0].delta - options.width, y: (options.line * height) + 'px'},
+                    {x: index.signal[0].delta + options.width, y: (options.line * height + 3) + 'px'}];
+            } else {
+                annotation.position = [{x: index.to, y: (options.line * height) + 'px'},
+                    {x: index.from, y: (options.line * height + 3) + 'px'}];
+            }
+        }
+
+        index._highlight = annotation._highlight;
+
+        annotation.type = options.type;
+
+        if (!options.noLabel && index.integral) {
+            annotation.label = {
+                text: index.integral.toFixed(options.toFixed),
+                size: '11px',
+                anchor: 'middle',
+                color: options.labelColor,
+                position: {x: (annotation.position[0].x + annotation.position[1].x) / 2,
+                    y: ((options.line + options.lineLabel) * height) + 'px', dy: '5px'}
+            };
+        }
+
+        annotation.selectable = options.selectable;
+        annotation.strokeColor = options.strokeColor;
+        annotation.strokeWidth = options.strokeWidth;
+        annotation.fillColor = options.fillColor;
+        annotation.info = index;
+    }
+    return annotations;
+}
+
+function annotations2D(zones, optionsG) {
+    var options = Object.assign({}, options2D, optionsG);
+    var annotations = [];
+    for (var k = zones.length - 1; k >= 0; k--) {
+        var signal = zones[k];
+        var annotation = {};
+        annotation.type = options.type;
+        annotation._highlight = signal._highlight;//["cosy"+k];
+        if (!annotation._highlight || annotation._highlight.length === 0) {
+            annotation._highlight = [signal.signalID];
+        }
+        signal._highlight = annotation._highlight;
+
+        annotation.position = [{x: signal.fromTo[0].from - 0.01, y: signal.fromTo[1].from - 0.01, dx: options.width, dy: options.height},
+            {x: signal.fromTo[0].to + 0.01, y: signal.fromTo[1].to + 0.01}];
+        annotation.fillColor = options.fillColor;
+        annotation.label = {text: signal.remark,
+            position: {
+                x: signal.signal[0].delta[0],
+                y: signal.signal[0].delta[1] - 0.025}
+        };
+        if (signal.integral === 1) {
+            annotation.strokeColor = options.strokeColor;
+        } else {
+            annotation.strokeColor = 'rgb(0,128,0)';
+        }
+
+        annotation.strokeWidth = options.strokeWidth;
+        annotation.width = options.width;
+        annotation.height = options.height;
+        annotation.info = signal;
+        annotations.push(annotation);
+    }
+    return annotations;
+}
+
+module.exports = {annotations2D: annotations2D, annotations1D: annotations1D};
+
+
+},{}],138:[function(require,module,exports){
 module.exports={
   "name": "spectra-data",
-  "version": "3.1.4",
+  "version": "3.1.11",
   "description": "spectra-data project - manipulate spectra",
   "keywords": [
     "spectra-data",
     "project"
+  ],
+  "files": [
+    "src"
   ],
   "author": "Andres Castillo",
   "contributors": [
@@ -30010,26 +30757,13 @@ module.exports={
   "homepage": "https://github.com/cheminfo-js/spectra/packages/spectra-data",
   "license": "MIT",
   "main": "./src/index.js",
-  "scripts": {
-    "eslint": "eslint src test --cache",
-    "eslint-fix": "npm run eslint -- --fix",
-    "test": "npm run test-mocha && npm run eslint",
-    "test-mocha": "mocha --require should --reporter mocha-better-spec-reporter --recursive src/**/__tests__/**/*.js",
-    "build": "cheminfo build"
+  "jest": {
+    "testEnvironment": "node"
   },
   "devDependencies": {
-    "cheminfo-tools": "^1.16.0",
-    "eslint": "^3.9.1",
-    "eslint-config-cheminfo": "^1.5.2",
-    "eslint-plugin-no-only-tests": "^1.1.0",
-    "mocha": "^3.1.2",
-    "mocha-better-spec-reporter": "^3.0.1",
-    "nmr-predictor": "^1.0.6",
-    "should": "^11.1.1"
+    "nmr-predictor": "^1.1.0"
   },
   "dependencies": {
-    "babel-core": "^6.24.1",
-    "babel-loader": "^7.0.0",
     "brukerconverter": "^1.0.1",
     "jcampconverter": "^2.4.5",
     "ml-array-utils": "^0.3.0",
@@ -30039,13 +30773,13 @@ module.exports={
     "ml-matrix-peaks-finder": "^0.2.1",
     "ml-simple-clustering": "^0.1.0",
     "ml-stat": "^1.3.0",
-    "nmr-simulation": "^1.0.2",
-    "spectra-data-ranges": "^0.0.2",
-    "spectra-nmr-utilities": "^0.0.2"
+    "nmr-simulation": "^1.0.7",
+    "spectra-data-ranges": "^0.0.7",
+    "spectra-nmr-utilities": "^0.0.5"
   }
 }
 
-},{}],133:[function(require,module,exports){
+},{}],139:[function(require,module,exports){
 'use strict';
 
 const SD = require('./SD');
@@ -30098,13 +30832,13 @@ class NMR extends SD {
         options = Object.assign({}, options, {
             xUnit: 'PPM',
             yUnit: 'Intensity',
-            dataType: 'NMR'
+            dataType: 'NMR SPECTRUM'
         });
         var spectraData = SD.fromXY(x, y, options);
         var spectrum = spectraData.sd.spectra[0];
 
         spectrum.observeFrequency = options.frequency || 400;
-        spectraData.putParam('observeFrequency', spectrum.observeFrequency);
+        spectraData.putParam('observefrequency', spectrum.observeFrequency);
         spectraData.putParam('.SOLVENTNAME', options.solvent || 'none');
         // eslint-disable-next-line camelcase
         spectraData.putParam('.$SW_h', Math.abs(spectrum.lastX - spectrum.firstX) * spectrum.observeFrequency);
@@ -30490,7 +31224,7 @@ class NMR extends SD {
 
 module.exports = NMR;
 
-},{"./SD":135,"./filters/Filters.js":136,"./peakPicking/impurities.json":147,"./peakPicking/peaks2Ranges":152,"brukerconverter":3,"nmr-simulation":125}],134:[function(require,module,exports){
+},{"./SD":141,"./filters/Filters.js":142,"./peakPicking/impurities.json":153,"./peakPicking/peaks2Ranges":158,"brukerconverter":3,"nmr-simulation":126}],140:[function(require,module,exports){
 'use strict';
 
 const SD = require('./SD');
@@ -30867,10 +31601,10 @@ class NMR2D extends SD {
 
 module.exports = NMR2D;
 
-},{"./SD":135,"./filters/Filters.js":136,"./peakPicking/peakOptimizer":149,"./peakPicking/peakPicking2D":151,"brukerconverter":3,"ml-stat":99,"nmr-simulation":125}],135:[function(require,module,exports){
+},{"./SD":141,"./filters/Filters.js":142,"./peakPicking/peakOptimizer":155,"./peakPicking/peakPicking2D":157,"brukerconverter":3,"ml-stat":100,"nmr-simulation":126}],141:[function(require,module,exports){
 'use strict';
 // small note on the best way to define array
-    // http://jsperf.com/lp-array-and-loops/2
+// http://jsperf.com/lp-array-and-loops/2
 
 const StatArray = require('ml-stat').array;
 const ArrayUtils = require('ml-array-utils');
@@ -31351,7 +32085,7 @@ class SD {
      * @param {number} max - Maximum desired value for Y
      */
     setMinMax(min, max) {
-        ArrayUtils.scale(this.getYData(), {min: min, max: max, inplace: true});
+        ArrayUtils.scale(this.getYData(), {min: min, max: max, inPlace: true});
     }
 
     /**
@@ -31359,7 +32093,7 @@ class SD {
      * @param {number} min - Minimum desired value for Y
      */
     setMin(min) {
-        ArrayUtils.scale(this.getYData(), {min: min, inplace: true});
+        ArrayUtils.scale(this.getYData(), {min: min, inPlace: true});
     }
 
     /**
@@ -31367,7 +32101,7 @@ class SD {
      * @param {number} max - Maximum desired value for Y
      */
     setMax(max) {
-        ArrayUtils.scale(this.getYData(), {max: max, inplace: true});
+        ArrayUtils.scale(this.getYData(), {max: max, inPlace: true});
     }
 
     /**
@@ -31823,7 +32557,7 @@ class SD {
      * @example SD.toJcamp(spectraData,{encode:'DIFDUP',yfactor:0.01,type:"SIMPLE",keep:['#batchID','#url']});
      * @return {*} a string containing the jcamp-DX file
      */
-    toJcamp(options) {
+    toJcamp(options = {}) {
         var creator = new JcampCreator();
         return creator.convert(this, Object.assign({}, {yFactor: 1, encode: 'DIFDUP', type: 'SIMPLE'}, options));
     }
@@ -31831,7 +32565,7 @@ class SD {
 
 module.exports = SD;
 
-},{"./jcampEncoder/JcampCreator":144,"./peakPicking/peakPicking":150,"jcampconverter":11,"ml-array-utils":55,"ml-stat":99}],136:[function(require,module,exports){
+},{"./jcampEncoder/JcampCreator":150,"./peakPicking/peakPicking":156,"jcampconverter":11,"ml-array-utils":55,"ml-stat":100}],142:[function(require,module,exports){
 'use strict';
 
 module.exports.fourierTransform = require('./fourierTransform');
@@ -31840,7 +32574,7 @@ module.exports.apodization = require('./apodization');
 module.exports.phaseCorrection = require('./phaseCorrection');
 module.exports.digitalFilter = require('./digitalFilter');
 
-},{"./apodization":137,"./digitalFilter":138,"./fourierTransform":139,"./phaseCorrection":140,"./zeroFilling":142}],137:[function(require,module,exports){
+},{"./apodization":143,"./digitalFilter":144,"./fourierTransform":145,"./phaseCorrection":146,"./zeroFilling":148}],143:[function(require,module,exports){
 'use strict';
 
 function apodization(spectraData, parameters) {
@@ -31873,7 +32607,7 @@ function apodization(spectraData, parameters) {
 
 module.exports = apodization;
 
-},{}],138:[function(require,module,exports){
+},{}],144:[function(require,module,exports){
 'use strict';
 
 var rotate = require('./rotate');
@@ -31909,7 +32643,7 @@ function digitalFilter(spectraData, options) {
 
 module.exports = digitalFilter;
 
-},{"./rotate":141}],139:[function(require,module,exports){
+},{"./rotate":147}],145:[function(require,module,exports){
 'use strict';
 
 const fft = require('ml-fft');
@@ -31998,7 +32732,7 @@ function updateSpectra(spectraData, spectraType) {
 
 module.exports = fourierTransform;
 
-},{"ml-fft":62}],140:[function(require,module,exports){
+},{"ml-fft":62}],146:[function(require,module,exports){
 'use strict';
 
 /**
@@ -32016,13 +32750,6 @@ function phaseCorrection(spectraData, phi0, phi1) {
     var nbPoints = spectraData.getNbPoints();
     var reData = spectraData.getYData(0);
     var imData = spectraData.getYData(1);
-    //var corrections = spectraData.getParam("corrections");
-
-    //for(var k=0;k<corrections.length;k++){
-    //    Point2D phi = corrections.elementAt(k);
-
-        //double phi0 = phi.getX();
-        //double phi1 = phi.getY();
 
     var delta = phi1 / nbPoints;
     var alpha = 2 * Math.pow(Math.sin(delta / 2), 2);
@@ -32040,18 +32767,14 @@ function phaseCorrection(spectraData, phi0, phi1) {
         imTmp = reData[index] * sinTheta + imData[index] * cosTheta;
         reData[index] = reTmp;
         imData[index] = imTmp;
-            // calculate angles i+1 from i
+        // calculate angles i+1 from i
         cosThetaNew = cosTheta - (alpha * cosTheta + beta * sinTheta);
         sinThetaNew = sinTheta - (alpha * sinTheta - beta * cosTheta);
         cosTheta = cosThetaNew;
         sinTheta = sinThetaNew;
     }
-        //toApply--;
-    //}
 
     spectraData.resetMinMax();
-    //spectraData.updateDefaults();
-    //spectraData.updateY();
     spectraData.putParam('PHC0', phi0);
     spectraData.putParam('PHC1', phi1);
 
@@ -32060,7 +32783,7 @@ function phaseCorrection(spectraData, phi0, phi1) {
 
 module.exports = phaseCorrection;
 
-},{}],141:[function(require,module,exports){
+},{}],147:[function(require,module,exports){
 'use strict';
 
 /**
@@ -32126,7 +32849,7 @@ function putInRange(value, nbPoints) {
 
 module.exports = rotate;
 
-},{}],142:[function(require,module,exports){
+},{}],148:[function(require,module,exports){
 'use strict';
 /**
  * This function make a zero filling to each Active element in a SD instance.
@@ -32167,20 +32890,19 @@ function zeroFilling(spectraData, zeroFillingX) {
 }
 module.exports = zeroFilling;
 
-},{}],143:[function(require,module,exports){
+},{}],149:[function(require,module,exports){
 'use strict';
 
 exports.SD = require('./SD');
 exports.NMR = require('./NMR');
 exports.NMR2D = require('./NMR2D');
-exports.Ranges = require('./range/Ranges');
-exports.GUI = require('./range/visualizer/index');
+exports.Ranges = require('spectra-data-ranges').Ranges;
+exports.GUI = require('spectra-data-ranges').GUI;
 
-},{"./NMR":133,"./NMR2D":134,"./SD":135,"./range/Ranges":153,"./range/visualizer/index":156}],144:[function(require,module,exports){
+},{"./NMR":139,"./NMR2D":140,"./SD":141,"spectra-data-ranges":134}],150:[function(require,module,exports){
 'use strict';
 
 const Encoder = require('./VectorEncoder');
-const Integer = {MAX_VALUE: Number.MAX_SAFE_INTEGER, MIN_VALUE: Number.MIN_SAFE_INTEGER};
 const CRLF = '\r\n';
 const version = 'Cheminfo tools ' + require('../../package.json').version;
 const defaultParameters = {encode: 'DIFDUP', yFactor: 1, type: 'SIMPLE', keep: []};
@@ -32207,10 +32929,10 @@ class JcampCreator {
      * @return {string}
      */
     convert(spectraData, options) {
-        // encodeFormat: ('FIX','SQZ','DIF','DIFDUP','CVS','PAC')
         options = Object.assign({}, defaultParameters, options);
         const encodeFormat = options.encode.toUpperCase().trim();
         const factorY = options.yFactor || 1;
+        const limitIntensity = Math.pow(2, 31);
         let type = options.type;
         const userDefinedParams = options.keep;
 
@@ -32230,11 +32952,8 @@ class JcampCreator {
             minMax = {min: spectraData.getMinZ(), max: spectraData.getMaxZ()};
         }
 
-        if (minMax.max * scale >= Integer.MAX_VALUE / 2) {
-            scale = Integer.MAX_VALUE / (minMax.max * 2);
-        }
-        if (Math.abs(minMax.max - minMax.min) * scale < 16) {
-            scale = 16 / (Math.abs(minMax.max - minMax.min));
+        if (minMax.max * scale >= limitIntensity) {
+            scale = limitIntensity / minMax.max;
         }
 
         var scaleX = Math.abs(1.0 / spectraData.getDeltaX());
@@ -32506,7 +33225,6 @@ function simpleHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams)
         outString += '##$SFO1= ' + spectraData.getParamDouble('$SFO1', 0) + CRLF;
         outString += '##$NUC1= <' + spectraData.getNucleus() + '>' + CRLF;
         outString += '##.SOLVENT NAME= ' + spectraData.getSolventName() + CRLF;
-
     }
     outString += '##XUNITS=\t' + spectraData.getXUnits() + CRLF;
     outString += '##YUNITS=\t' + spectraData.getYUnits() + CRLF;
@@ -32565,23 +33283,25 @@ function simpleHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams)
 module.exports = JcampCreator;
 
 
-},{"../../package.json":132,"./VectorEncoder":145}],145:[function(require,module,exports){
+},{"../../package.json":138,"./VectorEncoder":151}],151:[function(require,module,exports){
 'use strict';
 
 /**
-* class encodes a integer vector as a String in order to store it in a text file.
-* The algorithms used to encode the data are describe in:
-*            http://www.iupac.org/publications/pac/pdf/2001/pdf/7311x1765.pdf
-* Created by acastillo on 3/2/16.
-*/
+ * class encodes a integer vector as a String in order to store it in a text file.
+ * The algorithms used to encode the data are describe in:
+ *            http://www.iupac.org/publications/pac/pdf/2001/pdf/7311x1765.pdf
+ * Created by acastillo on 3/2/16.
+ */
 const newLine = '\r\n';
 
-const pseudoDigits = [['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
-              ['@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
-              ['@', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
-              ['%', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'],
-              ['%', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r'],
-              [' ', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 's']];
+const pseudoDigits = [
+    ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+    ['@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'],
+    ['@', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'],
+    ['%', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'],
+    ['%', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r'],
+    [' ', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 's']
+];
 
 const SQZ_P = 1;
 const SQZ_N = 2;
@@ -32663,6 +33383,7 @@ function fixEncoding(data, firstX, intervalX, separator) {
     }
     return outputData;
 }
+
 /**
  * @private
  * No data compression used. The data is separated by the sign of the number.
@@ -32701,6 +33422,7 @@ function packedEncoding(data, firstX, intervalX) {
     }
     return outputData;
 }
+
 /**
  * @private
  * Data compression is possible using the squeezed form (SQZ) in which the delimiter, the leading digit,
@@ -32878,6 +33600,7 @@ function squeezedDigit(num) {
 
     return SQZdigit;
 }
+
 /**
  * @private
  * Convert number to the DIF format, using pseudo digits.
@@ -32903,6 +33626,7 @@ function differenceDigit(num) {
 
     return DIFFdigit;
 }
+
 /**
  * @private
  * Convert number to the DUP format, using pseudo digits.
@@ -32929,7 +33653,7 @@ module.exports = {
     differenceEncoding
 };
 
-},{}],146:[function(require,module,exports){
+},{}],152:[function(require,module,exports){
 'use strict';
 
 const impurities = require('./impurities.json');
@@ -32971,7 +33695,7 @@ function removeImpurities(peakList, options = {}) {
 
 module.exports = removeImpurities;
 
-},{"./impurities.json":147}],147:[function(require,module,exports){
+},{"./impurities.json":153}],153:[function(require,module,exports){
 module.exports={
   "cdcl3": {
     "tms": [
@@ -36103,7 +36827,7 @@ module.exports={
     ]
   }
 }
-},{}],148:[function(require,module,exports){
+},{}],154:[function(require,module,exports){
 /*
  * This library implements the J analyser described by Cobas et al in the paper:
  * A two-stage approach to automatic determination of 1H NMR coupling constants
@@ -36671,7 +37395,7 @@ function getArea(peak) {
     return Math.abs(peak.intensity * peak.width * 1.57);//1.772453851);
 }
 
-},{}],149:[function(require,module,exports){
+},{}],155:[function(require,module,exports){
 'use strict';
 
 
@@ -36703,7 +37427,7 @@ module.exports = {
         var properties = initializeProperties(signals);
         var output = signals;
 
-		//First step of the optimization: Symmetry validation
+        //First step of the optimization: Symmetry validation
         var i, hits, index;
         var signal;
         for (i = output.length - 1; i >= 0; i--) {
@@ -36719,18 +37443,18 @@ module.exports = {
                 }
             }
         }
-		//Second step of the optimization: Diagonal image existence
+        //Second step of the optimization: Diagonal image existence
         for (i = output.length - 1; i >= 0; i--) {
             signal = output[i];
             if (properties[i][0] === 0) {
                 hits = checkCrossPeaks(output, properties, signal, true);
                 properties[i][1] += hits;
-				//checkCrossPeaks(output, properties, signal, false);
+                //checkCrossPeaks(output, properties, signal, false);
             }
         }
 
-		//Now, each peak have a score between 0 and 4, we can complete the patterns which
-		//contains peaks with high scores, and finally, we can remove peaks with scores 0 and 1
+        //Now, each peak have a score between 0 and 4, we can complete the patterns which
+        //contains peaks with high scores, and finally, we can remove peaks with scores 0 and 1
         var count = 0;
         for (i = output.length - 1; i >= 0; i--) {
             if (properties[i][0] !== 0 && properties[i][1] > 2) {
@@ -36746,7 +37470,7 @@ module.exports = {
         count--;
         for (i = output.length - 1; i >= 0; i--) {
             if (properties[i][0] !== 0 && properties[i][1] > 2
-					|| properties[i][0] === 0 && properties[i][1] > 1) {
+     || properties[i][0] === 0 && properties[i][1] > 1) {
                 toReturn[count--] = output[i];
             }
         }
@@ -36759,7 +37483,7 @@ module.exports = {
      * @param {Array} references
      */
     alignDimensions: function (signals2D, references) {
-		//For each reference dimension
+        //For each reference dimension
         for (var i = 0; i < references.length; i++) {
             var ref = references[i];
             if (ref)				{
@@ -36770,7 +37494,7 @@ module.exports = {
 };
 
 function completeMissingIfNeeded(output, properties, thisSignal, thisProp) {
-	//Check for symmetry
+    //Check for symmetry
     var index = exist(output, properties, thisSignal, -thisProp[0], true);
     var addedPeaks = 0;
     var newSignal = null;
@@ -36787,7 +37511,7 @@ function completeMissingIfNeeded(output, properties, thisSignal, thisProp) {
         properties.push(tmpProp);
         addedPeaks++;
     }
-	//Check for diagonal peaks
+    //Check for diagonal peaks
     var j, signal;
     var diagX = false;
     var diagY = false;
@@ -36859,7 +37583,7 @@ function checkCrossPeaks(output, properties, signal, updateProperties) {
             }
         }
     }
-	//Update found crossPeaks and diagonal peak
+    //Update found crossPeaks and diagonal peak
     shift /= (crossPeaksX.length + crossPeaksY.length + 4);
     if (crossPeaksX.length > 0) {
         for (i = crossPeaksX.length - 1; i >= 0; i--) {
@@ -36911,7 +37635,7 @@ function initializeProperties(signals) {
     var signalsProperties = new Array(signals.length);
     for (var i = signals.length - 1; i >= 0; i--) {
         signalsProperties[i] = [0, 0];
-		//We check if it is a diagonal peak
+        //We check if it is a diagonal peak
         if (Math.abs(signals[i].shiftX - signals[i].shiftY) <= diagonalError) {
             signalsProperties[i][1] = 1;
             var shift = (signals[i].shiftX * 2 + signals[i].shiftY) / 3.0;
@@ -36940,15 +37664,15 @@ function initializeProperties(signals) {
 function distanceTo(a, b, toImage) {
     if (!toImage) {
         return Math.sqrt(Math.pow(a.shiftX - b.shiftX, 2)
-			+ Math.pow(a.shiftY - b.shiftY, 2));
+   + Math.pow(a.shiftY - b.shiftY, 2));
     } else {
         return Math.sqrt(Math.pow(a.shiftX - b.shiftY, 2)
-			+ Math.pow(a.shiftY - b.shiftX, 2));
+   + Math.pow(a.shiftY - b.shiftX, 2));
     }
 }
 
 function alignSingleDimension(signals2D, references) {
-	//For each 2D signal
+    //For each 2D signal
     var center = 0;
     var width = 0;
     var i, j;
@@ -36958,7 +37682,7 @@ function alignSingleDimension(signals2D, references) {
             center = (references[j].startX + references[j].stopX) / 2;
             width = Math.abs(references[j].startX - references[j].stopX) / 2;
             if (signal2D.nucleusX === references[j].nucleus) {
-				//The 2D peak overlaps with the 1D signal
+                //The 2D peak overlaps with the 1D signal
                 if (Math.abs(signal2D.shiftX - center) <= width) {
                     signal2D._highlight.push(references[j]._highlight[0]);
                 }
@@ -36974,7 +37698,7 @@ function alignSingleDimension(signals2D, references) {
     }
 }
 
-},{}],150:[function(require,module,exports){
+},{}],156:[function(require,module,exports){
 'use strict';
 
 const GSD = require('ml-gsd');
@@ -37025,7 +37749,7 @@ function extractPeaks(spectrum, options = {}) {
         data = spectrum.getVector(options.from, options.to);
     }
     var peakList = GSD.gsd(data[0], data[1], options);
-    // console.log(peakList)
+
     if (options.broadWidth) {
         peakList = GSD.post.joinBroadPeaks(peakList, {width: options.broadWidth});
     }
@@ -37054,7 +37778,7 @@ function clearList(peakList, threshold) {
 
 module.exports = extractPeaks;
 
-},{"ml-gsd":64}],151:[function(require,module,exports){
+},{"ml-gsd":65}],157:[function(require,module,exports){
 'use strict';
 
 var PeakOptimizer = require('./peakOptimizer');
@@ -37222,11 +37946,11 @@ function createSignals2D(peaks, spectraData, tolerance) {
 
 module.exports = getZones;
 
-},{"./peakOptimizer":149,"ml-fft":62,"ml-matrix-peaks-finder":78,"ml-simple-clustering":96}],152:[function(require,module,exports){
+},{"./peakOptimizer":155,"ml-fft":62,"ml-matrix-peaks-finder":79,"ml-simple-clustering":97}],158:[function(require,module,exports){
 'use strict';
 
 const JAnalyzer = require('./jAnalyzer');
-const Ranges = require('../range/Ranges');
+const Ranges = require('spectra-data-ranges').Ranges;
 const impurityRemover = require('./ImpurityRemover');
 
 const defaultOptions = {
@@ -37472,642 +38196,7 @@ function computeArea(peak) {
 
 module.exports = createRanges;
 
-},{"../range/Ranges":153,"./ImpurityRemover":146,"./jAnalyzer":148}],153:[function(require,module,exports){
-'use strict';
-
-const acs = require('./acs/acs');
-const peak2Vector = require('./peak2Vector');
-const GUI = require('./visualizer/index');
-const utils = require('spectra-nmr-utilities');
-const arrayUtils = require('ml-stat').array;
-class Ranges extends Array {
-
-    constructor(ranges) {
-        if (Array.isArray(ranges)) {
-            super(ranges.length);
-            for (let i = 0; i < ranges.length; i++) {
-                this[i] = ranges[i];
-            }
-        } else if (typeof ranges === 'number') {
-            super(ranges);
-        } else {
-            super();
-        }
-    }
-
-    /**
-     * This function return a Range instance from predictions
-     * @param {object} signals - predictions of a spin system
-     * @param {object} options - options object
-     * @param {number} [options.lineWidth] - spectral line width
-     * @param {number} [options.frequency] - frequency to determine the [from, to] of a range
-     * @return {Ranges}
-     */
-    static fromSignals(signals, options) {
-        options = Object.assign({}, {lineWidth: 1, frequency: 400, nucleus: '1H'}, options);
-        //1. Collapse all the equivalent predictions
-
-        signals = utils.group(signals, options);
-        const nSignals = signals.length;
-        var i, j, signal, width, center, jc;
-
-        const result = new Array(nSignals);
-
-        for (i = 0; i < nSignals; i++) {
-            signal = signals[i];
-            width = 0;
-            jc = signal.j;
-            if (jc) {
-                for (j = 0; j < jc.length; j++) {
-                    width += jc[j].coupling;
-                }
-            }
-
-            width += 2 * options.lineWidth;
-
-            width /= options.frequency;
-
-            result[i] = {
-                from: signal.delta - width,
-                to: signal.delta + width,
-                integral: signal.nbAtoms,
-                signal: [signal]
-            };
-        }
-
-        //2. Merge the overlaping ranges
-        for (i = 0; i < result.length; i++) {
-            result[i]._highlight = result[i].signal[0].diaIDs;
-            center = (result[i].from + result[i].to) / 2;
-            width = Math.abs(result[i].from - result[i].to);
-            for (j = result.length - 1; j > i; j--) {
-                //Does it overlap?
-                if (Math.abs(center - (result[j].from + result[j].to) / 2)
-                    <= Math.abs(width + Math.abs(result[j].from - result[j].to)) / 2) {
-                    result[i].from = Math.min(result[i].from, result[j].from);
-                    result[i].to = Math.max(result[i].to, result[j].to);
-                    result[i].integral += result[j].integral;
-                    result[i]._highlight.push(result[j].signal[0].diaIDs[0]);
-                    result[j].signal.forEach(a => {
-                        result[i].signal.push(a);
-                    });
-                    result.splice(j, 1);
-                    j = result.length - 1;
-                    center = (result[i].from + result[i].to) / 2;
-                    width = Math.abs(result[i].from - result[i].to);
-                }
-            }
-        }
-        result.sort((a, b) => {
-            return a.from - b.from;
-        });
-        return new Ranges(result);
-    }
-
-    /**
-     * This function return Ranges instance from a SD instance
-     * @param {SD} spectrum - SD instance
-     * @param {object} options - options object to extractPeaks function
-     * @return {Ranges}
-     */
-    static fromSpectrum(spectrum, options = {}) {
-        return spectrum.getRanges(options);
-    }
-
-
-    /**
-     * TODO it is the same code that updateIntegrals in Range class
-     * This function normalize or scale the integral data
-     * @param {object} options - object with the options
-     * @param {boolean} [options.sum] - anything factor to normalize the integrals, Similar to the number of proton in the molecule for a nmr spectrum
-     * @param {number} [options.factor] - Factor that multiply the intensities, if [options.sum] is defined it is override
-     * @return {Ranges}
-     */
-    updateIntegrals(options = {}) {
-        var factor = options.factor || 1;
-        var i;
-        if (options.sum) {
-            var nH = options.sum || 1;
-            var sumObserved = 0;
-            for (i = 0; i < this.length; i++) {
-                sumObserved += this[i].integral;
-            }
-            factor = nH / sumObserved;
-        }
-        for (i = 0; i < this.length; i++) {
-            this[i].integral *= factor;
-        }
-        return this;
-    }
-
-    /**
-     * This function return the peak list as a object with x and y arrays
-     * @param {bject} options - See the options parameter in {@link #peak2vector} function documentation
-     * @return {object} - {x: Array, y: Array}
-     */
-    getVector(options) {
-        if (this[0].signal[0].peak) {
-            return peak2Vector(this.getPeakList(), options);
-        } else {
-            throw Error('This method is only for signals with peaks');
-        }
-    }
-
-    /**
-     * This function return the peaks of a Ranges instance into an array
-     * @return {Array}
-     */
-    getPeakList() {
-        if (this[0].signal[0].peak) {
-            var peaks = [];
-            for (var i = 0; i < this.length; i++) {
-                var range = this[i];
-                for (var j = 0; j < range.signal.length; j++) {
-                    peaks = peaks.concat(range.signal[j].peak);
-                }
-            }
-            return peaks;
-        } else {
-            throw Error('This method is only for signals with peaks');
-        }
-    }
-
-    /**
-     * This function return format for each range
-     * @param {object} options - options object for toAcs function
-     * @return {*}
-     */
-    getACS(options) {
-        return acs(this, options);
-    }
-
-    getAnnotations(options) {
-        return GUI.annotations1D(this, options);
-    }
-
-
-    toIndex(options = {}) {
-        var index = [];
-        if (options.joinCouplings) {
-            this.joinCouplings(options);
-        }
-        for (let range of this) {
-            if (Array.isArray(range.signal) && range.signal.length > 0) {
-                let l = range.signal.length;
-                var delta = new Array(l);
-                for (let i = 0; i < l; i++) {
-                    delta[i] = range.signal[i].delta;
-                }
-                index.push({
-                    multiplicity: (l > 1) ? 'm' : (range.signal[0].multiplicity ||
-                    utils.joinCoupling(range.signal[0], options.tolerance)),
-                    delta: arrayUtils.arithmeticMean(delta) || (range.to + range.from) * 0.5,
-                    integral: range.integral
-                });
-            } else {
-                index.push({
-                    delta: (range.to + range.from) * 0.5,
-                    multiplicity: 'm'
-                });
-            }
-        }
-        return index;
-    }
-
-
-    /**
-     * Joins coupling constants
-     * @param {object} [options]
-     * @param {number} [options.tolerance=0.05]
-     */
-    joinCouplings(options = {}) {
-        this.forEach(range => {
-            range.signal.forEach(signal => {
-                signal.multiplicity = utils.joinCoupling(signal, options.tolerance);
-            });
-        });
-    }
-
-    clone() {
-        let newRanges = JSON.parse(JSON.stringify(this));
-        return new Ranges(newRanges);
-    }
-}
-
-module.exports = Ranges;
-
-},{"./acs/acs":154,"./peak2Vector":155,"./visualizer/index":156,"ml-stat":99,"spectra-nmr-utilities":157}],154:[function(require,module,exports){
-'use strict';
-/**
- * nbDecimalsDelta : default depends nucleus H, F: 2 otherwise 1
- * nbDecimalsJ : default depends nucleus H, F: 1, otherwise 0
- * ascending : true / false
- * format : default "AIMJ" or when 2D data is collected the default format may be "IMJA"
- * deltaSeparator : ', '
- * detailSeparator : ', '
- */
-
-const joinCoupling = require('spectra-nmr-utilities').joinCoupling;
-var globalOptions = {
-    h: {
-        nucleus: '1H',
-        nbDecimalDelta: 2,
-        nbDecimalJ: 1,
-        observedFrequency: 400
-    },
-    c: {
-        nucleus: '13C',
-        nbDecimalDelta: 1,
-        nbDecimalJ: 1,
-        observedFrequency: 100
-    },
-    f: {
-        nucleus: '19F',
-        nbDecimalDelta: 2,
-        nbDecimalJ: 1,
-        observedFrequency: 400
-    }
-};
-
-function toAcs(ranges, options = {}) {
-    var nucleus = (options.nucleus || '1H').toLowerCase().replace(/[0-9]/g, '');
-    var defaultOptions = globalOptions[nucleus];
-    options = Object.assign({}, defaultOptions, {ascending: false, format: 'IMJA'}, options);
-
-    ranges = ranges.clone();
-    if (options.ascending === true) {
-        ranges.sort((a, b) => {
-            let fromA = Math.min(a.from, a.to);
-            let fromB = Math.min(b.from, b.to);
-            return fromA - fromB;
-        });
-    }
-    var acsString = formatAcs(ranges, options);
-
-    if (acsString.length > 0) acsString += '.';
-
-    return acsString;
-}
-
-function formatAcs(ranges, options) {
-    var acs = spectroInformation(options);
-    if (acs.length === 0) acs = 'δ ';
-    var acsRanges = [];
-    for (let range of ranges) {
-        pushDelta(range, acsRanges, options);
-    }
-    if (acsRanges.length > 0) {
-        return acs + acsRanges.join(', ');
-    } else {
-        return '';
-    }
-}
-
-function spectroInformation(options) {
-    let parenthesis = [];
-    let strings = formatNucleus(options.nucleus) + ' NMR';
-    if (options.solvent) {
-        parenthesis.push(formatMF(options.solvent));
-    }
-    if (options.frequencyObserved) {
-        parenthesis.push((options.frequencyObserved * 1).toFixed(0) + ' MHz');
-    }
-    if (parenthesis.length > 0) {
-        strings += ' (' + parenthesis.join(', ') + '): δ ';
-    } else {
-        strings += ': δ ';
-    }
-    return strings;
-}
-
-function pushDelta(range, acsRanges, options) {
-    var strings = '';
-    var parenthesis = [];
-    let fromTo = [range.from, range.to];
-    if (Array.isArray(range.signal) && range.signal.length > 0) {
-        var signals = range.signal;
-        if (signals.length > 1) {
-            if (options.ascending === true) {
-                signals.sort((a, b) => {
-                    return a.delta - b.delta;
-                });
-            }
-            strings += Math.min(...fromTo).toFixed(options.nbDecimalDelta) + '-'
-                     + Math.max(...fromTo).toFixed(options.nbDecimalDelta);
-            strings += ' (' + getIntegral(range, options);
-            for (let signal of signals) {
-                parenthesis = [];
-                if (signal.delta !== undefined) {
-                    strings = appendSeparator(strings);
-                    strings += signal.delta.toFixed(options.nbDecimalDelta);
-                }
-                switchFormat({}, signal, parenthesis, options);
-                if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
-            }
-            strings += ')';
-        } else {
-            parenthesis = [];
-            if (signals[0].delta !== undefined) {
-                strings += signals[0].delta.toFixed(options.nbDecimalDelta);
-                switchFormat(range, signals[0], parenthesis, options);
-                if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
-            } else {
-                strings += Math.min(...fromTo).toFixed(options.nbDecimalDelta) + '-' + Math.max(...fromTo).toFixed(options.nbDecimalDelta);
-                switchFormat(range, signals[0], parenthesis, options);
-                if (parenthesis.length > 0) strings += ' (' + parenthesis + ')';
-            }
-        }
-    } else {
-        strings += Math.min(...fromTo).toFixed(options.nbDecimalDelta) + '-' + Math.max(...fromTo).toFixed(options.nbDecimalDelta);
-        switchFormat(range, [], parenthesis, options);
-        if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
-    }
-    acsRanges.push(strings);
-}
-
-function getIntegral(range, options) {
-    let integral = '';
-    if (range.pubIntegral) {
-        integral = range.pubIntegral;
-    } else if (range.integral) {
-        integral = range.integral.toFixed(0) + options.nucleus[options.nucleus.length - 1];
-    }
-    return integral;
-}
-
-function pushIntegral(range, parenthesis, options) {
-    let integral = getIntegral(range, options);
-    if (integral.length > 0) parenthesis.push(integral);
-}
-
-function pushMultiplicityFromSignal(signal, parenthesis) {
-    let multiplicity = signal.multiplicity || joinCoupling(signal, 0.05);
-    if (multiplicity.length > 0) parenthesis.push(multiplicity);
-}
-
-function switchFormat(range, signal, parenthesis, options) {
-    for (const char of options.format) {
-        switch (char.toUpperCase()) {
-            case 'I':
-                pushIntegral(range, parenthesis, options);
-                break;
-            case 'M':
-                pushMultiplicityFromSignal(signal, parenthesis);
-                break;
-            case 'A':
-                pushAssignment(signal, parenthesis);
-                break;
-            case 'J':
-                pushCoupling(signal, parenthesis, options);
-                break;
-            default:
-                throw new Error('Unknow format letter: ' + char);
-        }
-    }
-}
-
-function formatMF(mf) {
-    return mf.replace(/([0-9]+)/g, '<sub>$1</sub>');
-}
-
-function formatNucleus(nucleus) {
-    return nucleus.replace(/([0-9]+)/g, '<sup>$1</sup>');
-}
-
-function appendSeparator(strings) {
-    if ((strings.length > 0) && (!strings.match(/ $/)) && (!strings.match(/\($/))) {
-        strings += ', ';
-    }
-    return strings;
-}
-
-function formatAssignment(assignment) {
-    assignment = assignment.replace(/([0-9]+)/g, '<sub>$1</sub>');
-    assignment = assignment.replace(/\"([^\"]*)\"/g, '<i>$1</i>');
-    return assignment;
-}
-
-function pushCoupling(signal, parenthesis, options) {
-    if (Array.isArray(signal.j) && signal.j.length > 0) {
-        signal.j.sort(function (a, b) {
-            return b.coupling - a.coupling;
-        });
-
-        var values = [];
-        for (let j of signal.j) {
-            if (j.coupling !== undefined) {
-                values.push(j.coupling.toFixed(options.nbDecimalJ));
-            }
-        }
-        if (values.length > 0) parenthesis.push('<i>J</i> = ' + values.join(', ') + ' Hz');
-    }
-}
-
-function pushAssignment(signal, parenthesis) {
-    if (signal.pubAssignment) {
-        parenthesis.push(formatAssignment(signal.pubAssignment));
-    } else if (signal.assignment) {
-        parenthesis.push(formatAssignment(signal.assignment));
-    }
-}
-module.exports = toAcs;
-
-},{"spectra-nmr-utilities":157}],155:[function(require,module,exports){
-'use strict';
-/**
- * This function converts an array of peaks [{x, y, width}] in a vector equally x,y vector from a given window
- * TODO: This function is very general and should be placed somewhere else
- * @param {Array} peaks - List of the peaks
- * @param {object} options - it has some options to
- * @param {number} [options.from] - one limit of given window
- * @param {number} [options.to] - one limit of given window
- * @param {string} [options.fnName] - function name to generate the signals form
- * @param {number} [options.nWidth] - width factor of signal form
- * @param {number} [options.nbPoints] - number of points that the vector will have
- * @return {{x: Array, y: Array}}
- */
-
-function peak2Vector(peaks, options = {}) {
-    var {
-        from = null,
-        to = null,
-        nbPoints = 1024,
-        functionName = '',
-        nWidth = 4
-    } = options;
-
-    var factor;
-    if (from === null) {
-        from = Number.MAX_VALUE;
-        for (let i = 0; i < peaks.length; i++) {
-            factor = peaks[i].x - peaks[i].width * nWidth;
-            if (factor < from) {
-                from = factor;
-            }
-        }
-    }
-    if (to === null) {
-        to = Number.MIN_VALUE;
-        for (let i = 0; i < peaks.length; i++) {
-            factor = peaks[i].x + peaks[i].width * nWidth;
-            if (factor > to) {
-                to = factor;
-            }
-        }
-    }
-
-    var x = new Array(nbPoints);
-    var y = new Array(nbPoints);
-    var dx = (to - from) / (nbPoints - 1);
-    for (let i = 0; i < nbPoints; i++) {
-        x[i] = from + i * dx;
-        y[i] = 0;
-    }
-
-    var intensity = peaks[0].y ? 'y' : 'intensity';
-
-    var functionToUse;
-    switch (functionName.toLowerCase()) {
-        case 'lorentzian':
-            functionToUse = lorentzian;
-            break;
-        default:
-            functionToUse = gaussian;
-    }
-
-    for (let i = 0; i < peaks.length; i++) {
-        var peak = peaks[i];
-        if (peak.x > from && peak.x < to) {
-            var index = Math.round((peak.x - from) / dx);
-            var w = Math.round(peak.width * nWidth / dx);
-            for (var j = index - w; j < index + w; j++) {
-                if (j >= 0 && j < nbPoints) {
-                    y[j] += functionToUse(peak[intensity], x[j], peak.width, peak.x);
-                }
-            }
-        }
-    }
-
-    function lorentzian(intensity, x, width, mean) {
-        var factor = intensity * Math.pow(width, 2) / 4;
-        return factor / (Math.pow(mean - x, 2) + Math.pow(width / 2, 2));
-    }
-
-    function gaussian(intensity, x, width, mean) {
-        return intensity * Math.exp(-0.5 * Math.pow((mean - x) / (width / 2), 2));
-    }
-
-    return {x: x, y: y};
-}
-
-module.exports = peak2Vector;
-
-},{}],156:[function(require,module,exports){
-'use strict';
-
-var options1D = {type: 'rect', line: 0, lineLabel: 1, labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: 0.05, height: 10, toFixed: 1, maxLines: Number.MAX_VALUE, selectable: true, fromToc: false};
-var options2D = {type: 'rect', labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: '6px', height: '6px'};
-
-function annotations1D(ranges, optionsG) {
-    var options = Object.assign({}, options1D, optionsG);
-    var height = options.height;
-    var annotations = [];
-
-    for (var i = 0; i < ranges.length; i++) {
-        var index = ranges[i];
-        var annotation = {};
-
-        annotations.push(annotation);
-        annotation.line = options.line;
-        annotation._highlight = index._highlight;
-
-        if (options.fromToc) {
-            let line = options.line < options.maxLines ? options.line : options.maxLines - 1;
-            annotation._highlight = [options.line];
-            annotation.position = [{x: index.delta - options.width, y: (line * height) + 'px'},
-                {x: index.delta + options.width, y: (line * height + 3) + 'px'}];
-        } else {
-            if (!annotation._highlight || annotation._highlight.length === 0) {
-                annotation._highlight = [index.signalID];
-                index.signal.forEach(function (signal) {
-                    for (let j = 0; j < signal.diaID.length; j++) {
-                        annotation._highlight.push(signal.diaID[j]);
-                    }
-                });
-            }
-            if (!index.to || !index.from || index.to === index.from) {
-                annotation.position = [{x: index.signal[0].delta - options.width, y: (options.line * height) + 'px'},
-                    {x: index.signal[0].delta + options.width, y: (options.line * height + 3) + 'px'}];
-            } else {
-                annotation.position = [{x: index.to, y: (options.line * height) + 'px'},
-                    {x: index.from, y: (options.line * height + 3) + 'px'}];
-            }
-        }
-
-        index._highlight = annotation._highlight;
-
-        annotation.type = options.type;
-
-        if (!options.noLabel && index.integral) {
-            annotation.label = {
-                text: index.integral.toFixed(options.toFixed),
-                size: '11px',
-                anchor: 'middle',
-                color: options.labelColor,
-                position: {x: (annotation.position[0].x + annotation.position[1].x) / 2,
-                    y: ((options.line + options.lineLabel) * height) + 'px', dy: '5px'}
-            };
-        }
-
-        annotation.selectable = options.selectable;
-        annotation.strokeColor = options.strokeColor;
-        annotation.strokeWidth = options.strokeWidth;
-        annotation.fillColor = options.fillColor;
-        annotation.info = index;
-    }
-    return annotations;
-}
-
-function annotations2D(zones, optionsG) {
-    var options = Object.assign({}, options2D, optionsG);
-    var annotations = [];
-    for (var k = zones.length - 1; k >= 0; k--) {
-        var signal = zones[k];
-        var annotation = {};
-        annotation.type = options.type;
-        annotation._highlight = signal._highlight;//["cosy"+k];
-        if (!annotation._highlight || annotation._highlight.length === 0) {
-            annotation._highlight = [signal.signalID];
-        }
-        signal._highlight = annotation._highlight;
-
-        annotation.position = [{x: signal.fromTo[0].from - 0.01, y: signal.fromTo[1].from - 0.01, dx: options.width, dy: options.height},
-            {x: signal.fromTo[0].to + 0.01, y: signal.fromTo[1].to + 0.01}];
-        annotation.fillColor = options.fillColor;
-        annotation.label = {text: signal.remark,
-            position: {
-                x: signal.signal[0].delta[0],
-                y: signal.signal[0].delta[1] - 0.025}
-        };
-        if (signal.integral === 1) {
-            annotation.strokeColor = options.strokeColor;
-        } else {
-            annotation.strokeColor = 'rgb(0,128,0)';
-        }
-
-        annotation.strokeWidth = options.strokeWidth;
-        annotation.width = options.width;
-        annotation.height = options.height;
-        annotation.info = signal;
-        annotations.push(annotation);
-    }
-    return annotations;
-}
-
-module.exports = {annotations2D: annotations2D, annotations1D: annotations1D};
-
-
-},{}],157:[function(require,module,exports){
+},{"./ImpurityRemover":152,"./jAnalyzer":154,"spectra-data-ranges":134}],159:[function(require,module,exports){
 'use strict';
 
 const patterns = ['s', 'd', 't', 'q', 'quint', 'h', 'sept', 'o', 'n'];
@@ -38197,7 +38286,7 @@ module.exports.group = function group(signals, options = {}) {
     var i, k;
     for (i = 0; i < signals.length; i++) {
         var j = signals[i].j;
-        if (j && j.length > 0) {
+        if (j && j.lengthpublish > 0) {
             for (k = j.length - 2; k >= 0; k--) {
                 for (var m = j.length - 1; m > k; m--) {
                     if (j[k].diaID === j[m].diaID &&
@@ -38260,7 +38349,7 @@ module.exports.compilePattern = function compilePattern(signal, tolerance = 0.05
 };
 
 
-},{}],158:[function(require,module,exports){
+},{}],160:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -38285,14 +38374,14 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],159:[function(require,module,exports){
+},{}],161:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],160:[function(require,module,exports){
+},{}],162:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -38882,7 +38971,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":159,"_process":131,"inherits":158}],161:[function(require,module,exports){
+},{"./support/isBuffer":161,"_process":132,"inherits":160}],163:[function(require,module,exports){
 'use strict';
 
 const types = require('./types');
@@ -38989,7 +39078,7 @@ function getTextContent(content) {
             return content.content;
     }
 }
-},{"./types":162,"./util/defaults":176}],162:[function(require,module,exports){
+},{"./types":164,"./util/defaults":178}],164:[function(require,module,exports){
 'use strict';
 
 
@@ -39023,7 +39112,7 @@ module.exports = {
         return all;
     }
 };
-},{"./types/common.js":163,"./types/default.js":164,"./types/nmr.js":165,"./types/reaction/general.js":166,"./types/sample/chromatogram.js":167,"./types/sample/general.js":168,"./types/sample/image.js":169,"./types/sample/ir.js":170,"./types/sample/mass.js":171,"./types/sample/nmr.js":172,"./types/sample/physical.js":173,"./types/sample/raman.js":174,"./types/sample/xray.js":175}],163:[function(require,module,exports){
+},{"./types/common.js":165,"./types/default.js":166,"./types/nmr.js":167,"./types/reaction/general.js":168,"./types/sample/chromatogram.js":169,"./types/sample/general.js":170,"./types/sample/image.js":171,"./types/sample/ir.js":172,"./types/sample/mass.js":173,"./types/sample/nmr.js":174,"./types/sample/physical.js":175,"./types/sample/raman.js":176,"./types/sample/xray.js":177}],165:[function(require,module,exports){
 'use strict';
 
 const common = module.exports = {};
@@ -39083,7 +39172,7 @@ common.getTargetProperty = function (filename) {
             return 'file'
     }
 };
-},{}],164:[function(require,module,exports){
+},{}],166:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39095,7 +39184,7 @@ module.exports = {
         return [];
     }
 };
-},{}],165:[function(require,module,exports){
+},{}],167:[function(require,module,exports){
 'use strict';
 
 const nmrMetadata = require('nmr-metadata');
@@ -39104,7 +39193,7 @@ exports.getMetadata = nmrMetadata.parseJcamp;
 exports.getSpectrumType = nmrMetadata.getSpectrumType;
 exports.getNucleusFrom2DExperiment = nmrMetadata.getNucleusFrom2DExperiment;
 
-},{"nmr-metadata":103}],166:[function(require,module,exports){
+},{"nmr-metadata":104}],168:[function(require,module,exports){
 'use strict';
 
 
@@ -39126,7 +39215,7 @@ module.exports = {
     }
 };
 
-},{}],167:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39136,7 +39225,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":163}],168:[function(require,module,exports){
+},{"../common":165}],170:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39152,7 +39241,7 @@ module.exports = {
         }
     }
 };
-},{}],169:[function(require,module,exports){
+},{}],171:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39162,7 +39251,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":163}],170:[function(require,module,exports){
+},{"../common":165}],172:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39172,7 +39261,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":163}],171:[function(require,module,exports){
+},{"../common":165}],173:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39182,7 +39271,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":163}],172:[function(require,module,exports){
+},{"../common":165}],174:[function(require,module,exports){
 'use strict';
 
 const isFid = /[^a-z]fid[^a-z]/i;
@@ -39238,7 +39327,7 @@ function getReference(filename) {
     return reference;
 }
 
-},{"../common":163,"../nmr":165}],173:[function(require,module,exports){
+},{"../common":165,"../nmr":167}],175:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39247,7 +39336,7 @@ module.exports = {
         return {}
     }
 };
-},{}],174:[function(require,module,exports){
+},{}],176:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39258,7 +39347,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":163}],175:[function(require,module,exports){
+},{"../common":165}],177:[function(require,module,exports){
 'use strict';
 
 const common = require('../common');
@@ -39268,7 +39357,7 @@ module.exports = {
     find: common.basenameFind,
     getProperty: common.getTargetProperty
 };
-},{"../common":163}],176:[function(require,module,exports){
+},{"../common":165}],178:[function(require,module,exports){
 /*
     Modified from https://github.com/justmoon/node-extend
     Copyright (c) 2014 Stefan Thomas
@@ -39367,5 +39456,5 @@ module.exports = function defaults() {
     // Return the modified object
     return target;
 };
-},{}]},{},[161])(161)
+},{}]},{},[163])(163)
 });
