@@ -2,9 +2,10 @@
 
 const types = require('./types');
 const defaults = require('./util/defaults');
+const util = require('./types/common');
 
 module.exports = {
-    util: require('./types/common'),
+    util: util,
     process: function (type, doc, content, customMetadata) {
         let filename = content.filename;
         let fileContent = getTextContent(content);
