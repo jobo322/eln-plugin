@@ -30,4 +30,12 @@ module.exports = {
         }
         return all;
     }
+    
+    getUtil(kind) {
+        var kind =  lib.types[kind];
+        if (kind) {
+            return kind.util;
+        }
+        return undefined;
+    }
 };
