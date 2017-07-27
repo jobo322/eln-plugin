@@ -38986,8 +38986,10 @@ function hasOwnProperty(obj, prop) {
 
 var types = require('./types');
 var defaults = require('./util/defaults');
+var util = require('./types/common');
 
 module.exports = {
+    util: util,
     process: function process(type, doc, content, customMetadata) {
         var filename = content.filename;
         var fileContent = getTextContent(content);
@@ -39088,7 +39090,7 @@ function getTextContent(content) {
     }
 }
 
-},{"./types":163,"./util/defaults":177}],163:[function(require,module,exports){
+},{"./types":163,"./types/common":164,"./util/defaults":177}],163:[function(require,module,exports){
 'use strict';
 
 var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "xray": require("./types/sample/xray.js") } } };
