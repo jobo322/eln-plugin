@@ -1,6 +1,6 @@
 {
   "name": "eln-plugin",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Extract metainfo from chemical file formats into a well defined json structure",
   "main": "src/index.js",
   "scripts": {
@@ -18,7 +18,7 @@
   },
   "homepage": "https://github.com/cheminfo/eln-plugin#readme",
   "devDependencies": {
-    "babel-plugin-transform-es2015-block-scoping": "^6.24.1",
+    "babel-plugin-transform-es2015-block-scoping": "^6.26.0",
     "babel-preset-env": "^1.6.0",
     "babelify": "^7.3.0",
     "babili": "^0.1.4",
