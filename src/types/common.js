@@ -49,6 +49,7 @@ common.getTargetProperty = function (filename) {
         case 'xml':
             return 'xml';
         case 'cdf':
+        case 'nc':
         case 'netcdf':
             return 'cdf';
         case 'pdf':
