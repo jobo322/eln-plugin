@@ -39200,7 +39200,8 @@ module.exports = {
             name: [],
             mf: '',
             molfile: '',
-            mw: 0
+            mw: 0,
+            keyword: []
         };
     }
 };
