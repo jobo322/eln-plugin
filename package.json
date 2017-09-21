@@ -23,6 +23,7 @@
     "babel-preset-babili": "^0.1.4",
     "babel-preset-env": "^1.6.0",
     "babelify": "^7.3.0",
+    "babili": "^0.1.4",
     "browserify": "^14.4.0",
     "bulkify": "^1.1.1",
     "jest": "^20.0.1"
