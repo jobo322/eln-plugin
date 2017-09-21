@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/cheminfo/eln-plugin#readme",
   "devDependencies": {
+    "babel-plugin-remove-comments": "^2.0.0",
     "babel-plugin-transform-es2015-block-scoping": "^6.26.0",
     "babel-preset-env": "^1.6.0",
     "babelify": "^7.3.0",
@@ -27,7 +28,6 @@
     "jest": "^20.0.1"
   },
   "dependencies": {
-    "babel-plugin-remove-comments": "^2.0.0",
     "bulk-require": "^0.2.1",
     "nmr-metadata": "^2.0.2"
   }
