@@ -10,7 +10,9 @@ module.exports = {
             mf: '',
             molfile: '',
             mw: 0,
-            keyword: []
+            keyword: [],
+            sequence: '',
+            kind: ''
         }
     }
 };
