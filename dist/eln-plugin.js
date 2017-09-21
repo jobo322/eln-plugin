@@ -30721,7 +30721,7 @@ module.exports={
   "_args": [
     [
       "spectra-data@3.1.11",
-      "/usr/local/www/sites/www.lactame.com/node/grm-data/git/cheminfo/eln-plugin"
+      "/Users/lpatiny/git/cheminfo/eln-plugin"
     ]
   ],
   "_from": "spectra-data@3.1.11",
@@ -30745,7 +30745,7 @@ module.exports={
   ],
   "_resolved": "https://registry.npmjs.org/spectra-data/-/spectra-data-3.1.11.tgz",
   "_spec": "3.1.11",
-  "_where": "/usr/local/www/sites/www.lactame.com/node/grm-data/git/cheminfo/eln-plugin",
+  "_where": "/Users/lpatiny/git/cheminfo/eln-plugin",
   "author": {
     "name": "Andres Castillo"
   },
@@ -39201,7 +39201,9 @@ module.exports = {
             mf: '',
             molfile: '',
             mw: 0,
-            keyword: []
+            keyword: [],
+            sequence: '',
+            kind: ''
         };
     }
 };
