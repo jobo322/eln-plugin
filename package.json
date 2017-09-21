@@ -27,6 +27,7 @@
     "jest": "^20.0.1"
   },
   "dependencies": {
+    "babel-plugin-remove-comments": "^2.0.0",
     "bulk-require": "^0.2.1",
     "nmr-metadata": "^2.0.2"
   }
