@@ -54,6 +54,11 @@ common.getTargetProperty = function (filename) {
             return 'cdf';
         case 'pdf':
             return 'pdf';
+        case 'txt':
+        case 'text':
+        case 'csv':
+        case 'tsv':
+            return 'text';
         default :
             return 'file'
     }
