@@ -688,7 +688,7 @@ module.exports = {
 /*!
  * The buffer module from node.js, for the browser.
  *
- * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @author   Feross Aboukhadijeh <https://feross.org>
  * @license  MIT
  */
 /* eslint-disable no-proto */
@@ -786,7 +786,7 @@ function from(value, encodingOrOffset, length) {
     throw new TypeError('"value" argument must not be a number');
   }
 
-  if (value instanceof ArrayBuffer) {
+  if (isArrayBuffer(value)) {
     return fromArrayBuffer(value, encodingOrOffset, length);
   }
 
@@ -1044,7 +1044,7 @@ function byteLength(string, encoding) {
   if (Buffer.isBuffer(string)) {
     return string.length;
   }
-  if (isArrayBufferView(string) || string instanceof ArrayBuffer) {
+  if (isArrayBufferView(string) || isArrayBuffer(string)) {
     return string.byteLength;
   }
   if (typeof string !== 'string') {
@@ -2333,6 +2333,12 @@ function blitBuffer(src, dst, offset, length) {
     dst[i + offset] = src[i];
   }
   return i;
+}
+
+// ArrayBuffers from another context (i.e. an iframe) do not pass the `instanceof` check
+// but they should be treated as valid. See: https://github.com/feross/buffer/issues/166
+function isArrayBuffer(obj) {
+  return obj instanceof ArrayBuffer || obj != null && obj.constructor != null && obj.constructor.name === 'ArrayBuffer' && typeof obj.byteLength === 'number';
 }
 
 // Node 0.10 supports `ArrayBuffer` but lacks `ArrayBuffer.isView`
@@ -12201,37 +12207,16 @@ function abstractMatrix(superCtor) {
 
     var i;
 
-    var _iteratorNormalCompletion = true;
-    var _didIteratorError = false;
-    var _iteratorError = undefined;
-
-    try {
-        for (var _iterator = operators[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-            var operator = _step.value;
-
-            var inplaceOp = eval(fillTemplateFunction(inplaceOperator, { name: operator[1], op: operator[0] }));
-            var inplaceOpS = eval(fillTemplateFunction(inplaceOperatorScalar, { name: operator[1] + 'S', op: operator[0] }));
-            var inplaceOpM = eval(fillTemplateFunction(inplaceOperatorMatrix, { name: operator[1] + 'M', op: operator[0] }));
-            var staticOp = eval(fillTemplateFunction(staticOperator, { name: operator[1] }));
-            for (i = 1; i < operator.length; i++) {
-                Matrix.prototype[operator[i]] = inplaceOp;
-                Matrix.prototype[operator[i] + 'S'] = inplaceOpS;
-                Matrix.prototype[operator[i] + 'M'] = inplaceOpM;
-                Matrix[operator[i]] = staticOp;
-            }
-        }
-    } catch (err) {
-        _didIteratorError = true;
-        _iteratorError = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion && _iterator.return) {
-                _iterator.return();
-            }
-        } finally {
-            if (_didIteratorError) {
-                throw _iteratorError;
-            }
+    for (var operator of operators) {
+        var inplaceOp = eval(fillTemplateFunction(inplaceOperator, { name: operator[1], op: operator[0] }));
+        var inplaceOpS = eval(fillTemplateFunction(inplaceOperatorScalar, { name: operator[1] + 'S', op: operator[0] }));
+        var inplaceOpM = eval(fillTemplateFunction(inplaceOperatorMatrix, { name: operator[1] + 'M', op: operator[0] }));
+        var staticOp = eval(fillTemplateFunction(staticOperator, { name: operator[1] }));
+        for (i = 1; i < operator.length; i++) {
+            Matrix.prototype[operator[i]] = inplaceOp;
+            Matrix.prototype[operator[i] + 'S'] = inplaceOpS;
+            Matrix.prototype[operator[i] + 'M'] = inplaceOpM;
+            Matrix[operator[i]] = staticOp;
         }
     }
 
@@ -12241,90 +12226,48 @@ function abstractMatrix(superCtor) {
         methods.push(['Math.' + mathMethod, mathMethod]);
     });
 
-    var _iteratorNormalCompletion2 = true;
-    var _didIteratorError2 = false;
-    var _iteratorError2 = undefined;
-
-    try {
-        for (var _iterator2 = methods[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-            var method = _step2.value;
-
-            var inplaceMeth = eval(fillTemplateFunction(inplaceMethod, { name: method[1], method: method[0] }));
-            var staticMeth = eval(fillTemplateFunction(staticMethod, { name: method[1] }));
-            for (i = 1; i < method.length; i++) {
-                Matrix.prototype[method[i]] = inplaceMeth;
-                Matrix[method[i]] = staticMeth;
-            }
-        }
-    } catch (err) {
-        _didIteratorError2 = true;
-        _iteratorError2 = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion2 && _iterator2.return) {
-                _iterator2.return();
-            }
-        } finally {
-            if (_didIteratorError2) {
-                throw _iteratorError2;
-            }
+    for (var method of methods) {
+        var inplaceMeth = eval(fillTemplateFunction(inplaceMethod, { name: method[1], method: method[0] }));
+        var staticMeth = eval(fillTemplateFunction(staticMethod, { name: method[1] }));
+        for (i = 1; i < method.length; i++) {
+            Matrix.prototype[method[i]] = inplaceMeth;
+            Matrix[method[i]] = staticMeth;
         }
     }
 
     var methodsWithArgs = [['Math.pow', 1, 'pow']];
 
-    var _iteratorNormalCompletion3 = true;
-    var _didIteratorError3 = false;
-    var _iteratorError3 = undefined;
-
-    try {
-        for (var _iterator3 = methodsWithArgs[Symbol.iterator](), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
-            var methodWithArg = _step3.value;
-
-            var args = 'arg0';
-            for (i = 1; i < methodWithArg[1]; i++) {
-                args += `, arg${i}`;
-            }
-            if (methodWithArg[1] !== 1) {
-                var inplaceMethWithArgs = eval(fillTemplateFunction(inplaceMethodWithArgs, {
-                    name: methodWithArg[2],
-                    method: methodWithArg[0],
-                    args: args
-                }));
-                var staticMethWithArgs = eval(fillTemplateFunction(staticMethodWithArgs, { name: methodWithArg[2], args: args }));
-                for (i = 2; i < methodWithArg.length; i++) {
-                    Matrix.prototype[methodWithArg[i]] = inplaceMethWithArgs;
-                    Matrix[methodWithArg[i]] = staticMethWithArgs;
-                }
-            } else {
-                var tmplVar = {
-                    name: methodWithArg[2],
-                    args: args,
-                    method: methodWithArg[0]
-                };
-                var inplaceMethod2 = eval(fillTemplateFunction(inplaceMethodWithOneArg, tmplVar));
-                var inplaceMethodS = eval(fillTemplateFunction(inplaceMethodWithOneArgScalar, tmplVar));
-                var inplaceMethodM = eval(fillTemplateFunction(inplaceMethodWithOneArgMatrix, tmplVar));
-                var staticMethod2 = eval(fillTemplateFunction(staticMethodWithOneArg, tmplVar));
-                for (i = 2; i < methodWithArg.length; i++) {
-                    Matrix.prototype[methodWithArg[i]] = inplaceMethod2;
-                    Matrix.prototype[methodWithArg[i] + 'M'] = inplaceMethodM;
-                    Matrix.prototype[methodWithArg[i] + 'S'] = inplaceMethodS;
-                    Matrix[methodWithArg[i]] = staticMethod2;
-                }
-            }
+    for (var methodWithArg of methodsWithArgs) {
+        var args = 'arg0';
+        for (i = 1; i < methodWithArg[1]; i++) {
+            args += `, arg${i}`;
         }
-    } catch (err) {
-        _didIteratorError3 = true;
-        _iteratorError3 = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion3 && _iterator3.return) {
-                _iterator3.return();
+        if (methodWithArg[1] !== 1) {
+            var inplaceMethWithArgs = eval(fillTemplateFunction(inplaceMethodWithArgs, {
+                name: methodWithArg[2],
+                method: methodWithArg[0],
+                args: args
+            }));
+            var staticMethWithArgs = eval(fillTemplateFunction(staticMethodWithArgs, { name: methodWithArg[2], args: args }));
+            for (i = 2; i < methodWithArg.length; i++) {
+                Matrix.prototype[methodWithArg[i]] = inplaceMethWithArgs;
+                Matrix[methodWithArg[i]] = staticMethWithArgs;
             }
-        } finally {
-            if (_didIteratorError3) {
-                throw _iteratorError3;
+        } else {
+            var tmplVar = {
+                name: methodWithArg[2],
+                args: args,
+                method: methodWithArg[0]
+            };
+            var inplaceMethod2 = eval(fillTemplateFunction(inplaceMethodWithOneArg, tmplVar));
+            var inplaceMethodS = eval(fillTemplateFunction(inplaceMethodWithOneArgScalar, tmplVar));
+            var inplaceMethodM = eval(fillTemplateFunction(inplaceMethodWithOneArgMatrix, tmplVar));
+            var staticMethod2 = eval(fillTemplateFunction(staticMethodWithOneArg, tmplVar));
+            for (i = 2; i < methodWithArg.length; i++) {
+                Matrix.prototype[methodWithArg[i]] = inplaceMethod2;
+                Matrix.prototype[methodWithArg[i] + 'M'] = inplaceMethodM;
+                Matrix.prototype[methodWithArg[i] + 'S'] = inplaceMethodS;
+                Matrix[methodWithArg[i]] = staticMethod2;
             }
         }
     }
@@ -20720,34 +20663,13 @@ var operators = [
 // Bitwise operators
 ['&', 'and'], ['|', 'or'], ['^', 'xor'], ['<<', 'leftShift'], ['>>', 'signPropagatingRightShift'], ['>>>', 'rightShift', 'zeroFillRightShift']];
 
-var _iteratorNormalCompletion = true;
-var _didIteratorError = false;
-var _iteratorError = undefined;
+for (var operator of operators) {
+    for (var i = 1; i < operator.length; i++) {
+        SparseMatrix.prototype[operator[i]] = eval(fillTemplateFunction(inplaceOperator, { name: operator[i], op: operator[0] }));
+        SparseMatrix.prototype[operator[i] + 'S'] = eval(fillTemplateFunction(inplaceOperatorScalar, { name: operator[i] + 'S', op: operator[0] }));
+        SparseMatrix.prototype[operator[i] + 'M'] = eval(fillTemplateFunction(inplaceOperatorMatrix, { name: operator[i] + 'M', op: operator[0] }));
 
-try {
-    for (var _iterator = operators[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-        var operator = _step.value;
-
-        for (var i = 1; i < operator.length; i++) {
-            SparseMatrix.prototype[operator[i]] = eval(fillTemplateFunction(inplaceOperator, { name: operator[i], op: operator[0] }));
-            SparseMatrix.prototype[operator[i] + 'S'] = eval(fillTemplateFunction(inplaceOperatorScalar, { name: operator[i] + 'S', op: operator[0] }));
-            SparseMatrix.prototype[operator[i] + 'M'] = eval(fillTemplateFunction(inplaceOperatorMatrix, { name: operator[i] + 'M', op: operator[0] }));
-
-            SparseMatrix[operator[i]] = eval(fillTemplateFunction(staticOperator, { name: operator[i] }));
-        }
-    }
-} catch (err) {
-    _didIteratorError = true;
-    _iteratorError = err;
-} finally {
-    try {
-        if (!_iteratorNormalCompletion && _iterator.return) {
-            _iterator.return();
-        }
-    } finally {
-        if (_didIteratorError) {
-            throw _iteratorError;
-        }
+        SparseMatrix[operator[i]] = eval(fillTemplateFunction(staticOperator, { name: operator[i] }));
     }
 }
 
@@ -20757,31 +20679,10 @@ var methods = [['~', 'not']];
     methods.push(['Math.' + mathMethod, mathMethod]);
 });
 
-var _iteratorNormalCompletion2 = true;
-var _didIteratorError2 = false;
-var _iteratorError2 = undefined;
-
-try {
-    for (var _iterator2 = methods[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-        var method = _step2.value;
-
-        for (var i = 1; i < method.length; i++) {
-            SparseMatrix.prototype[method[i]] = eval(fillTemplateFunction(inplaceMethod, { name: method[i], method: method[0] }));
-            SparseMatrix[method[i]] = eval(fillTemplateFunction(staticMethod, { name: method[i] }));
-        }
-    }
-} catch (err) {
-    _didIteratorError2 = true;
-    _iteratorError2 = err;
-} finally {
-    try {
-        if (!_iteratorNormalCompletion2 && _iterator2.return) {
-            _iterator2.return();
-        }
-    } finally {
-        if (_didIteratorError2) {
-            throw _iteratorError2;
-        }
+for (var method of methods) {
+    for (var i = 1; i < method.length; i++) {
+        SparseMatrix.prototype[method[i]] = eval(fillTemplateFunction(inplaceMethod, { name: method[i], method: method[0] }));
+        SparseMatrix[method[i]] = eval(fillTemplateFunction(staticMethod, { name: method[i] }));
     }
 }
 
@@ -22336,57 +22237,36 @@ class SpinSystem {
         if (!force && cluster.index.length <= maxClusterSize) {
             clusterList.push(this._getMembers(cluster));
         } else {
-            var _iteratorNormalCompletion = true;
-            var _didIteratorError = false;
-            var _iteratorError = undefined;
-
-            try {
-                for (var _iterator = cluster.children[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                    var child = _step.value;
-
-                    if (!isNaN(child.index) || child.index.length <= maxClusterSize) {
-                        var members = this._getMembers(child);
-                        //Add the neighbors that shares at least 1 coupling with the given cluster
-                        var count = 0;
-                        for (var i = 0; i < this.nSpins; i++) {
-                            if (members[i] === 1) {
-                                count++;
-                                for (var j = 0; j < this.nSpins; j++) {
-                                    if (this.connectivity[i][j] === 1 && members[j] === 0) {
-                                        members[j] = -1;
-                                        count++;
-                                    }
+            for (var child of cluster.children) {
+                if (!isNaN(child.index) || child.index.length <= maxClusterSize) {
+                    var members = this._getMembers(child);
+                    //Add the neighbors that shares at least 1 coupling with the given cluster
+                    var count = 0;
+                    for (var i = 0; i < this.nSpins; i++) {
+                        if (members[i] === 1) {
+                            count++;
+                            for (var j = 0; j < this.nSpins; j++) {
+                                if (this.connectivity[i][j] === 1 && members[j] === 0) {
+                                    members[j] = -1;
+                                    count++;
                                 }
                             }
                         }
+                    }
 
-                        if (count <= maxClusterSize) {
-                            clusterList.push(members);
-                        } else {
-                            if (isNaN(child.index)) {
-                                this._splitCluster(child, clusterList, maxClusterSize, true);
-                            } else {
-                                //We have to threat this spin alone and use the resurrection algorithm instead of the simulation
-                                members[child.index] = 2;
-                                clusterList.push(members);
-                            }
-                        }
+                    if (count <= maxClusterSize) {
+                        clusterList.push(members);
                     } else {
-                        this._splitCluster(child, clusterList, maxClusterSize, false);
+                        if (isNaN(child.index)) {
+                            this._splitCluster(child, clusterList, maxClusterSize, true);
+                        } else {
+                            //We have to threat this spin alone and use the resurrection algorithm instead of the simulation
+                            members[child.index] = 2;
+                            clusterList.push(members);
+                        }
                     }
-                }
-            } catch (err) {
-                _didIteratorError = true;
-                _iteratorError = err;
-            } finally {
-                try {
-                    if (!_iteratorNormalCompletion && _iterator.return) {
-                        _iterator.return();
-                    }
-                } finally {
-                    if (_didIteratorError) {
-                        throw _iteratorError;
-                    }
+                } else {
+                    this._splitCluster(child, clusterList, maxClusterSize, false);
                 }
             }
         }
@@ -22405,29 +22285,8 @@ class SpinSystem {
         if (!isNaN(cluster.index)) {
             members[cluster.index * 1] = 1;
         } else {
-            var _iteratorNormalCompletion2 = true;
-            var _didIteratorError2 = false;
-            var _iteratorError2 = undefined;
-
-            try {
-                for (var _iterator2 = cluster.index[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-                    var index = _step2.value;
-
-                    members[index.index * 1] = 1;
-                }
-            } catch (err) {
-                _didIteratorError2 = true;
-                _iteratorError2 = err;
-            } finally {
-                try {
-                    if (!_iteratorNormalCompletion2 && _iterator2.return) {
-                        _iterator2.return();
-                    }
-                } finally {
-                    if (_didIteratorError2) {
-                        throw _iteratorError2;
-                    }
-                }
+            for (var index of cluster.index) {
+                members[index.index * 1] = 1;
             }
         }
         return members;
@@ -30100,31 +29959,9 @@ function formatAcs(ranges, options) {
     var acs = spectroInformation(options);
     if (acs.length === 0) acs = 'δ ';
     var acsRanges = [];
-    var _iteratorNormalCompletion = true;
-    var _didIteratorError = false;
-    var _iteratorError = undefined;
-
-    try {
-        for (var _iterator = ranges[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-            var range = _step.value;
-
-            pushDelta(range, acsRanges, options);
-        }
-    } catch (err) {
-        _didIteratorError = true;
-        _iteratorError = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion && _iterator.return) {
-                _iterator.return();
-            }
-        } finally {
-            if (_didIteratorError) {
-                throw _iteratorError;
-            }
-        }
+    for (var range of ranges) {
+        pushDelta(range, acsRanges, options);
     }
-
     if (acsRanges.length > 0) {
         return acs + acsRanges.join(', ');
     } else {
@@ -30163,37 +30000,15 @@ function pushDelta(range, acsRanges, options) {
             }
             strings += Math.min(...fromTo).toFixed(options.nbDecimalDelta) + '-' + Math.max(...fromTo).toFixed(options.nbDecimalDelta);
             strings += ' (' + getIntegral(range, options);
-            var _iteratorNormalCompletion2 = true;
-            var _didIteratorError2 = false;
-            var _iteratorError2 = undefined;
-
-            try {
-                for (var _iterator2 = signals[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-                    var signal = _step2.value;
-
-                    parenthesis = [];
-                    if (signal.delta !== undefined) {
-                        strings = appendSeparator(strings);
-                        strings += signal.delta.toFixed(options.nbDecimalDelta);
-                    }
-                    switchFormat({}, signal, parenthesis, options);
-                    if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
+            for (var signal of signals) {
+                parenthesis = [];
+                if (signal.delta !== undefined) {
+                    strings = appendSeparator(strings);
+                    strings += signal.delta.toFixed(options.nbDecimalDelta);
                 }
-            } catch (err) {
-                _didIteratorError2 = true;
-                _iteratorError2 = err;
-            } finally {
-                try {
-                    if (!_iteratorNormalCompletion2 && _iterator2.return) {
-                        _iterator2.return();
-                    }
-                } finally {
-                    if (_didIteratorError2) {
-                        throw _iteratorError2;
-                    }
-                }
+                switchFormat({}, signal, parenthesis, options);
+                if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
             }
-
             strings += ')';
         } else {
             parenthesis = [];
@@ -30236,43 +30051,22 @@ function pushMultiplicityFromSignal(signal, parenthesis) {
 }
 
 function switchFormat(range, signal, parenthesis, options) {
-    var _iteratorNormalCompletion3 = true;
-    var _didIteratorError3 = false;
-    var _iteratorError3 = undefined;
-
-    try {
-        for (var _iterator3 = options.format[Symbol.iterator](), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
-            var char = _step3.value;
-
-            switch (char.toUpperCase()) {
-                case 'I':
-                    pushIntegral(range, parenthesis, options);
-                    break;
-                case 'M':
-                    pushMultiplicityFromSignal(signal, parenthesis);
-                    break;
-                case 'A':
-                    pushAssignment(signal, parenthesis);
-                    break;
-                case 'J':
-                    pushCoupling(signal, parenthesis, options);
-                    break;
-                default:
-                    throw new Error('Unknow format letter: ' + char);
-            }
-        }
-    } catch (err) {
-        _didIteratorError3 = true;
-        _iteratorError3 = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion3 && _iterator3.return) {
-                _iterator3.return();
-            }
-        } finally {
-            if (_didIteratorError3) {
-                throw _iteratorError3;
-            }
+    for (var char of options.format) {
+        switch (char.toUpperCase()) {
+            case 'I':
+                pushIntegral(range, parenthesis, options);
+                break;
+            case 'M':
+                pushMultiplicityFromSignal(signal, parenthesis);
+                break;
+            case 'A':
+                pushAssignment(signal, parenthesis);
+                break;
+            case 'J':
+                pushCoupling(signal, parenthesis, options);
+                break;
+            default:
+                throw new Error('Unknow format letter: ' + char);
         }
     }
 }
@@ -30305,33 +30099,11 @@ function pushCoupling(signal, parenthesis, options) {
         });
 
         var values = [];
-        var _iteratorNormalCompletion4 = true;
-        var _didIteratorError4 = false;
-        var _iteratorError4 = undefined;
-
-        try {
-            for (var _iterator4 = signal.j[Symbol.iterator](), _step4; !(_iteratorNormalCompletion4 = (_step4 = _iterator4.next()).done); _iteratorNormalCompletion4 = true) {
-                var j = _step4.value;
-
-                if (j.coupling !== undefined) {
-                    values.push(j.coupling.toFixed(options.nbDecimalJ));
-                }
-            }
-        } catch (err) {
-            _didIteratorError4 = true;
-            _iteratorError4 = err;
-        } finally {
-            try {
-                if (!_iteratorNormalCompletion4 && _iterator4.return) {
-                    _iterator4.return();
-                }
-            } finally {
-                if (_didIteratorError4) {
-                    throw _iteratorError4;
-                }
+        for (var j of signal.j) {
+            if (j.coupling !== undefined) {
+                values.push(j.coupling.toFixed(options.nbDecimalJ));
             }
         }
-
         if (values.length > 0) parenthesis.push('<i>J</i> = ' + values.join(', ') + ' Hz');
     }
 }
@@ -30592,47 +30364,25 @@ class Ranges extends Array {
         if (options.joinCouplings) {
             this.joinCouplings(options);
         }
-        var _iteratorNormalCompletion = true;
-        var _didIteratorError = false;
-        var _iteratorError = undefined;
-
-        try {
-            for (var _iterator = this[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                var range = _step.value;
-
-                if (Array.isArray(range.signal) && range.signal.length > 0) {
-                    var l = range.signal.length;
-                    var delta = new Array(l);
-                    for (var i = 0; i < l; i++) {
-                        delta[i] = range.signal[i].delta;
-                    }
-                    index.push({
-                        multiplicity: l > 1 ? 'm' : range.signal[0].multiplicity || utils.joinCoupling(range.signal[0], options.tolerance),
-                        delta: _mlStat.array.arithmeticMean(delta) || (range.to + range.from) * 0.5,
-                        integral: range.integral
-                    });
-                } else {
-                    index.push({
-                        delta: (range.to + range.from) * 0.5,
-                        multiplicity: 'm'
-                    });
+        for (var range of this) {
+            if (Array.isArray(range.signal) && range.signal.length > 0) {
+                var l = range.signal.length;
+                var delta = new Array(l);
+                for (var i = 0; i < l; i++) {
+                    delta[i] = range.signal[i].delta;
                 }
-            }
-        } catch (err) {
-            _didIteratorError = true;
-            _iteratorError = err;
-        } finally {
-            try {
-                if (!_iteratorNormalCompletion && _iterator.return) {
-                    _iterator.return();
-                }
-            } finally {
-                if (_didIteratorError) {
-                    throw _iteratorError;
-                }
+                index.push({
+                    multiplicity: l > 1 ? 'm' : range.signal[0].multiplicity || utils.joinCoupling(range.signal[0], options.tolerance),
+                    delta: _mlStat.array.arithmeticMean(delta) || (range.to + range.from) * 0.5,
+                    integral: range.integral
+                });
+            } else {
+                index.push({
+                    delta: (range.to + range.from) * 0.5,
+                    multiplicity: 'm'
+                });
             }
         }
-
         return index;
     }
 
@@ -31368,32 +31118,11 @@ class NMR extends _SD2.default {
 
         peaks.forEach(peak => {
             for (var _impurity in solventImpurities) {
-                var _iteratorNormalCompletion = true;
-                var _didIteratorError = false;
-                var _iteratorError = undefined;
-
-                try {
-                    for (var _iterator = _impurity[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                        var signal = _step.value;
-
-                        if (peak.width + error > Math.abs(signal.shift - peak.x)) {
-                            var from = peak.x + peak.width;
-                            var to = peak.x - peak.width;
-                            this.fill(from, to, value);
-                        }
-                    }
-                } catch (err) {
-                    _didIteratorError = true;
-                    _iteratorError = err;
-                } finally {
-                    try {
-                        if (!_iteratorNormalCompletion && _iterator.return) {
-                            _iterator.return();
-                        }
-                    } finally {
-                        if (_didIteratorError) {
-                            throw _iteratorError;
-                        }
+                for (var signal of _impurity) {
+                    if (peak.width + error > Math.abs(signal.shift - peak.x)) {
+                        var from = peak.x + peak.width;
+                        var to = peak.x - peak.width;
+                        this.fill(from, to, value);
                     }
                 }
             }
@@ -34083,30 +33812,9 @@ function removeImpurities(peakList, options = {}) {
     if (solvent === '(cd3)2so') solvent = 'dmso';
     var solventImpurities = _impurities2.default[solvent];
     if (solventImpurities) {
-        var _iteratorNormalCompletion = true;
-        var _didIteratorError = false;
-        var _iteratorError = undefined;
-
-        try {
-            for (var _iterator = toCheck[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                var impurity = _step.value;
-
-                var impurityShifts = solventImpurities[impurity.toLowerCase()];
-                checkImpurity(peakList, impurityShifts, { error: error });
-            }
-        } catch (err) {
-            _didIteratorError = true;
-            _iteratorError = err;
-        } finally {
-            try {
-                if (!_iteratorNormalCompletion && _iterator.return) {
-                    _iterator.return();
-                }
-            } finally {
-                if (_didIteratorError) {
-                    throw _iteratorError;
-                }
-            }
+        for (var impurity of toCheck) {
+            var impurityShifts = solventImpurities[impurity.toLowerCase()];
+            checkImpurity(peakList, impurityShifts, { error: error });
         }
     }
     return peakList;
@@ -38899,10 +38607,10 @@ function getTextContent(content) {
     }
 }
 
-},{"./types":166,"./types/common":167,"./util/defaults":180}],166:[function(require,module,exports){
+},{"./types":166,"./types/common":167,"./util/defaults":182}],166:[function(require,module,exports){
 'use strict';
 
-var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "xray": require("./types/sample/xray.js") } } };
+var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "xray": require("./types/sample/xray.js") } } };
 
 module.exports = {
     getType(type, kind, custom) {
@@ -38933,7 +38641,7 @@ module.exports = {
     }
 };
 
-},{"./types/common.js":167,"./types/default.js":168,"./types/nmr.js":169,"./types/reaction/general.js":170,"./types/sample/chromatogram.js":171,"./types/sample/general.js":172,"./types/sample/image.js":173,"./types/sample/ir.js":174,"./types/sample/mass.js":175,"./types/sample/nmr.js":176,"./types/sample/physical.js":177,"./types/sample/raman.js":178,"./types/sample/xray.js":179}],167:[function(require,module,exports){
+},{"./types/common.js":167,"./types/default.js":168,"./types/nmr.js":169,"./types/reaction/general.js":170,"./types/sample/chromatogram.js":171,"./types/sample/differentialScanningCalorimetry.js":172,"./types/sample/general.js":173,"./types/sample/image.js":174,"./types/sample/ir.js":175,"./types/sample/mass.js":176,"./types/sample/nmr.js":177,"./types/sample/physical.js":178,"./types/sample/raman.js":179,"./types/sample/thermogravimetricAnalysis.js":180,"./types/sample/xray.js":181}],167:[function(require,module,exports){
 'use strict';
 
 var common = module.exports = {};
@@ -38989,6 +38697,11 @@ common.getTargetProperty = function (filename) {
             return 'cdf';
         case 'pdf':
             return 'pdf';
+        case 'txt':
+        case 'text':
+        case 'csv':
+        case 'tsv':
+            return 'text';
         default:
             return 'file';
     }
@@ -39051,6 +38764,17 @@ module.exports = {
 },{"../common":167}],172:[function(require,module,exports){
 'use strict';
 
+var common = require('../common');
+
+module.exports = {
+    jpath: ['spectra', 'differentialScanningCalorimetry'],
+    find: common.basenameFind,
+    getProperty: common.getTargetProperty
+};
+
+},{"../common":167}],173:[function(require,module,exports){
+'use strict';
+
 module.exports = {
     jpath: ['general'],
     getEmpty() {
@@ -39068,7 +38792,7 @@ module.exports = {
     }
 };
 
-},{}],173:[function(require,module,exports){
+},{}],174:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39079,7 +38803,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":167}],174:[function(require,module,exports){
+},{"../common":167}],175:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39090,7 +38814,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":167}],175:[function(require,module,exports){
+},{"../common":167}],176:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39101,7 +38825,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":167}],176:[function(require,module,exports){
+},{"../common":167}],177:[function(require,module,exports){
 'use strict';
 
 var isFid = /[^a-z]fid[^a-z]/i;
@@ -39155,7 +38879,7 @@ function getReference(filename) {
     return reference;
 }
 
-},{"../common":167,"../nmr":169}],177:[function(require,module,exports){
+},{"../common":167,"../nmr":169}],178:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39165,7 +38889,7 @@ module.exports = {
     }
 };
 
-},{}],178:[function(require,module,exports){
+},{}],179:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39176,7 +38900,18 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":167}],179:[function(require,module,exports){
+},{"../common":167}],180:[function(require,module,exports){
+'use strict';
+
+var common = require('../common');
+
+module.exports = {
+    jpath: ['spectra', 'thermogravimetricAnalysis'],
+    find: common.basenameFind,
+    getProperty: common.getTargetProperty
+};
+
+},{"../common":167}],181:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39187,7 +38922,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":167}],180:[function(require,module,exports){
+},{"../common":167}],182:[function(require,module,exports){
 /*
     Modified from https://github.com/justmoon/node-extend
     Copyright (c) 2014 Stefan Thomas
