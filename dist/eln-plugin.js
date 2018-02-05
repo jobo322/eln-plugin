@@ -684,11 +684,11 @@ module.exports = {
     converFolder: convert
 };
 
-},{"iobuffer":9,"jcampconverter":10,"jszip":21}],4:[function(require,module,exports){
+},{"iobuffer":9,"jcampconverter":10,"jszip":20}],4:[function(require,module,exports){
 /*!
  * The buffer module from node.js, for the browser.
  *
- * @author   Feross Aboukhadijeh <feross@feross.org> <http://feross.org>
+ * @author   Feross Aboukhadijeh <https://feross.org>
  * @license  MIT
  */
 /* eslint-disable no-proto */
@@ -786,7 +786,7 @@ function from(value, encodingOrOffset, length) {
     throw new TypeError('"value" argument must not be a number');
   }
 
-  if (value instanceof ArrayBuffer) {
+  if (isArrayBuffer(value)) {
     return fromArrayBuffer(value, encodingOrOffset, length);
   }
 
@@ -1044,7 +1044,7 @@ function byteLength(string, encoding) {
   if (Buffer.isBuffer(string)) {
     return string.length;
   }
-  if (isArrayBufferView(string) || string instanceof ArrayBuffer) {
+  if (isArrayBufferView(string) || isArrayBuffer(string)) {
     return string.byteLength;
   }
   if (typeof string !== 'string') {
@@ -2335,6 +2335,12 @@ function blitBuffer(src, dst, offset, length) {
   return i;
 }
 
+// ArrayBuffers from another context (i.e. an iframe) do not pass the `instanceof` check
+// but they should be treated as valid. See: https://github.com/feross/buffer/issues/166
+function isArrayBuffer(obj) {
+  return obj instanceof ArrayBuffer || obj != null && obj.constructor != null && obj.constructor.name === 'ArrayBuffer' && typeof obj.byteLength === 'number';
+}
+
 // Node 0.10 supports `ArrayBuffer` but lacks `ArrayBuffer.isView`
 function isArrayBufferView(obj) {
   return typeof ArrayBuffer.isView === 'function' && ArrayBuffer.isView(obj);
@@ -3148,13 +3154,9 @@ module.exports = IOBuffer;
 },{}],10:[function(require,module,exports){
 'use strict';
 
-var parseXYDataRegExp = require('./parseXYData.js');
-
 function getConverter() {
-
     // the following RegExp can only be used for XYdata, some peakTables have values with a "E-5" ...
-    var ntuplesSeparator = /[, \t]{1,}/;
-
+    var ntuplesSeparator = /[, \t]+/;
     var GC_MS_FIELDS = ['TIC', '.RIC', 'SCANNUMBER'];
 
     function convertToFloatArray(stringArray) {
@@ -3166,27 +3168,29 @@ function getConverter() {
         return floatArray;
     }
 
-    function Spectrum() {}
+    class Spectrum {}
+
+    var defaultOptions = {
+        keepRecordsRegExp: /^$/,
+        xy: false,
+        withoutXY: false,
+        chromatogram: false,
+        keepSpectra: false,
+        noContour: false,
+        nbContourLevels: 7,
+        noiseMultiplier: 5
+    };
 
     function convert(jcamp, options) {
-        options = options || {};
+        options = Object.assign({}, defaultOptions, options);
 
-        var keepRecordsRegExp = /^$/;
-        if (options.keepRecordsRegExp) keepRecordsRegExp = options.keepRecordsRegExp;
         var wantXY = !options.withoutXY;
 
         var start = Date.now();
 
-        var ntuples = {},
-            ldr,
-            dataLabel,
-            dataValue,
-            ldrs,
-            i,
-            ii,
-            position,
-            endLine,
-            infos;
+        var ntuples = {};
+        var ldr, dataLabel, dataValue, ldrs;
+        var i, ii, j, position, endLine, infos;
 
         var result = {};
         result.profiling = [];
@@ -3196,20 +3200,25 @@ function getConverter() {
         result.info = {};
         var spectrum = new Spectrum();
 
-        if (!(typeof jcamp === 'string')) return result;
-        // console.time('start');
+        if (!(typeof jcamp === 'string')) {
+            throw new TypeError('the JCAMP should be a string');
+        }
 
-        if (result.profiling) result.profiling.push({
-            action: 'Before split to LDRS',
-            time: Date.now() - start
-        });
+        if (result.profiling) {
+            result.profiling.push({
+                action: 'Before split to LDRS',
+                time: Date.now() - start
+            });
+        }
 
         ldrs = jcamp.split(/[\r\n]+##/);
 
-        if (result.profiling) result.profiling.push({
-            action: 'Split to LDRS',
-            time: Date.now() - start
-        });
+        if (result.profiling) {
+            result.profiling.push({
+                action: 'Split to LDRS',
+                time: Date.now() - start
+            });
+        }
 
         if (ldrs[0]) ldrs[0] = ldrs[0].replace(/^[\r\n ]*##/, '');
 
@@ -3280,14 +3289,10 @@ function getConverter() {
                     prepareSpectrum(result, spectrum);
                     // well apparently we should still consider it is a PEAK TABLE if there are no '++' after
                     if (dataValue.match(/.*\+\+.*/)) {
-                        if (options.fastParse === false) {
-                            parseXYDataRegExp(spectrum, dataValue, result);
-                        } else {
-                            if (!spectrum.deltaX) {
-                                spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
-                            }
-                            fastParseXYData(spectrum, dataValue, result);
+                        if (!spectrum.deltaX) {
+                            spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
                         }
+                        fastParseXYData(spectrum, dataValue, result);
                     } else {
                         parsePeakTable(spectrum, dataValue, result);
                     }
@@ -3383,7 +3388,7 @@ function getConverter() {
             } else if (dataLabel === 'PAGE') {
                 spectrum.page = dataValue.trim();
                 spectrum.pageValue = parseFloat(dataValue.replace(/^.*=/, ''));
-                spectrum.pageSymbol = spectrum.page.replace(/=.*/, '');
+                spectrum.pageSymbol = spectrum.page.replace(/[=].*/, '');
                 var pageSymbolIndex = ntuples.symbol.indexOf(spectrum.pageSymbol);
                 var unit = '';
                 if (ntuples.units && ntuples.units[pageSymbolIndex]) {
@@ -3397,23 +3402,25 @@ function getConverter() {
             } else if (isMSField(dataLabel)) {
                 spectrum[convertMSFieldToLabel(dataLabel)] = dataValue;
             }
-            if (dataLabel.match(keepRecordsRegExp)) {
+            if (dataLabel.match(options.keepRecordsRegExp)) {
                 result.info[dataLabel] = dataValue.trim();
             }
         }
 
-        if (result.profiling) result.profiling.push({
-            action: 'Finished parsing',
-            time: Date.now() - start
-        });
+        if (result.profiling) {
+            result.profiling.push({
+                action: 'Finished parsing',
+                time: Date.now() - start
+            });
+        }
 
         if (Object.keys(ntuples).length > 0) {
             var newNtuples = [];
             var keys = Object.keys(ntuples);
-            for (var i = 0; i < keys.length; i++) {
+            for (i = 0; i < keys.length; i++) {
                 var key = keys[i];
                 var values = ntuples[key];
-                for (var j = 0; j < values.length; j++) {
+                for (j = 0; j < values.length; j++) {
                     if (!newNtuples[j]) newNtuples[j] = {};
                     newNtuples[j][key] = values[j];
                 }
@@ -3423,27 +3430,28 @@ function getConverter() {
 
         if (result.twoD && wantXY) {
             add2D(result, options);
-            if (result.profiling) result.profiling.push({
-                action: 'Finished countour plot calculation',
-                time: Date.now() - start
-            });
+            if (result.profiling) {
+                result.profiling.push({
+                    action: 'Finished countour plot calculation',
+                    time: Date.now() - start
+                });
+            }
             if (!options.keepSpectra) {
                 delete result.spectra;
             }
         }
 
-        var isGCMS = spectra.length > 1 && (!spectra[0].dataType || spectra[0].dataType.match(/.*mass.*/i));
-        if (isGCMS && options.newGCMS) {
+        if (options.chromatogram) {
             options.xy = true;
         }
 
         if (options.xy && wantXY) {
             // the spectraData should not be a oneD array but an object with x and y
             if (spectra.length > 0) {
-                for (var i = 0; i < spectra.length; i++) {
-                    var spectrum = spectra[i];
+                for (i = 0; i < spectra.length; i++) {
+                    spectrum = spectra[i];
                     if (spectrum.data.length > 0) {
-                        for (var j = 0; j < spectrum.data.length; j++) {
+                        for (j = 0; j < spectrum.data.length; j++) {
                             var data = spectrum.data[j];
                             var newData = {
                                 x: new Array(data.length / 2),
@@ -3461,16 +3469,18 @@ function getConverter() {
         }
 
         // maybe it is a GC (HPLC) / MS. In this case we add a new format
-        if (isGCMS && wantXY) {
-            if (options.newGCMS) {
-                addNewGCMS(result);
+        if (options.chromatogram) {
+            if (result.spectra.length > 1) {
+                complexChromatogram(result);
             } else {
-                addGCMS(result);
+                simpleChromatogram(result);
             }
-            if (result.profiling) result.profiling.push({
-                action: 'Finished GCMS calculation',
-                time: Date.now() - start
-            });
+            if (result.profiling) {
+                result.profiling.push({
+                    action: 'Finished chromatogram calculation',
+                    time: Date.now() - start
+                });
+            }
         }
 
         if (result.profiling) {
@@ -3491,16 +3501,17 @@ function getConverter() {
         return GC_MS_FIELDS.indexOf(dataLabel) !== -1;
     }
 
-    function addNewGCMS(result) {
+    function complexChromatogram(result) {
         var spectra = result.spectra;
         var length = spectra.length;
-        var gcms = {
+        var chromatogram = {
             times: new Array(length),
-            series: [{
-                name: 'ms',
-                dimension: 2,
-                data: new Array(length)
-            }]
+            series: {
+                ms: {
+                    dimension: 2,
+                    data: new Array(length)
+                }
+            }
         };
 
         var i;
@@ -3509,53 +3520,37 @@ function getConverter() {
             var label = convertMSFieldToLabel(GC_MS_FIELDS[i]);
             if (spectra[0][label]) {
                 existingGCMSFields.push(label);
-                gcms.series.push({
-                    name: label,
+                chromatogram.series[label] = {
                     dimension: 1,
                     data: new Array(length)
-                });
+                };
             }
         }
 
         for (i = 0; i < length; i++) {
             var spectrum = spectra[i];
-            gcms.times[i] = spectrum.pageValue;
+            chromatogram.times[i] = spectrum.pageValue;
             for (var j = 0; j < existingGCMSFields.length; j++) {
-                gcms.series[j + 1].data[i] = parseFloat(spectrum[existingGCMSFields[j]]);
+                chromatogram.series[existingGCMSFields[j]].data[i] = parseFloat(spectrum[existingGCMSFields[j]]);
             }
             if (spectrum.data) {
-                gcms.series[0].data[i] = [spectrum.data[0].x, spectrum.data[0].y];
+                chromatogram.series.ms.data[i] = [spectrum.data[0].x, spectrum.data[0].y];
             }
         }
-        result.gcms = gcms;
+        result.chromatogram = chromatogram;
     }
 
-    function addGCMS(result) {
-        var spectra = result.spectra;
-        var existingGCMSFields = [];
-        var i;
-        for (i = 0; i < GC_MS_FIELDS.length; i++) {
-            var label = convertMSFieldToLabel(GC_MS_FIELDS[i]);
-            if (spectra[0][label]) {
-                existingGCMSFields.push(label);
+    function simpleChromatogram(result) {
+        var data = result.spectra[0].data[0];
+        result.chromatogram = {
+            times: data.x.slice(),
+            series: {
+                intensity: {
+                    dimension: 1,
+                    data: data.y.slice()
+                }
             }
-        }
-        if (existingGCMSFields.length === 0) return;
-        var gcms = {};
-        gcms.gc = {};
-        gcms.ms = [];
-        for (i = 0; i < existingGCMSFields.length; i++) {
-            gcms.gc[existingGCMSFields[i]] = [];
-        }
-        for (i = 0; i < spectra.length; i++) {
-            var spectrum = spectra[i];
-            for (var j = 0; j < existingGCMSFields.length; j++) {
-                gcms.gc[existingGCMSFields[j]].push(spectrum.pageValue);
-                gcms.gc[existingGCMSFields[j]].push(parseFloat(spectrum[existingGCMSFields[j]]));
-            }
-            if (spectrum.data) gcms.ms[i] = spectrum.data[0];
-        }
-        result.gcms = gcms;
+        };
     }
 
     function prepareSpectrum(result, spectrum) {
@@ -3627,8 +3622,6 @@ function getConverter() {
     function generateContourLines(zData, options) {
         var noise = zData.noise;
         var z = zData.z;
-        var nbLevels = options.nbContourLevels || 7;
-        var noiseMultiplier = options.noiseMultiplier === undefined ? 5 : options.noiseMultiplier;
         var povarHeight0, povarHeight1, povarHeight2, povarHeight3;
         var isOver0, isOver1, isOver2, isOver3;
         var nbSubSpectra = z.length;
@@ -3655,7 +3648,7 @@ function getConverter() {
         //
         // ---------------------d------
 
-        var iter = nbLevels * 2;
+        var iter = options.nbContourLevels * 2;
         var contourLevels = new Array(iter);
         var lineZValue;
         for (var level = 0; level < iter; level++) {
@@ -3663,11 +3656,11 @@ function getConverter() {
             var contourLevel = {};
             contourLevels[level] = contourLevel;
             var side = level % 2;
-            var factor = (maxZ - noiseMultiplier * noise) * Math.exp((level >> 1) - nbLevels);
+            var factor = (maxZ - options.noiseMultiplier * noise) * Math.exp((level >> 1) - options.nbContourLevels);
             if (side === 0) {
-                lineZValue = factor + noiseMultiplier * noise;
+                lineZValue = factor + options.noiseMultiplier * noise;
             } else {
-                lineZValue = 0 - factor - noiseMultiplier * noise;
+                lineZValue = 0 - factor - options.noiseMultiplier * noise;
             }
             var lines = [];
             contourLevel.zValue = lineZValue;
@@ -3782,8 +3775,9 @@ function getConverter() {
         // we skip the first line
         //
         var endLine = false;
+        var ascii;
         for (var i = 0; i < value.length; i++) {
-            var ascii = value.charCodeAt(i);
+            ascii = value.charCodeAt(i);
             if (ascii === 13 || ascii === 10) {
                 endLine = true;
             } else {
@@ -3803,7 +3797,6 @@ function getConverter() {
         var inValue = false;
         var skipFirstValue = false;
         var decimalPosition = 0;
-        var ascii;
         for (; i <= value.length; i++) {
             if (i === value.length) ascii = 13;else ascii = value.charCodeAt(i);
             if (inComment) {
@@ -3978,8 +3971,8 @@ function JcampConverter(input, options, useWorker) {
     }
 }
 
-var stamps = {},
-    worker;
+var stamps = {};
+var worker;
 
 function postToWorker(input, options) {
     if (!worker) {
@@ -4013,151 +4006,7 @@ module.exports = {
     convert: JcampConverter
 };
 
-},{"./parseXYData.js":11}],11:[function(require,module,exports){
-'use strict';
-
-var xyDataSplitRegExp = /[,\t \+-]*(?=[^\d,\t \.])|[ \t]+(?=[\d+\.-])/;
-var removeCommentRegExp = /\$\$.*/;
-var DEBUG = false;
-
-module.exports = function (spectrum, value, result) {
-    // we check if deltaX is defined otherwise we calculate it
-    if (!spectrum.deltaX) {
-        spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
-    }
-
-    spectrum.isXYdata = true;
-
-    var currentData = [];
-    var currentPosition = 0;
-    spectrum.data = [currentData];
-
-    var currentX = spectrum.firstX;
-    var currentY = spectrum.firstY;
-    var lines = value.split(/[\r\n]+/);
-    var lastDif, values, ascii, expectedY;
-    values = [];
-    for (var i = 1, ii = lines.length; i < ii; i++) {
-        //var previousValues=JSON.parse(JSON.stringify(values));
-        values = lines[i].trim().replace(removeCommentRegExp, '').split(xyDataSplitRegExp);
-        if (values.length > 0) {
-            if (DEBUG) {
-                if (!spectrum.firstPoint) {
-                    spectrum.firstPoint = +values[0];
-                }
-                var expectedCurrentX = (values[0] - spectrum.firstPoint) * spectrum.xFactor + spectrum.firstX;
-                if (lastDif || lastDif === 0) {
-                    expectedCurrentX += spectrum.deltaX;
-                }
-                result.logs.push('Checking X value: currentX: ' + currentX + ' - expectedCurrentX: ' + expectedCurrentX);
-            }
-            for (var j = 1, jj = values.length; j < jj; j++) {
-                if (j === 1 && (lastDif || lastDif === 0)) {
-                    lastDif = null; // at the beginning of each line there should be the full value X / Y so the diff is always undefined
-                    // we could check if we have the expected Y value
-                    ascii = values[j].charCodeAt(0);
-
-                    if (false) {
-                        // this code is just to check the jcamp DIFDUP and the next line repeat of Y value
-                        // + - . 0 1 2 3 4 5 6 7 8 9
-                        if (ascii === 43 || ascii === 45 || ascii === 46 || ascii > 47 && ascii < 58) {
-                            expectedY = +values[j];
-                        } else
-                            // positive SQZ digits @ A B C D E F G H I (ascii 64-73)
-                            if (ascii > 63 && ascii < 74) {
-                                expectedY = +(String.fromCharCode(ascii - 16) + values[j].substring(1));
-                            } else
-                                // negative SQZ digits a b c d e f g h i (ascii 97-105)
-                                if (ascii > 96 && ascii < 106) {
-                                    expectedY = -(String.fromCharCode(ascii - 48) + values[j].substring(1));
-                                }
-                        if (expectedY !== currentY) {
-                            result.logs.push('Y value check error: Found: ' + expectedY + ' - Current: ' + currentY);
-                            result.logs.push('Previous values: ' + previousValues.length);
-                            result.logs.push(previousValues);
-                        }
-                    }
-                } else {
-                    if (values[j].length > 0) {
-                        ascii = values[j].charCodeAt(0);
-                        // + - . 0 1 2 3 4 5 6 7 8 9
-                        if (ascii === 43 || ascii === 45 || ascii === 46 || ascii > 47 && ascii < 58) {
-                            lastDif = null;
-                            currentY = +values[j];
-                            // currentData.push(currentX, currentY * spectrum.yFactor);
-                            currentData[currentPosition++] = currentX;
-                            currentData[currentPosition++] = currentY * spectrum.yFactor;
-                            currentX += spectrum.deltaX;
-                        } else
-                            // positive SQZ digits @ A B C D E F G H I (ascii 64-73)
-                            if (ascii > 63 && ascii < 74) {
-                                lastDif = null;
-                                currentY = +(String.fromCharCode(ascii - 16) + values[j].substring(1));
-                                // currentData.push(currentX, currentY * spectrum.yFactor);
-                                currentData[currentPosition++] = currentX;
-                                currentData[currentPosition++] = currentY * spectrum.yFactor;
-                                currentX += spectrum.deltaX;
-                            } else
-                                // negative SQZ digits a b c d e f g h i (ascii 97-105)
-                                if (ascii > 96 && ascii < 106) {
-                                    lastDif = null;
-                                    // we can multiply the string by 1 because if may not contain decimal (is this correct ????)
-                                    currentY = -(String.fromCharCode(ascii - 48) + values[j].substring(1)) * 1;
-                                    //currentData.push(currentX, currentY * spectrum.yFactor);
-                                    currentData[currentPosition++] = currentX;
-                                    currentData[currentPosition++] = currentY * spectrum.yFactor;
-                                    currentX += spectrum.deltaX;
-                                } else
-
-                                    // DUP digits S T U V W X Y Z s (ascii 83-90, 115)
-                                    if (ascii > 82 && ascii < 91 || ascii === 115) {
-                                        var dup = String.fromCharCode(ascii - 34) + values[j].substring(1) - 1;
-                                        if (ascii === 115) {
-                                            dup = '9' + values[j].substring(1) - 1;
-                                        }
-                                        for (var l = 0; l < dup; l++) {
-                                            if (lastDif) {
-                                                currentY = currentY + lastDif;
-                                            }
-                                            // currentData.push(currentX, currentY * spectrum.yFactor);
-                                            currentData[currentPosition++] = currentX;
-                                            currentData[currentPosition++] = currentY * spectrum.yFactor;
-                                            currentX += spectrum.deltaX;
-                                        }
-                                    } else
-                                        // positive DIF digits % J K L M N O P Q R (ascii 37, 74-82)
-                                        if (ascii === 37) {
-                                            lastDif = +('0' + values[j].substring(1));
-                                            currentY += lastDif;
-                                            // currentData.push(currentX, currentY * spectrum.yFactor);
-                                            currentData[currentPosition++] = currentX;
-                                            currentData[currentPosition++] = currentY * spectrum.yFactor;
-                                            currentX += spectrum.deltaX;
-                                        } else if (ascii > 73 && ascii < 83) {
-                                            lastDif = (String.fromCharCode(ascii - 25) + values[j].substring(1)) * 1;
-                                            currentY += lastDif;
-                                            // currentData.push(currentX, currentY * spectrum.yFactor);
-                                            currentData[currentPosition++] = currentX;
-                                            currentData[currentPosition++] = currentY * spectrum.yFactor;
-                                            currentX += spectrum.deltaX;
-                                        } else
-                                            // negative DIF digits j k l m n o p q r (ascii 106-114)
-                                            if (ascii > 105 && ascii < 115) {
-                                                lastDif = -(String.fromCharCode(ascii - 57) + values[j].substring(1)) * 1;
-                                                currentY += lastDif;
-                                                // currentData.push(currentX, currentY * spectrum.yFactor);
-                                                currentData[currentPosition++] = currentX;
-                                                currentData[currentPosition++] = currentY * spectrum.yFactor;
-                                                currentX += spectrum.deltaX;
-                                            }
-                    }
-                }
-            }
-        }
-    }
-};
-
-},{}],12:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 'use strict';
 
 var DataReader = require('./dataReader');
@@ -4211,7 +4060,7 @@ ArrayReader.prototype.readData = function (size) {
 };
 module.exports = ArrayReader;
 
-},{"./dataReader":17}],13:[function(require,module,exports){
+},{"./dataReader":16}],12:[function(require,module,exports){
 'use strict';
 // private property
 
@@ -4279,7 +4128,7 @@ exports.decode = function (input, utf8) {
     return output;
 };
 
-},{}],14:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 'use strict';
 
 function CompressedObject() {
@@ -4310,7 +4159,7 @@ CompressedObject.prototype = {
 };
 module.exports = CompressedObject;
 
-},{}],15:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 'use strict';
 
 exports.STORE = {
@@ -4326,7 +4175,7 @@ exports.STORE = {
 };
 exports.DEFLATE = require('./flate');
 
-},{"./flate":20}],16:[function(require,module,exports){
+},{"./flate":19}],15:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -4365,7 +4214,7 @@ module.exports = function crc32(input, crc) {
 };
 // vim: set shiftwidth=4 softtabstop=4:
 
-},{"./utils":33}],17:[function(require,module,exports){
+},{"./utils":32}],16:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -4475,7 +4324,7 @@ DataReader.prototype = {
 };
 module.exports = DataReader;
 
-},{"./utils":33}],18:[function(require,module,exports){
+},{"./utils":32}],17:[function(require,module,exports){
 'use strict';
 
 exports.base64 = false;
@@ -4489,7 +4338,7 @@ exports.comment = null;
 exports.unixPermissions = null;
 exports.dosPermissions = null;
 
-},{}],19:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -4595,7 +4444,7 @@ exports.isRegExp = function (object) {
   return utils.isRegExp(object);
 };
 
-},{"./utils":33}],20:[function(require,module,exports){
+},{"./utils":32}],19:[function(require,module,exports){
 'use strict';
 
 var USE_TYPEDARRAY = typeof Uint8Array !== 'undefined' && typeof Uint16Array !== 'undefined' && typeof Uint32Array !== 'undefined';
@@ -4614,7 +4463,7 @@ exports.uncompress = function (input) {
     return pako.inflateRaw(input);
 };
 
-},{"pako":114}],21:[function(require,module,exports){
+},{"pako":118}],20:[function(require,module,exports){
 'use strict';
 
 var base64 = require('./base64');
@@ -4695,7 +4544,7 @@ JSZip.base64 = {
 JSZip.compressions = require('./compressions');
 module.exports = JSZip;
 
-},{"./base64":13,"./compressions":15,"./defaults":18,"./deprecatedPublicUtils":19,"./load":22,"./object":25,"./support":29}],22:[function(require,module,exports){
+},{"./base64":12,"./compressions":14,"./defaults":17,"./deprecatedPublicUtils":18,"./load":21,"./object":24,"./support":28}],21:[function(require,module,exports){
 'use strict';
 
 var base64 = require('./base64');
@@ -4737,7 +4586,7 @@ module.exports = function (data, options) {
     return this;
 };
 
-},{"./base64":13,"./utf8":32,"./utils":33,"./zipEntries":34}],23:[function(require,module,exports){
+},{"./base64":12,"./utf8":31,"./utils":32,"./zipEntries":33}],22:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -4749,7 +4598,7 @@ module.exports.test = function (b) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":4}],24:[function(require,module,exports){
+},{"buffer":4}],23:[function(require,module,exports){
 'use strict';
 
 var Uint8ArrayReader = require('./uint8ArrayReader');
@@ -4773,7 +4622,7 @@ NodeBufferReader.prototype.readData = function (size) {
 };
 module.exports = NodeBufferReader;
 
-},{"./uint8ArrayReader":30}],25:[function(require,module,exports){
+},{"./uint8ArrayReader":29}],24:[function(require,module,exports){
 'use strict';
 
 var support = require('./support');
@@ -5633,7 +5482,7 @@ var out = {
 };
 module.exports = out;
 
-},{"./base64":13,"./compressedObject":14,"./compressions":15,"./crc32":16,"./defaults":18,"./nodeBuffer":23,"./signature":26,"./stringWriter":28,"./support":29,"./uint8ArrayWriter":31,"./utf8":32,"./utils":33}],26:[function(require,module,exports){
+},{"./base64":12,"./compressedObject":13,"./compressions":14,"./crc32":15,"./defaults":17,"./nodeBuffer":22,"./signature":25,"./stringWriter":27,"./support":28,"./uint8ArrayWriter":30,"./utf8":31,"./utils":32}],25:[function(require,module,exports){
 'use strict';
 
 exports.LOCAL_FILE_HEADER = "PK\x03\x04";
@@ -5643,7 +5492,7 @@ exports.ZIP64_CENTRAL_DIRECTORY_LOCATOR = "PK\x06\x07";
 exports.ZIP64_CENTRAL_DIRECTORY_END = "PK\x06\x06";
 exports.DATA_DESCRIPTOR = "PK\x07\x08";
 
-},{}],27:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 'use strict';
 
 var DataReader = require('./dataReader');
@@ -5683,7 +5532,7 @@ StringReader.prototype.readData = function (size) {
 };
 module.exports = StringReader;
 
-},{"./dataReader":17,"./utils":33}],28:[function(require,module,exports){
+},{"./dataReader":16,"./utils":32}],27:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -5715,7 +5564,7 @@ StringWriter.prototype = {
 
 module.exports = StringWriter;
 
-},{"./utils":33}],29:[function(require,module,exports){
+},{"./utils":32}],28:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -5751,7 +5600,7 @@ if (typeof ArrayBuffer === "undefined") {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":4}],30:[function(require,module,exports){
+},{"buffer":4}],29:[function(require,module,exports){
 'use strict';
 
 var ArrayReader = require('./arrayReader');
@@ -5780,7 +5629,7 @@ Uint8ArrayReader.prototype.readData = function (size) {
 };
 module.exports = Uint8ArrayReader;
 
-},{"./arrayReader":12}],31:[function(require,module,exports){
+},{"./arrayReader":11}],30:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -5818,7 +5667,7 @@ Uint8ArrayWriter.prototype = {
 
 module.exports = Uint8ArrayWriter;
 
-},{"./utils":33}],32:[function(require,module,exports){
+},{"./utils":32}],31:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -6047,7 +5896,7 @@ exports.utf8decode = function utf8decode(buf) {
 };
 // vim: set shiftwidth=4 softtabstop=4:
 
-},{"./nodeBuffer":23,"./support":29,"./utils":33}],33:[function(require,module,exports){
+},{"./nodeBuffer":22,"./support":28,"./utils":32}],32:[function(require,module,exports){
 'use strict';
 
 var support = require('./support');
@@ -6390,7 +6239,7 @@ exports.extend = function () {
     return result;
 };
 
-},{"./compressions":15,"./nodeBuffer":23,"./support":29}],34:[function(require,module,exports){
+},{"./compressions":14,"./nodeBuffer":22,"./support":28}],33:[function(require,module,exports){
 'use strict';
 
 var StringReader = require('./stringReader');
@@ -6669,7 +6518,7 @@ ZipEntries.prototype = {
 // }}} end of ZipEntries
 module.exports = ZipEntries;
 
-},{"./arrayReader":12,"./nodeBufferReader":24,"./object":25,"./signature":26,"./stringReader":27,"./support":29,"./uint8ArrayReader":30,"./utils":33,"./zipEntry":35}],35:[function(require,module,exports){
+},{"./arrayReader":11,"./nodeBufferReader":23,"./object":24,"./signature":25,"./stringReader":26,"./support":28,"./uint8ArrayReader":29,"./utils":32,"./zipEntry":34}],34:[function(require,module,exports){
 'use strict';
 
 var StringReader = require('./stringReader');
@@ -6992,7 +6841,146 @@ ZipEntry.prototype = {
 };
 module.exports = ZipEntry;
 
-},{"./compressedObject":14,"./object":25,"./stringReader":27,"./support":29,"./utils":33}],36:[function(require,module,exports){
+},{"./compressedObject":13,"./object":24,"./stringReader":26,"./support":28,"./utils":32}],35:[function(require,module,exports){
+(function(){function d(c){for(var d=0,e=c.length-1,f=void 0,g=void 0,h=void 0,i=b(d,e);;){if(e<=d)return c[i];if(e==d+1)return c[d]>c[e]&&a(c,d,e),c[i];for(f=b(d,e),c[f]>c[e]&&a(c,f,e),c[d]>c[e]&&a(c,d,e),c[f]>c[d]&&a(c,f,d),a(c,f,d+1),g=d+1,h=e;;){do g++;while(c[d]>c[g]);do h--;while(c[h]>c[d]);if(h<g)break;a(c,g,h)}a(c,d,h),h<=i&&(d=g),h>=i&&(e=h-1)}}var a=function(a,b,c){var d;return d=[a[c],a[b]],a[b]=d[0],a[c]=d[1],d},b=function(a,b){return~~((a+b)/2)};'undefined'!=typeof module&&module.exports?module.exports=d:window.median=d})();
+
+},{}],36:[function(require,module,exports){
+'use strict';
+
+/**
+ * Computes the maximum of the given values
+ * @param {Array<number>} input
+ * @return {number}
+ */
+
+function max(input) {
+    if (!Array.isArray(input)) {
+        throw new Error('input must be an array');
+    }
+
+    if (input.length === 0) {
+        throw new Error('input must not be empty');
+    }
+
+    var max = input[0];
+    for (var i = 1; i < input.length; i++) {
+        if (input[i] > max) max = input[i];
+    }
+    return max;
+}
+
+module.exports = max;
+
+},{}],37:[function(require,module,exports){
+'use strict';
+
+function _interopDefault(ex) {
+    return ex && typeof ex === 'object' && 'default' in ex ? ex['default'] : ex;
+}
+
+var quickSelectMedian = _interopDefault(require('median-quickselect'));
+
+/**
+ * Computes the median of the given values
+ * @param {Array<number>} input
+ * @return {number}
+ */
+function median(input) {
+    if (!Array.isArray(input)) {
+        throw new Error('input must be an array');
+    }
+
+    if (input.length === 0) {
+        throw new Error('input must not be empty');
+    }
+
+    return quickSelectMedian(input.slice());
+}
+
+module.exports = median;
+
+},{"median-quickselect":35}],38:[function(require,module,exports){
+'use strict';
+
+/**
+ * Computes the minimum of the given values
+ * @param {Array<number>} input
+ * @return {number}
+ */
+
+function min(input) {
+    if (!Array.isArray(input)) {
+        throw new Error('input must be an array');
+    }
+
+    if (input.length === 0) {
+        throw new Error('input must not be empty');
+    }
+
+    var min = input[0];
+    for (var i = 1; i < input.length; i++) {
+        if (input[i] < min) min = input[i];
+    }
+    return min;
+}
+
+module.exports = min;
+
+},{}],39:[function(require,module,exports){
+'use strict';
+
+function _interopDefault(ex) {
+    return ex && typeof ex === 'object' && 'default' in ex ? ex['default'] : ex;
+}
+
+var max = _interopDefault(require('ml-array-max'));
+var min = _interopDefault(require('ml-array-min'));
+
+function rescale(input, options = {}) {
+    if (!Array.isArray(input)) {
+        throw new TypeError('input must be an array');
+    } else if (input.length === 0) {
+        throw new TypeError('input must not be empty');
+    }
+
+    var output = void 0;
+    if (options.output !== undefined) {
+        if (!Array.isArray(options.output)) {
+            throw new TypeError('output option must be an array if specified');
+        }
+        output = options.output;
+    } else {
+        output = new Array(input.length);
+    }
+
+    var currentMin = min(input);
+    var currentMax = max(input);
+
+    if (currentMin === currentMax) {
+        throw new RangeError('minimum and maximum input values are equal. Cannot rescale a constant array');
+    }
+
+    var _options$min = options.min,
+        minValue = _options$min === undefined ? options.autoMinMax ? currentMin : 0 : _options$min,
+        _options$max = options.max,
+        maxValue = _options$max === undefined ? options.autoMinMax ? currentMax : 1 : _options$max;
+
+
+    if (minValue >= maxValue) {
+        throw new RangeError('min option must be smaller than max option');
+    }
+
+    var factor = (maxValue - minValue) / (currentMax - currentMin);
+    for (var i = 0; i < input.length; i++) {
+        output[i] = (input[i] - currentMin) * factor + minValue;
+    }
+
+    return output;
+}
+
+module.exports = rescale;
+
+},{"ml-array-max":36,"ml-array-min":38}],40:[function(require,module,exports){
 'use strict';
 
 var Stat = require('ml-stat').array;
@@ -7214,7 +7202,7 @@ module.exports = {
     scale: scale
 };
 
-},{"ml-stat":102}],37:[function(require,module,exports){
+},{"ml-stat":106}],41:[function(require,module,exports){
 'use strict';
 
 /**
@@ -7466,7 +7454,7 @@ function integral(x0, x1, slope, intercept) {
 exports.getEquallySpacedData = getEquallySpacedData;
 exports.integral = integral;
 
-},{}],38:[function(require,module,exports){
+},{}],42:[function(require,module,exports){
 'use strict';
 
 module.exports = exports = require('./ArrayUtils');
@@ -7474,7 +7462,7 @@ module.exports = exports = require('./ArrayUtils');
 exports.getEquallySpacedData = require('./getEquallySpaced').getEquallySpacedData;
 exports.SNV = require('./snv').SNV;
 
-},{"./ArrayUtils":36,"./getEquallySpaced":37,"./snv":39}],39:[function(require,module,exports){
+},{"./ArrayUtils":40,"./getEquallySpaced":41,"./snv":43}],43:[function(require,module,exports){
 'use strict';
 
 exports.SNV = SNV;
@@ -7496,7 +7484,7 @@ function SNV(data) {
     return result;
 }
 
-},{"ml-stat":102}],40:[function(require,module,exports){
+},{"ml-stat":106}],44:[function(require,module,exports){
 'use strict';
 
 /**
@@ -7580,7 +7568,7 @@ function DisjointSetNode(value) {
     this.rank = 0;
 }
 
-},{}],41:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 'use strict';
 
 function squaredEuclidean(p, q) {
@@ -7598,7 +7586,7 @@ function euclidean(p, q) {
 module.exports = euclidean;
 euclidean.squared = squaredEuclidean;
 
-},{}],42:[function(require,module,exports){
+},{}],46:[function(require,module,exports){
 'use strict';
 
 /**
@@ -7632,7 +7620,7 @@ function distanceMatrix(data, distanceFn) {
 
 module.exports = distanceMatrix;
 
-},{}],43:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 'use strict';
 
 var FFT = require('./fftlib');
@@ -7939,7 +7927,7 @@ var FFTUtils = {
 
 module.exports = FFTUtils;
 
-},{"./fftlib":44}],44:[function(require,module,exports){
+},{"./fftlib":48}],48:[function(require,module,exports){
 'use strict';
 
 /**
@@ -8184,13 +8172,13 @@ var FFT = function () {
   return FFT;
 }.call(undefined);
 
-},{}],45:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 'use strict';
 
 exports.FFTUtils = require("./FFTUtils");
 exports.FFT = require('./fftlib');
 
-},{"./FFTUtils":43,"./fftlib":44}],46:[function(require,module,exports){
+},{"./FFTUtils":47,"./fftlib":48}],50:[function(require,module,exports){
 'use strict';
 
 var extend = require('extend');
@@ -8477,13 +8465,13 @@ function realTopDetection(peakList, x, y) {
 
 module.exports = gsd;
 
-},{"extend":5,"ml-savitzky-golay-generalized":98}],47:[function(require,module,exports){
+},{"extend":5,"ml-savitzky-golay-generalized":102}],51:[function(require,module,exports){
 'use strict';
 
 module.exports.post = require('../src/optimize');
 module.exports.gsd = require('../src/gsd');
 
-},{"../src/gsd":46,"../src/optimize":48}],48:[function(require,module,exports){
+},{"../src/gsd":50,"../src/optimize":52}],52:[function(require,module,exports){
 /**
  * Created by acastillo on 9/6/15.
  */
@@ -8746,7 +8734,7 @@ if(options.broadRatio>0){
 
 module.exports = { optimizePeaks: optimizePeaks, joinBroadPeaks: joinBroadPeaks };
 
-},{"ml-optimize-lorentzian":94}],49:[function(require,module,exports){
+},{"ml-optimize-lorentzian":98}],53:[function(require,module,exports){
 'use strict';
 
 var newArray = require('new-array');
@@ -9050,7 +9038,7 @@ function chooseShrinkCapacity(size, minLoad, maxLoad) {
     return nextPrime(Math.max(size + 1, 4 * size / (minLoad + 3 * maxLoad) | 0));
 }
 
-},{"./primeFinder":50,"new-array":104}],50:[function(require,module,exports){
+},{"./primeFinder":54,"new-array":108}],54:[function(require,module,exports){
 'use strict';
 
 var binarySearch = require('binary-search');
@@ -9114,7 +9102,7 @@ function nextPrime(value) {
 exports.nextPrime = nextPrime;
 exports.largestPrime = largestPrime;
 
-},{"binary-search":2,"num-sort":112}],51:[function(require,module,exports){
+},{"binary-search":2,"num-sort":116}],55:[function(require,module,exports){
 'use strict';
 
 var Heap = require('heap');
@@ -9197,7 +9185,7 @@ Cluster.prototype.traverse = function (cb) {
 
 module.exports = Cluster;
 
-},{"heap":6}],52:[function(require,module,exports){
+},{"heap":6}],56:[function(require,module,exports){
 'use strict';
 
 var Cluster = require('./Cluster');
@@ -9214,7 +9202,7 @@ util.inherits(ClusterLeaf, Cluster);
 
 module.exports = ClusterLeaf;
 
-},{"./Cluster":51,"util":160}],53:[function(require,module,exports){
+},{"./Cluster":55,"util":164}],57:[function(require,module,exports){
 'use strict';
 
 var euclidean = require('ml-distance-euclidean');
@@ -9457,7 +9445,7 @@ function agnes(data, options) {
 
 module.exports = agnes;
 
-},{"./Cluster":51,"./ClusterLeaf":52,"ml-distance-euclidean":41,"ml-distance-matrix":42}],54:[function(require,module,exports){
+},{"./Cluster":55,"./ClusterLeaf":56,"ml-distance-euclidean":45,"ml-distance-matrix":46}],58:[function(require,module,exports){
 'use strict';
 
 var euclidean = require('ml-distance-euclidean');
@@ -9761,7 +9749,7 @@ function diana(data, options) {
 
 module.exports = diana;
 
-},{"./Cluster":51,"./ClusterLeaf":52,"ml-distance-euclidean":41}],55:[function(require,module,exports){
+},{"./Cluster":55,"./ClusterLeaf":56,"ml-distance-euclidean":45}],59:[function(require,module,exports){
 'use strict';
 
 exports.agnes = require('./agnes');
@@ -9770,7 +9758,7 @@ exports.diana = require('./diana');
 //exports.cure = require('./cure');
 //exports.chameleon = require('./chameleon');
 
-},{"./agnes":53,"./diana":54}],56:[function(require,module,exports){
+},{"./agnes":57,"./diana":58}],60:[function(require,module,exports){
 'use strict';
 
 var FFT = require('./fftlib');
@@ -10078,11 +10066,11 @@ var FFTUtils = {
 
 module.exports = FFTUtils;
 
-},{"./fftlib":57}],57:[function(require,module,exports){
-arguments[4][44][0].apply(exports,arguments)
-},{"dup":44}],58:[function(require,module,exports){
-arguments[4][45][0].apply(exports,arguments)
-},{"./FFTUtils":56,"./fftlib":57,"dup":45}],59:[function(require,module,exports){
+},{"./fftlib":61}],61:[function(require,module,exports){
+arguments[4][48][0].apply(exports,arguments)
+},{"dup":48}],62:[function(require,module,exports){
+arguments[4][49][0].apply(exports,arguments)
+},{"./FFTUtils":60,"./fftlib":61,"dup":49}],63:[function(require,module,exports){
 "use strict";
 'use strict;';
 /**
@@ -10240,7 +10228,7 @@ module.exports = {
     matrix2Array: matrix2Array
 };
 
-},{"ml-fft":58}],60:[function(require,module,exports){
+},{"ml-fft":62}],64:[function(require,module,exports){
 'use strict';
 
 var DisjointSet = require('ml-disjoint-set');
@@ -10327,7 +10315,7 @@ function ccLabeling(mask, width, height, options) {
 
 module.exports = ccLabeling;
 
-},{"ml-disjoint-set":40}],61:[function(require,module,exports){
+},{"ml-disjoint-set":44}],65:[function(require,module,exports){
 'use strict';
 /**
  * Created by acastillo on 7/7/16.
@@ -10495,7 +10483,7 @@ module.exports = {
     findPeaks2DMax: findPeaks2DMax
 };
 
-},{"./ccLabeling":60,"ml-matrix-convolution":59,"ml-stat":102}],62:[function(require,module,exports){
+},{"./ccLabeling":64,"ml-matrix-convolution":63,"ml-stat":106}],66:[function(require,module,exports){
 'use strict';
 
 module.exports = abstractMatrix;
@@ -12219,37 +12207,16 @@ function abstractMatrix(superCtor) {
 
     var i;
 
-    var _iteratorNormalCompletion = true;
-    var _didIteratorError = false;
-    var _iteratorError = undefined;
-
-    try {
-        for (var _iterator = operators[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-            var operator = _step.value;
-
-            var inplaceOp = eval(fillTemplateFunction(inplaceOperator, { name: operator[1], op: operator[0] }));
-            var inplaceOpS = eval(fillTemplateFunction(inplaceOperatorScalar, { name: operator[1] + 'S', op: operator[0] }));
-            var inplaceOpM = eval(fillTemplateFunction(inplaceOperatorMatrix, { name: operator[1] + 'M', op: operator[0] }));
-            var staticOp = eval(fillTemplateFunction(staticOperator, { name: operator[1] }));
-            for (i = 1; i < operator.length; i++) {
-                Matrix.prototype[operator[i]] = inplaceOp;
-                Matrix.prototype[operator[i] + 'S'] = inplaceOpS;
-                Matrix.prototype[operator[i] + 'M'] = inplaceOpM;
-                Matrix[operator[i]] = staticOp;
-            }
-        }
-    } catch (err) {
-        _didIteratorError = true;
-        _iteratorError = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion && _iterator.return) {
-                _iterator.return();
-            }
-        } finally {
-            if (_didIteratorError) {
-                throw _iteratorError;
-            }
+    for (var operator of operators) {
+        var inplaceOp = eval(fillTemplateFunction(inplaceOperator, { name: operator[1], op: operator[0] }));
+        var inplaceOpS = eval(fillTemplateFunction(inplaceOperatorScalar, { name: operator[1] + 'S', op: operator[0] }));
+        var inplaceOpM = eval(fillTemplateFunction(inplaceOperatorMatrix, { name: operator[1] + 'M', op: operator[0] }));
+        var staticOp = eval(fillTemplateFunction(staticOperator, { name: operator[1] }));
+        for (i = 1; i < operator.length; i++) {
+            Matrix.prototype[operator[i]] = inplaceOp;
+            Matrix.prototype[operator[i] + 'S'] = inplaceOpS;
+            Matrix.prototype[operator[i] + 'M'] = inplaceOpM;
+            Matrix[operator[i]] = staticOp;
         }
     }
 
@@ -12259,90 +12226,48 @@ function abstractMatrix(superCtor) {
         methods.push(['Math.' + mathMethod, mathMethod]);
     });
 
-    var _iteratorNormalCompletion2 = true;
-    var _didIteratorError2 = false;
-    var _iteratorError2 = undefined;
-
-    try {
-        for (var _iterator2 = methods[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-            var method = _step2.value;
-
-            var inplaceMeth = eval(fillTemplateFunction(inplaceMethod, { name: method[1], method: method[0] }));
-            var staticMeth = eval(fillTemplateFunction(staticMethod, { name: method[1] }));
-            for (i = 1; i < method.length; i++) {
-                Matrix.prototype[method[i]] = inplaceMeth;
-                Matrix[method[i]] = staticMeth;
-            }
-        }
-    } catch (err) {
-        _didIteratorError2 = true;
-        _iteratorError2 = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion2 && _iterator2.return) {
-                _iterator2.return();
-            }
-        } finally {
-            if (_didIteratorError2) {
-                throw _iteratorError2;
-            }
+    for (var method of methods) {
+        var inplaceMeth = eval(fillTemplateFunction(inplaceMethod, { name: method[1], method: method[0] }));
+        var staticMeth = eval(fillTemplateFunction(staticMethod, { name: method[1] }));
+        for (i = 1; i < method.length; i++) {
+            Matrix.prototype[method[i]] = inplaceMeth;
+            Matrix[method[i]] = staticMeth;
         }
     }
 
     var methodsWithArgs = [['Math.pow', 1, 'pow']];
 
-    var _iteratorNormalCompletion3 = true;
-    var _didIteratorError3 = false;
-    var _iteratorError3 = undefined;
-
-    try {
-        for (var _iterator3 = methodsWithArgs[Symbol.iterator](), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
-            var methodWithArg = _step3.value;
-
-            var args = 'arg0';
-            for (i = 1; i < methodWithArg[1]; i++) {
-                args += `, arg${i}`;
-            }
-            if (methodWithArg[1] !== 1) {
-                var inplaceMethWithArgs = eval(fillTemplateFunction(inplaceMethodWithArgs, {
-                    name: methodWithArg[2],
-                    method: methodWithArg[0],
-                    args: args
-                }));
-                var staticMethWithArgs = eval(fillTemplateFunction(staticMethodWithArgs, { name: methodWithArg[2], args: args }));
-                for (i = 2; i < methodWithArg.length; i++) {
-                    Matrix.prototype[methodWithArg[i]] = inplaceMethWithArgs;
-                    Matrix[methodWithArg[i]] = staticMethWithArgs;
-                }
-            } else {
-                var tmplVar = {
-                    name: methodWithArg[2],
-                    args: args,
-                    method: methodWithArg[0]
-                };
-                var inplaceMethod2 = eval(fillTemplateFunction(inplaceMethodWithOneArg, tmplVar));
-                var inplaceMethodS = eval(fillTemplateFunction(inplaceMethodWithOneArgScalar, tmplVar));
-                var inplaceMethodM = eval(fillTemplateFunction(inplaceMethodWithOneArgMatrix, tmplVar));
-                var staticMethod2 = eval(fillTemplateFunction(staticMethodWithOneArg, tmplVar));
-                for (i = 2; i < methodWithArg.length; i++) {
-                    Matrix.prototype[methodWithArg[i]] = inplaceMethod2;
-                    Matrix.prototype[methodWithArg[i] + 'M'] = inplaceMethodM;
-                    Matrix.prototype[methodWithArg[i] + 'S'] = inplaceMethodS;
-                    Matrix[methodWithArg[i]] = staticMethod2;
-                }
-            }
+    for (var methodWithArg of methodsWithArgs) {
+        var args = 'arg0';
+        for (i = 1; i < methodWithArg[1]; i++) {
+            args += `, arg${i}`;
         }
-    } catch (err) {
-        _didIteratorError3 = true;
-        _iteratorError3 = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion3 && _iterator3.return) {
-                _iterator3.return();
+        if (methodWithArg[1] !== 1) {
+            var inplaceMethWithArgs = eval(fillTemplateFunction(inplaceMethodWithArgs, {
+                name: methodWithArg[2],
+                method: methodWithArg[0],
+                args: args
+            }));
+            var staticMethWithArgs = eval(fillTemplateFunction(staticMethodWithArgs, { name: methodWithArg[2], args: args }));
+            for (i = 2; i < methodWithArg.length; i++) {
+                Matrix.prototype[methodWithArg[i]] = inplaceMethWithArgs;
+                Matrix[methodWithArg[i]] = staticMethWithArgs;
             }
-        } finally {
-            if (_didIteratorError3) {
-                throw _iteratorError3;
+        } else {
+            var tmplVar = {
+                name: methodWithArg[2],
+                args: args,
+                method: methodWithArg[0]
+            };
+            var inplaceMethod2 = eval(fillTemplateFunction(inplaceMethodWithOneArg, tmplVar));
+            var inplaceMethodS = eval(fillTemplateFunction(inplaceMethodWithOneArgScalar, tmplVar));
+            var inplaceMethodM = eval(fillTemplateFunction(inplaceMethodWithOneArgMatrix, tmplVar));
+            var staticMethod2 = eval(fillTemplateFunction(staticMethodWithOneArg, tmplVar));
+            for (i = 2; i < methodWithArg.length; i++) {
+                Matrix.prototype[methodWithArg[i]] = inplaceMethod2;
+                Matrix.prototype[methodWithArg[i] + 'M'] = inplaceMethodM;
+                Matrix.prototype[methodWithArg[i] + 'S'] = inplaceMethodS;
+                Matrix[methodWithArg[i]] = staticMethod2;
             }
         }
     }
@@ -12357,7 +12282,7 @@ function abstractMatrix(superCtor) {
     return Matrix;
 }
 
-},{"./dc/lu":65,"./dc/svd":67,"./util":73,"./views/column":75,"./views/flipColumn":76,"./views/flipRow":77,"./views/row":78,"./views/selection":79,"./views/sub":80,"./views/transpose":81,"ml-array-utils":38}],63:[function(require,module,exports){
+},{"./dc/lu":69,"./dc/svd":71,"./util":77,"./views/column":79,"./views/flipColumn":80,"./views/flipRow":81,"./views/row":82,"./views/selection":83,"./views/sub":84,"./views/transpose":85,"ml-array-utils":42}],67:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -12453,7 +12378,7 @@ CholeskyDecomposition.prototype = {
 
 module.exports = CholeskyDecomposition;
 
-},{"../matrix":71}],64:[function(require,module,exports){
+},{"../matrix":75}],68:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -13249,7 +13174,7 @@ function cdiv(xr, xi, yr, yi) {
 
 module.exports = EigenvalueDecomposition;
 
-},{"../matrix":71,"./util":68}],65:[function(require,module,exports){
+},{"../matrix":75,"./util":72}],69:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -13434,7 +13359,7 @@ LuDecomposition.prototype = {
 
 module.exports = LuDecomposition;
 
-},{"../matrix":71}],66:[function(require,module,exports){
+},{"../matrix":75}],70:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -13595,7 +13520,7 @@ QrDecomposition.prototype = {
 
 module.exports = QrDecomposition;
 
-},{"../matrix":71,"./util":68}],67:[function(require,module,exports){
+},{"../matrix":75,"./util":72}],71:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -14119,7 +14044,7 @@ SingularValueDecomposition.prototype = {
 
 module.exports = SingularValueDecomposition;
 
-},{"../matrix":71,"./util":68}],68:[function(require,module,exports){
+},{"../matrix":75,"./util":72}],72:[function(require,module,exports){
 'use strict';
 
 exports.hypotenuse = function hypotenuse(a, b) {
@@ -14158,7 +14083,7 @@ exports.getFilled2DArray = function (rows, columns, value) {
     return array;
 };
 
-},{}],69:[function(require,module,exports){
+},{}],73:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix').Matrix;
@@ -14222,13 +14147,13 @@ module.exports = {
     solve: solve
 };
 
-},{"./dc/cholesky":63,"./dc/evd":64,"./dc/lu":65,"./dc/qr":66,"./dc/svd":67,"./matrix":71}],70:[function(require,module,exports){
+},{"./dc/cholesky":67,"./dc/evd":68,"./dc/lu":69,"./dc/qr":70,"./dc/svd":71,"./matrix":75}],74:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./matrix').Matrix;
 module.exports.Decompositions = module.exports.DC = require('./decompositions');
 
-},{"./decompositions":69,"./matrix":71}],71:[function(require,module,exports){
+},{"./decompositions":73,"./matrix":75}],75:[function(require,module,exports){
 'use strict';
 
 require('./symbol-species');
@@ -14373,14 +14298,14 @@ class Matrix extends abstractMatrix(Array) {
 exports.Matrix = Matrix;
 Matrix.abstractMatrix = abstractMatrix;
 
-},{"./abstractMatrix":62,"./symbol-species":72,"./util":73}],72:[function(require,module,exports){
+},{"./abstractMatrix":66,"./symbol-species":76,"./util":77}],76:[function(require,module,exports){
 'use strict';
 
 if (!Symbol.species) {
     Symbol.species = Symbol.for('@@species');
 }
 
-},{}],73:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix');
@@ -14523,7 +14448,7 @@ exports.sumAll = function sumAll(matrix) {
     return v;
 };
 
-},{"./matrix":71}],74:[function(require,module,exports){
+},{"./matrix":75}],78:[function(require,module,exports){
 'use strict';
 
 var abstractMatrix = require('../abstractMatrix');
@@ -14544,7 +14469,7 @@ class BaseView extends abstractMatrix() {
 
 module.exports = BaseView;
 
-},{"../abstractMatrix":62,"../matrix":71}],75:[function(require,module,exports){
+},{"../abstractMatrix":66,"../matrix":75}],79:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -14567,7 +14492,7 @@ class MatrixColumnView extends BaseView {
 
 module.exports = MatrixColumnView;
 
-},{"./base":74}],76:[function(require,module,exports){
+},{"./base":78}],80:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -14589,7 +14514,7 @@ class MatrixFlipColumnView extends BaseView {
 
 module.exports = MatrixFlipColumnView;
 
-},{"./base":74}],77:[function(require,module,exports){
+},{"./base":78}],81:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -14611,7 +14536,7 @@ class MatrixFlipRowView extends BaseView {
 
 module.exports = MatrixFlipRowView;
 
-},{"./base":74}],78:[function(require,module,exports){
+},{"./base":78}],82:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -14634,7 +14559,7 @@ class MatrixRowView extends BaseView {
 
 module.exports = MatrixRowView;
 
-},{"./base":74}],79:[function(require,module,exports){
+},{"./base":78}],83:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -14660,7 +14585,7 @@ class MatrixSelectionView extends BaseView {
 
 module.exports = MatrixSelectionView;
 
-},{"../util":73,"./base":74}],80:[function(require,module,exports){
+},{"../util":77,"./base":78}],84:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -14686,7 +14611,7 @@ class MatrixSubView extends BaseView {
 
 module.exports = MatrixSubView;
 
-},{"../util":73,"./base":74}],81:[function(require,module,exports){
+},{"../util":77,"./base":78}],85:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -14708,7 +14633,7 @@ class MatrixTransposeView extends BaseView {
 
 module.exports = MatrixTransposeView;
 
-},{"./base":74}],82:[function(require,module,exports){
+},{"./base":78}],86:[function(require,module,exports){
 "use strict";
 
 /**
@@ -15235,7 +15160,7 @@ var LM = {
 
 module.exports = LM;
 
-},{"./algebra":83,"ml-matrix":92}],83:[function(require,module,exports){
+},{"./algebra":87,"ml-matrix":96}],87:[function(require,module,exports){
 /**
  * Created by acastillo on 8/24/15.
  */
@@ -15469,14 +15394,14 @@ module.exports = {
     eye: eye
 };
 
-},{"ml-matrix":92}],84:[function(require,module,exports){
+},{"ml-matrix":96}],88:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./LM');
 module.exports.Matrix = require('ml-matrix');
 module.exports.Matrix.algebra = require('./algebra');
 
-},{"./LM":82,"./algebra":83,"ml-matrix":92}],85:[function(require,module,exports){
+},{"./LM":86,"./algebra":87,"ml-matrix":96}],89:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -15570,7 +15495,7 @@ CholeskyDecomposition.prototype = {
 
 module.exports = CholeskyDecomposition;
 
-},{"../matrix":93}],86:[function(require,module,exports){
+},{"../matrix":97}],90:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -16349,7 +16274,7 @@ function cdiv(xr, xi, yr, yi) {
 
 module.exports = EigenvalueDecomposition;
 
-},{"../matrix":93,"./util":90}],87:[function(require,module,exports){
+},{"../matrix":97,"./util":94}],91:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -16528,7 +16453,7 @@ LuDecomposition.prototype = {
 
 module.exports = LuDecomposition;
 
-},{"../matrix":93}],88:[function(require,module,exports){
+},{"../matrix":97}],92:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -16688,7 +16613,7 @@ QrDecomposition.prototype = {
 
 module.exports = QrDecomposition;
 
-},{"../matrix":93,"./util":90}],89:[function(require,module,exports){
+},{"../matrix":97,"./util":94}],93:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -17191,7 +17116,7 @@ SingularValueDecomposition.prototype = {
 
 module.exports = SingularValueDecomposition;
 
-},{"../matrix":93,"./util":90}],90:[function(require,module,exports){
+},{"../matrix":97,"./util":94}],94:[function(require,module,exports){
 'use strict';
 
 exports.hypotenuse = function hypotenuse(a, b) {
@@ -17207,7 +17132,7 @@ exports.hypotenuse = function hypotenuse(a, b) {
     return 0;
 };
 
-},{}],91:[function(require,module,exports){
+},{}],95:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix');
@@ -17249,13 +17174,13 @@ module.exports = {
     solve: solve
 };
 
-},{"./dc/cholesky":85,"./dc/evd":86,"./dc/lu":87,"./dc/qr":88,"./dc/svd":89,"./matrix":93}],92:[function(require,module,exports){
+},{"./dc/cholesky":89,"./dc/evd":90,"./dc/lu":91,"./dc/qr":92,"./dc/svd":93,"./matrix":97}],96:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./matrix');
 module.exports.Decompositions = module.exports.DC = require('./decompositions');
 
-},{"./decompositions":91,"./matrix":93}],93:[function(require,module,exports){
+},{"./decompositions":95,"./matrix":97}],97:[function(require,module,exports){
 'use strict';
 
 var Asplice = Array.prototype.splice,
@@ -18744,7 +18669,7 @@ Matrix.prototype.abs = function abs() {
 
 module.exports = Matrix;
 
-},{}],94:[function(require,module,exports){
+},{}],98:[function(require,module,exports){
 'use strict';
 
 var LM = require('ml-curve-fitting');
@@ -19205,7 +19130,7 @@ module.exports.singleLorentzian = singleLorentzian;
 module.exports.optimizeGaussianTrain = optimizeGaussianTrain;
 module.exports.optimizeLorentzianTrain = optimizeLorentzianTrain;
 
-},{"ml-curve-fitting":84,"ml-matrix":92}],95:[function(require,module,exports){
+},{"ml-curve-fitting":88,"ml-matrix":96}],99:[function(require,module,exports){
 'use strict';
 
 function compareNumbers(a, b) {
@@ -19661,13 +19586,13 @@ exports.cumulativeSum = function cumulativeSum(array) {
     }return result;
 };
 
-},{}],96:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 'use strict';
 
 exports.array = require('./array');
 exports.matrix = require('./matrix');
 
-},{"./array":95,"./matrix":97}],97:[function(require,module,exports){
+},{"./array":99,"./matrix":101}],101:[function(require,module,exports){
 'use strict';
 
 var arrayStat = require('./array');
@@ -20224,7 +20149,7 @@ module.exports = {
     weightedScatter: weightedScatter
 };
 
-},{"./array":95}],98:[function(require,module,exports){
+},{"./array":99}],102:[function(require,module,exports){
 'use strict';
 
 //Code translate from Pascal source in http://pubs.acs.org/doi/pdf/10.1021/ac00205a007
@@ -20383,7 +20308,7 @@ function guessWindowSize(data, h){
 */
 module.exports = SavitzkyGolay;
 
-},{"extend":5,"ml-stat":96}],99:[function(require,module,exports){
+},{"extend":5,"ml-stat":100}],103:[function(require,module,exports){
 /**
  * Created by acastillo on 8/8/16.
  */
@@ -20488,7 +20413,7 @@ function fullClusterGeneratorVector(conn) {
     return clusterList;
 }
 
-},{}],100:[function(require,module,exports){
+},{}],104:[function(require,module,exports){
 'use strict';
 
 var HashTable = require('ml-hash-table');
@@ -20738,34 +20663,13 @@ var operators = [
 // Bitwise operators
 ['&', 'and'], ['|', 'or'], ['^', 'xor'], ['<<', 'leftShift'], ['>>', 'signPropagatingRightShift'], ['>>>', 'rightShift', 'zeroFillRightShift']];
 
-var _iteratorNormalCompletion = true;
-var _didIteratorError = false;
-var _iteratorError = undefined;
+for (var operator of operators) {
+    for (var i = 1; i < operator.length; i++) {
+        SparseMatrix.prototype[operator[i]] = eval(fillTemplateFunction(inplaceOperator, { name: operator[i], op: operator[0] }));
+        SparseMatrix.prototype[operator[i] + 'S'] = eval(fillTemplateFunction(inplaceOperatorScalar, { name: operator[i] + 'S', op: operator[0] }));
+        SparseMatrix.prototype[operator[i] + 'M'] = eval(fillTemplateFunction(inplaceOperatorMatrix, { name: operator[i] + 'M', op: operator[0] }));
 
-try {
-    for (var _iterator = operators[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-        var operator = _step.value;
-
-        for (var i = 1; i < operator.length; i++) {
-            SparseMatrix.prototype[operator[i]] = eval(fillTemplateFunction(inplaceOperator, { name: operator[i], op: operator[0] }));
-            SparseMatrix.prototype[operator[i] + 'S'] = eval(fillTemplateFunction(inplaceOperatorScalar, { name: operator[i] + 'S', op: operator[0] }));
-            SparseMatrix.prototype[operator[i] + 'M'] = eval(fillTemplateFunction(inplaceOperatorMatrix, { name: operator[i] + 'M', op: operator[0] }));
-
-            SparseMatrix[operator[i]] = eval(fillTemplateFunction(staticOperator, { name: operator[i] }));
-        }
-    }
-} catch (err) {
-    _didIteratorError = true;
-    _iteratorError = err;
-} finally {
-    try {
-        if (!_iteratorNormalCompletion && _iterator.return) {
-            _iterator.return();
-        }
-    } finally {
-        if (_didIteratorError) {
-            throw _iteratorError;
-        }
+        SparseMatrix[operator[i]] = eval(fillTemplateFunction(staticOperator, { name: operator[i] }));
     }
 }
 
@@ -20775,31 +20679,10 @@ var methods = [['~', 'not']];
     methods.push(['Math.' + mathMethod, mathMethod]);
 });
 
-var _iteratorNormalCompletion2 = true;
-var _didIteratorError2 = false;
-var _iteratorError2 = undefined;
-
-try {
-    for (var _iterator2 = methods[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-        var method = _step2.value;
-
-        for (var i = 1; i < method.length; i++) {
-            SparseMatrix.prototype[method[i]] = eval(fillTemplateFunction(inplaceMethod, { name: method[i], method: method[0] }));
-            SparseMatrix[method[i]] = eval(fillTemplateFunction(staticMethod, { name: method[i] }));
-        }
-    }
-} catch (err) {
-    _didIteratorError2 = true;
-    _iteratorError2 = err;
-} finally {
-    try {
-        if (!_iteratorNormalCompletion2 && _iterator2.return) {
-            _iterator2.return();
-        }
-    } finally {
-        if (_didIteratorError2) {
-            throw _iteratorError2;
-        }
+for (var method of methods) {
+    for (var i = 1; i < method.length; i++) {
+        SparseMatrix.prototype[method[i]] = eval(fillTemplateFunction(inplaceMethod, { name: method[i], method: method[0] }));
+        SparseMatrix[method[i]] = eval(fillTemplateFunction(staticMethod, { name: method[i] }));
     }
 }
 
@@ -20810,7 +20693,7 @@ function fillTemplateFunction(template, values) {
     return template;
 }
 
-},{"ml-hash-table":49}],101:[function(require,module,exports){
+},{"ml-hash-table":53}],105:[function(require,module,exports){
 'use strict';
 
 function compareNumbers(a, b) {
@@ -21296,9 +21179,9 @@ exports.cumulativeSum = function cumulativeSum(array) {
     }return result;
 };
 
-},{}],102:[function(require,module,exports){
-arguments[4][96][0].apply(exports,arguments)
-},{"./array":101,"./matrix":103,"dup":96}],103:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
+arguments[4][100][0].apply(exports,arguments)
+},{"./array":105,"./matrix":107,"dup":100}],107:[function(require,module,exports){
 'use strict';
 
 var arrayStat = require('./array');
@@ -21948,7 +21831,7 @@ exports.weightedScatter = function weightedScatter(matrix, weights, means, facto
     return cov;
 };
 
-},{"./array":101}],104:[function(require,module,exports){
+},{"./array":105}],108:[function(require,module,exports){
 "use strict";
 
 module.exports = newArray;
@@ -21962,7 +21845,7 @@ function newArray(n, value) {
   return array;
 }
 
-},{}],105:[function(require,module,exports){
+},{}],109:[function(require,module,exports){
 'use strict';
 
 /**
@@ -22024,7 +21907,7 @@ module.exports = function getSpectrumType(pulse) {
     return '';
 };
 
-},{}],106:[function(require,module,exports){
+},{}],110:[function(require,module,exports){
 'use strict';
 
 var jcampconverter = require('jcampconverter');
@@ -22052,16 +21935,12 @@ var defaultOptions = {
     computeRanges: false
 };
 
-var rangesOptions = {
+var defaultRangesOptions = {
     nH: 100,
-    realTop: true,
     thresholdFactor: 0.85,
-    clean: true,
+    clean: 0.4,
     compile: true,
-    format: 'new',
-    integralType: 'sum',
-    optimize: false,
-    frequencyCluster: 16
+    integralType: 'sum'
 };
 
 /**
@@ -22074,7 +21953,6 @@ var rangesOptions = {
  */
 exports.parseJcamp = function (jcampData, options) {
     options = Object.assign({}, defaultOptions, options);
-    options.ranges = Object.assign({}, rangesOptions, options.ranges);
 
     var jcampString = jcampData.toString();
     var jcamp = jcampconverter.convert(jcampString, {
@@ -22124,9 +22002,12 @@ exports.parseJcamp = function (jcampData, options) {
     }
 
     if (options.computeRanges && metadata.isFt && metadata.dimension === 1 && metadata.nucleus[0] === '1H') {
+        var rangesOptions = Object.assign({}, defaultRangesOptions, options.ranges);
+        if (options.removeImpurities && metadata.solvent) rangesOptions.removeImpurity = { solvent: metadata.solvent };
         var spectrum = SD.NMR.fromJcamp(jcampString);
-        var ranges = spectrum.getRanges(options.ranges);
+        var ranges = spectrum.getRanges(rangesOptions);
         ranges.forEach(function (range) {
+            // todo remove when there is an option to avoid that
             delete range._highlight;
             delete range.signalID;
             range.signal.forEach(function (signal) {
@@ -22166,13 +22047,32 @@ function maybeAdd(obj, name, value) {
     }
 }
 
-},{"./getSpectrumType":105,"jcampconverter":10,"spectra-data":147}],107:[function(require,module,exports){
+},{"./getSpectrumType":109,"jcampconverter":10,"spectra-data":150}],111:[function(require,module,exports){
 'use strict';
 
-var Matrix = require('ml-matrix');
-var newArray = require('new-array');
-var simpleClustering = require('ml-simple-clustering');
-var hlClust = require('ml-hclust');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+var _mlMatrix = require('ml-matrix');
+
+var _mlMatrix2 = _interopRequireDefault(_mlMatrix);
+
+var _newArray = require('new-array');
+
+var _newArray2 = _interopRequireDefault(_newArray);
+
+var _mlSimpleClustering = require('ml-simple-clustering');
+
+var _mlSimpleClustering2 = _interopRequireDefault(_mlSimpleClustering);
+
+var _mlHclust = require('ml-hclust');
+
+var _mlHclust2 = _interopRequireDefault(_mlHclust);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 class SpinSystem {
     constructor(chemicalShifts, couplingConstants, multiplicity) {
@@ -22190,7 +22090,7 @@ class SpinSystem {
         var cs = new Array(nspins);
         var integrals = new Array(nspins);
         var ids = {};
-        var jc = Matrix.zeros(nspins, nspins);
+        var jc = _mlMatrix2.default.zeros(nspins, nspins);
         for (var _i = 0; _i < nspins; _i++) {
             var tokens = lines[_i].split('\t');
             cs[_i] = +tokens[2];
@@ -22212,14 +22112,14 @@ class SpinSystem {
                 jc[j][i] = jc[i][j];
             }
         }
-        return new SpinSystem(cs, jc, newArray(nspins, 2));
+        return new SpinSystem(cs, jc, (0, _newArray2.default)(nspins, 2));
     }
 
     static fromPrediction(input) {
         var predictions = SpinSystem.ungroupAtoms(input);
         var nSpins = predictions.length;
         var cs = new Array(nSpins);
-        var jc = Matrix.zeros(nSpins, nSpins);
+        var jc = _mlMatrix2.default.zeros(nSpins, nSpins);
         var multiplicity = new Array(nSpins);
         var ids = {};
         var i, k, j;
@@ -22267,12 +22167,12 @@ class SpinSystem {
     }
 
     _initClusters() {
-        this.clusters = simpleClustering(this.connectivity, { out: 'indexes' });
+        this.clusters = (0, _mlSimpleClustering2.default)(this.connectivity, { out: 'indexes' });
     }
 
     _initConnectivity() {
         var couplings = this.couplingConstants;
-        var connectivity = Matrix.ones(couplings.length, couplings.length);
+        var connectivity = _mlMatrix2.default.ones(couplings.length, couplings.length);
         for (var i = 0; i < couplings.length; i++) {
             for (var j = i; j < couplings[i].length; j++) {
                 if (couplings[i][j] === 0) {
@@ -22285,7 +22185,7 @@ class SpinSystem {
     }
 
     _calculateBetas(J, frequency) {
-        var betas = Matrix.zeros(J.length, J.length);
+        var betas = _mlMatrix2.default.zeros(J.length, J.length);
         //Before clustering, we must add hidden J, we could use molecular information if available
         var i, j;
         for (i = 0; i < J.rows; i++) {
@@ -22304,7 +22204,7 @@ class SpinSystem {
 
     ensureClusterSize(options) {
         var betas = this._calculateBetas(this.couplingConstants, options.frequency || 400);
-        var cluster = hlClust.agnes(betas, { isDistanceMatrix: true });
+        var cluster = _mlHclust2.default.agnes(betas, { isDistanceMatrix: true });
         var list = [];
         this._splitCluster(cluster, list, options.maxClusterSize || 8, false);
         var clusters = this._mergeClusters(list);
@@ -22337,57 +22237,36 @@ class SpinSystem {
         if (!force && cluster.index.length <= maxClusterSize) {
             clusterList.push(this._getMembers(cluster));
         } else {
-            var _iteratorNormalCompletion = true;
-            var _didIteratorError = false;
-            var _iteratorError = undefined;
-
-            try {
-                for (var _iterator = cluster.children[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                    var child = _step.value;
-
-                    if (!isNaN(child.index) || child.index.length <= maxClusterSize) {
-                        var members = this._getMembers(child);
-                        //Add the neighbors that shares at least 1 coupling with the given cluster
-                        var count = 0;
-                        for (var i = 0; i < this.nSpins; i++) {
-                            if (members[i] === 1) {
-                                count++;
-                                for (var j = 0; j < this.nSpins; j++) {
-                                    if (this.connectivity[i][j] === 1 && members[j] === 0) {
-                                        members[j] = -1;
-                                        count++;
-                                    }
+            for (var child of cluster.children) {
+                if (!isNaN(child.index) || child.index.length <= maxClusterSize) {
+                    var members = this._getMembers(child);
+                    //Add the neighbors that shares at least 1 coupling with the given cluster
+                    var count = 0;
+                    for (var i = 0; i < this.nSpins; i++) {
+                        if (members[i] === 1) {
+                            count++;
+                            for (var j = 0; j < this.nSpins; j++) {
+                                if (this.connectivity[i][j] === 1 && members[j] === 0) {
+                                    members[j] = -1;
+                                    count++;
                                 }
                             }
                         }
+                    }
 
-                        if (count <= maxClusterSize) {
-                            clusterList.push(members);
-                        } else {
-                            if (isNaN(child.index)) {
-                                this._splitCluster(child, clusterList, maxClusterSize, true);
-                            } else {
-                                //We have to threat this spin alone and use the resurrection algorithm instead of the simulation
-                                members[child.index] = 2;
-                                clusterList.push(members);
-                            }
-                        }
+                    if (count <= maxClusterSize) {
+                        clusterList.push(members);
                     } else {
-                        this._splitCluster(child, clusterList, maxClusterSize, false);
+                        if (isNaN(child.index)) {
+                            this._splitCluster(child, clusterList, maxClusterSize, true);
+                        } else {
+                            //We have to threat this spin alone and use the resurrection algorithm instead of the simulation
+                            members[child.index] = 2;
+                            clusterList.push(members);
+                        }
                     }
-                }
-            } catch (err) {
-                _didIteratorError = true;
-                _iteratorError = err;
-            } finally {
-                try {
-                    if (!_iteratorNormalCompletion && _iterator.return) {
-                        _iterator.return();
-                    }
-                } finally {
-                    if (_didIteratorError) {
-                        throw _iteratorError;
-                    }
+                } else {
+                    this._splitCluster(child, clusterList, maxClusterSize, false);
                 }
             }
         }
@@ -22406,29 +22285,8 @@ class SpinSystem {
         if (!isNaN(cluster.index)) {
             members[cluster.index * 1] = 1;
         } else {
-            var _iteratorNormalCompletion2 = true;
-            var _didIteratorError2 = false;
-            var _iteratorError2 = undefined;
-
-            try {
-                for (var _iterator2 = cluster.index[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-                    var index = _step2.value;
-
-                    members[index.index * 1] = 1;
-                }
-            } catch (err) {
-                _didIteratorError2 = true;
-                _iteratorError2 = err;
-            } finally {
-                try {
-                    if (!_iteratorNormalCompletion2 && _iterator2.return) {
-                        _iterator2.return();
-                    }
-                } finally {
-                    if (_didIteratorError2) {
-                        throw _iteratorError2;
-                    }
-                }
+            for (var index of cluster.index) {
+                members[index.index * 1] = 1;
             }
         }
         return members;
@@ -22486,20 +22344,61 @@ class SpinSystem {
         return list;
     }
 }
+exports.default = SpinSystem;
 
-module.exports = SpinSystem;
-
-},{"ml-hclust":55,"ml-matrix":70,"ml-simple-clustering":99,"new-array":104}],108:[function(require,module,exports){
+},{"ml-hclust":59,"ml-matrix":74,"ml-simple-clustering":103,"new-array":108}],112:[function(require,module,exports){
 'use strict';
 
-exports.SpinSystem = require('./SpinSystem');
-exports.simulate1D = require('./simulate1D');
-exports.simulate2D = require('./simulate2D');
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
 
-},{"./SpinSystem":107,"./simulate1D":110,"./simulate2D":111}],109:[function(require,module,exports){
+var _SpinSystem = require('./SpinSystem');
+
+Object.defineProperty(exports, 'SpinSystem', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_SpinSystem).default;
+  }
+});
+
+var _simulate1D = require('./simulate1D');
+
+Object.defineProperty(exports, 'simulate1D', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_simulate1D).default;
+  }
+});
+
+var _simulate2D = require('./simulate2D');
+
+Object.defineProperty(exports, 'simulate2D', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_simulate2D).default;
+  }
+});
+
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+
+},{"./SpinSystem":111,"./simulate1D":114,"./simulate2D":115}],113:[function(require,module,exports){
 'use strict';
 
-var SparseMatrix = require('ml-sparse-matrix');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = getPauli;
+
+var _mlSparseMatrix = require('ml-sparse-matrix');
+
+var _mlSparseMatrix2 = _interopRequireDefault(_mlSparseMatrix);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 function createPauli(mult) {
     var spin = (mult - 1) / 2;
@@ -22521,7 +22420,7 @@ function createPauli(mult) {
 }
 
 function diag(A, d, n, m) {
-    var diag = new SparseMatrix(n, m, { initialCapacity: 20 });
+    var diag = new _mlSparseMatrix2.default(n, m, { initialCapacity: 20 });
     for (var i = 0; i < A.length; i++) {
         if (i - d >= 0 && i - d < n && i < m) {
             diag.set(i - d, i, A[i]);
@@ -22536,30 +22435,56 @@ function getPauli(mult) {
     if (mult === 2) return pauli2;else return createPauli(mult);
 }
 
-module.exports = getPauli;
-
-},{"ml-sparse-matrix":100}],110:[function(require,module,exports){
+},{"ml-sparse-matrix":104}],114:[function(require,module,exports){
 'use strict';
 
-var Matrix = require('ml-matrix');
-var SparseMatrix = require('ml-sparse-matrix');
-var binarySearch = require('binary-search');
-var sortAsc = require('num-sort').asc;
-var newArray = require('new-array');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = simulate1d;
 
-var getPauli = require('./pauli');
+var _mlMatrix = require('ml-matrix');
+
+var _mlMatrix2 = _interopRequireDefault(_mlMatrix);
+
+var _mlSparseMatrix = require('ml-sparse-matrix');
+
+var _mlSparseMatrix2 = _interopRequireDefault(_mlSparseMatrix);
+
+var _binarySearch = require('binary-search');
+
+var _binarySearch2 = _interopRequireDefault(_binarySearch);
+
+var _numSort = require('num-sort');
+
+var _pauli = require('./pauli');
+
+var _pauli2 = _interopRequireDefault(_pauli);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 var smallValue = 1e-2;
 
 function simulate1d(spinSystem, options) {
     var i, j;
-    var frequencyMHz = options.frequency || 400;
-    var from = (options.from || 0) * frequencyMHz;
+    var _options$lineWidth = options.lineWidth,
+        lineWidth = _options$lineWidth === undefined ? 1 : _options$lineWidth,
+        _options$nbPoints = options.nbPoints,
+        nbPoints = _options$nbPoints === undefined ? 1024 : _options$nbPoints,
+        _options$maxClusterSi = options.maxClusterSize,
+        maxClusterSize = _options$maxClusterSi === undefined ? 10 : _options$maxClusterSi,
+        _options$output = options.output,
+        output = _options$output === undefined ? 'y' : _options$output,
+        _options$frequency = options.frequency,
+        frequencyMHz = _options$frequency === undefined ? 400 : _options$frequency,
+        _options$noiseFactor = options.noiseFactor,
+        noiseFactor = _options$noiseFactor === undefined ? 1 : _options$noiseFactor;
+
+
+    var from = options.from * frequencyMHz || 0;
     var to = (options.to || 10) * frequencyMHz;
-    var lineWidth = options.lineWidth || 1;
-    var nbPoints = options.nbPoints || 1024;
-    var maxClusterSize = options.maxClusterSize || 10;
-    var output = options.output || 'y';
 
     var chemicalShifts = spinSystem.chemicalShifts.slice();
     for (i = 0; i < chemicalShifts.length; i++) {
@@ -22577,7 +22502,7 @@ function simulate1d(spinSystem, options) {
         gaussian[i] = 1e9 * Math.exp(-((i - b) * (i - b)) / c);
     }
 
-    var result = new newArray(nbPoints, 0);
+    var result = options.withNoise ? [...new Array(nbPoints)].map(() => Math.random() * noiseFactor) : new Array(nbPoints).fill(0);
 
     var multiplicity = spinSystem.multiplicity;
 
@@ -22616,7 +22541,7 @@ function simulate1d(spinSystem, options) {
                 }
             }
 
-            frequencies.sort(sortAsc);
+            frequencies.sort(_numSort.asc);
             sumI = frequencies.length;
             weight = 1;
 
@@ -22627,26 +22552,26 @@ function simulate1d(spinSystem, options) {
             var hamiltonian = getHamiltonian(chemicalShifts, spinSystem.couplingConstants, multiplicity, spinSystem.connectivity, clusterFake);
 
             var hamSize = hamiltonian.rows;
-            var evd = new Matrix.DC.EVD(hamiltonian);
+            var evd = new _mlMatrix2.default.DC.EVD(hamiltonian);
             var V = evd.eigenvectorMatrix;
             var diagB = evd.realEigenvalues;
-            var assignmentMatrix = new SparseMatrix(hamSize, hamSize);
+            var assignmentMatrix = new _mlSparseMatrix2.default(hamSize, hamSize);
             var multLen = cluster.length;
             weight = 0;
             for (n = 0; n < multLen; n++) {
-                var L = getPauli(multiplicity[clusterFake[n]]);
+                var L = (0, _pauli2.default)(multiplicity[clusterFake[n]]);
 
                 var temp = 1;
                 for (j = 0; j < n; j++) {
                     temp *= multiplicity[clusterFake[j]];
                 }
-                var A = SparseMatrix.eye(temp);
+                var A = _mlSparseMatrix2.default.eye(temp);
 
                 temp = 1;
                 for (j = n + 1; j < multLen; j++) {
                     temp *= multiplicity[clusterFake[j]];
                 }
-                var B = SparseMatrix.eye(temp);
+                var B = _mlSparseMatrix2.default.eye(temp);
                 var tempMat = A.kroneckerProduct(L.m).kroneckerProduct(B);
                 if (cluster[n] >= 0) {
                     assignmentMatrix.add(tempMat.mul(cluster[n] + 1));
@@ -22656,7 +22581,7 @@ function simulate1d(spinSystem, options) {
                 }
             }
 
-            var rhoip = Matrix.zeros(hamSize, hamSize);
+            var rhoip = _mlMatrix2.default.zeros(hamSize, hamSize);
             assignmentMatrix.forEachNonZero((i, j, v) => {
                 if (v > 0) {
                     var row = V[j];
@@ -22684,10 +22609,10 @@ function simulate1d(spinSystem, options) {
 
             var tV = V.transpose();
             rhoip = tV.mmul(rhoip);
-            rhoip = new SparseMatrix(rhoip, { threshold: smallValue });
+            rhoip = new _mlSparseMatrix2.default(rhoip, { threshold: smallValue });
             triuTimesAbs(rhoip, smallValue);
             rhoip2 = tV.mmul(rhoip2);
-            rhoip2 = new SparseMatrix(rhoip2, { threshold: smallValue });
+            rhoip2 = new _mlSparseMatrix2.default(rhoip2, { threshold: smallValue });
             triuTimesAbs(rhoip2, smallValue);
 
             rhoip2.forEachNonZero((i, j, v) => {
@@ -22697,7 +22622,7 @@ function simulate1d(spinSystem, options) {
 
                 sumI += val;
                 var valFreq = diagB[i] - diagB[j];
-                var insertIn = binarySearch(frequencies, valFreq, sortAsc);
+                var insertIn = (0, _binarySearch2.default)(frequencies, valFreq, _numSort.asc);
                 if (insertIn < 0) {
                     frequencies.splice(-1 - insertIn, 0, valFreq);
                     intensities.splice(-1 - insertIn, 0, val);
@@ -22776,12 +22701,12 @@ function getHamiltonian(chemicalShifts, couplingConstants, multiplicity, conMatr
         hamSize *= multiplicity[cluster[i]];
     }
 
-    var clusterHam = new SparseMatrix(hamSize, hamSize);
+    var clusterHam = new _mlSparseMatrix2.default(hamSize, hamSize);
 
     for (var pos = 0; pos < cluster.length; pos++) {
         var n = cluster[pos];
 
-        var L = getPauli(multiplicity[n]);
+        var L = (0, _pauli2.default)(multiplicity[n]);
 
         var A1 = void 0,
             B1 = void 0;
@@ -22789,13 +22714,13 @@ function getHamiltonian(chemicalShifts, couplingConstants, multiplicity, conMatr
         for (var _i = 0; _i < pos; _i++) {
             temp *= multiplicity[cluster[_i]];
         }
-        A1 = SparseMatrix.eye(temp);
+        A1 = _mlSparseMatrix2.default.eye(temp);
 
         temp = 1;
         for (var _i2 = pos + 1; _i2 < cluster.length; _i2++) {
             temp *= multiplicity[cluster[_i2]];
         }
-        B1 = SparseMatrix.eye(temp);
+        B1 = _mlSparseMatrix2.default.eye(temp);
 
         var alpha = chemicalShifts[n];
         var kronProd = A1.kroneckerProduct(L.z).kroneckerProduct(B1);
@@ -22804,7 +22729,7 @@ function getHamiltonian(chemicalShifts, couplingConstants, multiplicity, conMatr
         for (var pos2 = 0; pos2 < cluster.length; pos2++) {
             var k = cluster[pos2];
             if (conMatrix[n][k] === 1) {
-                var S = getPauli(multiplicity[k]);
+                var S = (0, _pauli2.default)(multiplicity[k]);
 
                 var A2 = void 0,
                     B2 = void 0;
@@ -22812,13 +22737,13 @@ function getHamiltonian(chemicalShifts, couplingConstants, multiplicity, conMatr
                 for (var _i3 = 0; _i3 < pos2; _i3++) {
                     _temp *= multiplicity[cluster[_i3]];
                 }
-                A2 = SparseMatrix.eye(_temp);
+                A2 = _mlSparseMatrix2.default.eye(_temp);
 
                 _temp = 1;
                 for (var _i4 = pos2 + 1; _i4 < cluster.length; _i4++) {
                     _temp *= multiplicity[cluster[_i4]];
                 }
-                B2 = SparseMatrix.eye(_temp);
+                B2 = _mlSparseMatrix2.default.eye(_temp);
 
                 var kron1 = A1.kroneckerProduct(L.x).kroneckerProduct(B1).mmul(A2.kroneckerProduct(S.x).kroneckerProduct(B2));
                 kron1.add(A1.kroneckerProduct(L.y).kroneckerProduct(B1).mul(-1).mmul(A2.kroneckerProduct(S.y).kroneckerProduct(B2)));
@@ -22841,12 +22766,21 @@ function _getX(from, to, nbPoints) {
     return x;
 }
 
-module.exports = simulate1d;
-
-},{"./pauli":109,"binary-search":2,"ml-matrix":70,"ml-sparse-matrix":100,"new-array":104,"num-sort":112}],111:[function(require,module,exports){
+},{"./pauli":113,"binary-search":2,"ml-matrix":74,"ml-sparse-matrix":104,"num-sort":116}],115:[function(require,module,exports){
 'use strict';
 
-var Matrix = require('ml-matrix');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = simule2DNmrSpectrum;
+
+var _mlMatrix = require('ml-matrix');
+
+var _mlMatrix2 = _interopRequireDefault(_mlMatrix);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 var defOptions = {
     H: { frequency: 400, lineWidth: 10 },
@@ -22894,7 +22828,7 @@ function simule2DNmrSpectrum(table, options) {
     var nbPointsX = options.nbPointsX || 512;
     var nbPointsY = options.nbPointsY || 512;
 
-    var spectraMatrix = new Matrix(nbPointsY, nbPointsX).fill(0);
+    var spectraMatrix = new _mlMatrix2.default(nbPointsY, nbPointsX).fill(0);
     i = 0;
     while (i < table.length) {
         //parameters.couplingConstant = table[i].j;
@@ -22934,9 +22868,7 @@ function addPeak(matrix, peak) {
     }
 }
 
-module.exports = simule2DNmrSpectrum;
-
-},{"ml-matrix":70}],112:[function(require,module,exports){
+},{"ml-matrix":74}],116:[function(require,module,exports){
 'use strict';
 
 var numberIsNan = require('number-is-nan');
@@ -22959,14 +22891,14 @@ exports.desc = function (a, b) {
 	return b - a;
 };
 
-},{"number-is-nan":113}],113:[function(require,module,exports){
+},{"number-is-nan":117}],117:[function(require,module,exports){
 'use strict';
 
 module.exports = Number.isNaN || function (x) {
 	return x !== x;
 };
 
-},{}],114:[function(require,module,exports){
+},{}],118:[function(require,module,exports){
 // Top level file is just a mixin of submodules & constants
 'use strict';
 
@@ -22982,7 +22914,7 @@ assign(pako, deflate, inflate, constants);
 
 module.exports = pako;
 
-},{"./lib/deflate":115,"./lib/inflate":116,"./lib/utils/common":117,"./lib/zlib/constants":120}],115:[function(require,module,exports){
+},{"./lib/deflate":119,"./lib/inflate":120,"./lib/utils/common":121,"./lib/zlib/constants":124}],119:[function(require,module,exports){
 'use strict';
 
 var zlib_deflate = require('./zlib/deflate');
@@ -23022,7 +22954,7 @@ var Z_DEFLATED = 8;
 /* internal
  * Deflate.chunks -> Array
  *
- * Chunks of output data, if [[Deflate#onData]] not overriden.
+ * Chunks of output data, if [[Deflate#onData]] not overridden.
  **/
 
 /**
@@ -23165,7 +23097,7 @@ function Deflate(options) {
  * - data (Uint8Array|Array|ArrayBuffer|String): input data. Strings will be
  *   converted to utf8 byte sequence.
  * - mode (Number|Boolean): 0..6 for corresponding Z_NO_FLUSH..Z_TREE modes.
- *   See constants. Skipped or `false` means Z_NO_FLUSH, `true` meansh Z_FINISH.
+ *   See constants. Skipped or `false` means Z_NO_FLUSH, `true` means Z_FINISH.
  *
  * Sends input data to deflate pipe, generating [[Deflate#onData]] calls with
  * new compressed chunks. Returns `true` on success. The last data block must have
@@ -23255,7 +23187,7 @@ Deflate.prototype.push = function (data, mode) {
 
 /**
  * Deflate#onData(chunk) -> Void
- * - chunk (Uint8Array|Array|String): ouput data. Type of array depends
+ * - chunk (Uint8Array|Array|String): output data. Type of array depends
  *   on js engine support. When string output requested, each chunk
  *   will be string.
  *
@@ -23370,7 +23302,7 @@ exports.deflate = deflate;
 exports.deflateRaw = deflateRaw;
 exports.gzip = gzip;
 
-},{"./utils/common":117,"./utils/strings":118,"./zlib/deflate":122,"./zlib/messages":127,"./zlib/zstream":129}],116:[function(require,module,exports){
+},{"./utils/common":121,"./utils/strings":122,"./zlib/deflate":126,"./zlib/messages":131,"./zlib/zstream":133}],120:[function(require,module,exports){
 'use strict';
 
 var zlib_inflate = require('./zlib/inflate');
@@ -23394,7 +23326,7 @@ var toString = Object.prototype.toString;
 /* internal
  * inflate.chunks -> Array
  *
- * Chunks of output data, if [[Inflate#onData]] not overriden.
+ * Chunks of output data, if [[Inflate#onData]] not overridden.
  **/
 
 /**
@@ -23519,7 +23451,7 @@ function Inflate(options) {
  * Inflate#push(data[, mode]) -> Boolean
  * - data (Uint8Array|Array|ArrayBuffer|String): input data
  * - mode (Number|Boolean): 0..6 for corresponding Z_NO_FLUSH..Z_TREE modes.
- *   See constants. Skipped or `false` means Z_NO_FLUSH, `true` meansh Z_FINISH.
+ *   See constants. Skipped or `false` means Z_NO_FLUSH, `true` means Z_FINISH.
  *
  * Sends input data to inflate pipe, generating [[Inflate#onData]] calls with
  * new output chunks. Returns `true` on success. The last data block must have
@@ -23666,7 +23598,7 @@ Inflate.prototype.push = function (data, mode) {
 
 /**
  * Inflate#onData(chunk) -> Void
- * - chunk (Uint8Array|Array|String): ouput data. Type of array depends
+ * - chunk (Uint8Array|Array|String): output data. Type of array depends
  *   on js engine support. When string output requested, each chunk
  *   will be string.
  *
@@ -23692,7 +23624,7 @@ Inflate.prototype.onEnd = function (status) {
   if (status === c.Z_OK) {
     if (this.options.to === 'string') {
       // Glue & convert here, until we teach pako to send
-      // utf8 alligned strings to onData
+      // utf8 aligned strings to onData
       this.result = this.chunks.join('');
     } else {
       this.result = utils.flattenChunks(this.chunks);
@@ -23783,10 +23715,14 @@ exports.inflate = inflate;
 exports.inflateRaw = inflateRaw;
 exports.ungzip = inflate;
 
-},{"./utils/common":117,"./utils/strings":118,"./zlib/constants":120,"./zlib/gzheader":123,"./zlib/inflate":125,"./zlib/messages":127,"./zlib/zstream":129}],117:[function(require,module,exports){
+},{"./utils/common":121,"./utils/strings":122,"./zlib/constants":124,"./zlib/gzheader":127,"./zlib/inflate":129,"./zlib/messages":131,"./zlib/zstream":133}],121:[function(require,module,exports){
 'use strict';
 
 var TYPED_OK = typeof Uint8Array !== 'undefined' && typeof Uint16Array !== 'undefined' && typeof Int32Array !== 'undefined';
+
+function _has(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
 
 exports.assign = function (obj /*from1, from2, from3, ...*/) {
   var sources = Array.prototype.slice.call(arguments, 1);
@@ -23801,7 +23737,7 @@ exports.assign = function (obj /*from1, from2, from3, ...*/) {
     }
 
     for (var p in source) {
-      if (source.hasOwnProperty(p)) {
+      if (_has(source, p)) {
         obj[p] = source[p];
       }
     }
@@ -23886,7 +23822,7 @@ exports.setTyped = function (on) {
 
 exports.setTyped(TYPED_OK);
 
-},{}],118:[function(require,module,exports){
+},{}],122:[function(require,module,exports){
 // String encode/decode helpers
 'use strict';
 
@@ -23895,7 +23831,7 @@ var utils = require('./common');
 // Quick check if we can use fast array to bin string conversion
 //
 // - apply(Array) can fail on Android 2.2
-// - apply(Uint8Array) can fail on iOS 5.1 Safary
+// - apply(Uint8Array) can fail on iOS 5.1 Safari
 //
 var STR_APPLY_OK = true;
 var STR_APPLY_UIA_OK = true;
@@ -24079,13 +24015,13 @@ exports.utf8border = function (buf, max) {
     pos--;
   }
 
-  // Fuckup - very small and broken sequence,
+  // Very small and broken sequence,
   // return max, because we should return something anyway.
   if (pos < 0) {
     return max;
   }
 
-  // If we came to start of buffer - that means vuffer is too small,
+  // If we came to start of buffer - that means buffer is too small,
   // return max too.
   if (pos === 0) {
     return max;
@@ -24094,11 +24030,11 @@ exports.utf8border = function (buf, max) {
   return pos + _utf8len[buf[pos]] > max ? pos : max;
 };
 
-},{"./common":117}],119:[function(require,module,exports){
+},{"./common":121}],123:[function(require,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
-// It doesn't worth to make additional optimizationa as in original.
+// It isn't worth it to make additional optimizations as in original.
 // Small size is preferable.
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -24146,7 +24082,7 @@ function adler32(adler, buf, len, pos) {
 
 module.exports = adler32;
 
-},{}],120:[function(require,module,exports){
+},{}],124:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -24215,7 +24151,7 @@ module.exports = {
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
 
-},{}],121:[function(require,module,exports){
+},{}],125:[function(require,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -24276,7 +24212,7 @@ function crc32(crc, buf, len, pos) {
 
 module.exports = crc32;
 
-},{}],122:[function(require,module,exports){
+},{}],126:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26102,7 +26038,7 @@ exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
 
-},{"../utils/common":117,"./adler32":119,"./crc32":121,"./messages":127,"./trees":128}],123:[function(require,module,exports){
+},{"../utils/common":121,"./adler32":123,"./crc32":125,"./messages":131,"./trees":132}],127:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26162,7 +26098,7 @@ function GZheader() {
 
 module.exports = GZheader;
 
-},{}],124:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26367,7 +26303,7 @@ module.exports = function inflate_fast(strm, start) {
                   break top;
                 }
 
-                // (!) This block is disabled in zlib defailts,
+                // (!) This block is disabled in zlib defaults,
                 // don't enable it for binary compatibility
                 //#ifdef INFLATE_ALLOW_INVALID_DISTANCE_TOOFAR_ARRR
                 //                if (len <= op - whave) {
@@ -26513,7 +26449,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],125:[function(require,module,exports){
+},{}],129:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -27157,7 +27093,7 @@ function inflate(strm, flush) {
             if (state.head) {
               len = state.head.extra_len - state.length;
               if (!state.head.extra) {
-                // Use untyped array for more conveniend processing later
+                // Use untyped array for more convenient processing later
                 state.head.extra = new Array(state.head.extra_len);
               }
               utils.arraySet(state.head.extra, input, next,
@@ -27899,7 +27835,7 @@ function inflate(strm, flush) {
               state.mode = BAD;
               break;
             }
-            // (!) This block is disabled in zlib defailts,
+            // (!) This block is disabled in zlib defaults,
             // don't enable it for binary compatibility
             //#ifdef INFLATE_ALLOW_INVALID_DISTANCE_TOOFAR_ARRR
             //          Trace((stderr, "inflate.c too far\n"));
@@ -27959,7 +27895,7 @@ function inflate(strm, flush) {
               break inf_leave;
             }
             have--;
-            // Use '|' insdead of '+' to make sure that result is signed
+            // Use '|' instead of '+' to make sure that result is signed
             hold |= input[next++] << bits;
             bits += 8;
           }
@@ -28158,7 +28094,7 @@ exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
 
-},{"../utils/common":117,"./adler32":119,"./crc32":121,"./inffast":124,"./inftrees":126}],126:[function(require,module,exports){
+},{"../utils/common":121,"./adler32":123,"./crc32":125,"./inffast":128,"./inftrees":130}],130:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -28489,7 +28425,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":117}],127:[function(require,module,exports){
+},{"../utils/common":121}],131:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -28523,7 +28459,7 @@ module.exports = {
   '-6': 'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
 
-},{}],128:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -28654,7 +28590,7 @@ var bl_order = [16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15
 
 var DIST_CODE_LEN = 512; /* see definition of array dist_code below */
 
-// !!!! Use flat array insdead of structure, Freq = i*2, Len = i*2+1
+// !!!! Use flat array instead of structure, Freq = i*2, Len = i*2+1
 var static_ltree = new Array((L_CODES + 2) * 2);
 zero(static_ltree);
 /* The static literal tree. Since the bit lengths are imposed, there is no
@@ -29685,7 +29621,7 @@ function _tr_tally(s, dist, lc)
     s.dyn_dtree[d_code(dist) * 2] /*.Freq*/++;
   }
 
-  // (!) This block is disabled in zlib defailts,
+  // (!) This block is disabled in zlib defaults,
   // don't enable it for binary compatibility
 
   //#ifdef TRUNCATE_BLOCK
@@ -29721,7 +29657,7 @@ exports._tr_flush_block = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
 
-},{"../utils/common":117}],129:[function(require,module,exports){
+},{"../utils/common":121}],133:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -29770,7 +29706,7 @@ function ZStream() {
 
 module.exports = ZStream;
 
-},{}],130:[function(require,module,exports){
+},{}],134:[function(require,module,exports){
 'use strict';
 
 // shim for using process in browser
@@ -29959,18 +29895,16 @@ process.umask = function () {
     return 0;
 };
 
-},{}],131:[function(require,module,exports){
+},{}],135:[function(require,module,exports){
 'use strict';
-/**
- * nbDecimalsDelta : default depends nucleus H, F: 2 otherwise 1
- * nbDecimalsJ : default depends nucleus H, F: 1, otherwise 0
- * ascending : true / false
- * format : default "AIMJ" or when 2D data is collected the default format may be "IMJA"
- * deltaSeparator : ', '
- * detailSeparator : ', '
- */
 
-var joinCoupling = require('spectra-nmr-utilities').joinCoupling;
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = toAcs;
+
+var _spectraNmrUtilities = require('spectra-nmr-utilities');
+
 var globalOptions = {
     h: {
         nucleus: '1H',
@@ -29990,10 +29924,19 @@ var globalOptions = {
         nbDecimalJ: 1,
         observedFrequency: 400
     }
-};
+}; /**
+    * nbDecimalsDelta : default depends nucleus H, F: 2 otherwise 1
+    * nbDecimalsJ : default depends nucleus H, F: 1, otherwise 0
+    * ascending : true / false
+    * format : default "AIMJ" or when 2D data is collected the default format may be "IMJA"
+    * deltaSeparator : ', '
+    * detailSeparator : ', '
+    */
 
 function toAcs(ranges, options = {}) {
-    var nucleus = (options.nucleus || '1H').toLowerCase().replace(/[0-9]/g, '');
+    options = Object.assign({}, options);
+    if (!options.nucleus) options.nucleus = '1H';
+    var nucleus = options.nucleus.toLowerCase().replace(/[0-9]/g, '');
     var defaultOptions = globalOptions[nucleus];
     options = Object.assign({}, defaultOptions, { ascending: false, format: 'IMJA' }, options);
 
@@ -30016,31 +29959,9 @@ function formatAcs(ranges, options) {
     var acs = spectroInformation(options);
     if (acs.length === 0) acs = 'δ ';
     var acsRanges = [];
-    var _iteratorNormalCompletion = true;
-    var _didIteratorError = false;
-    var _iteratorError = undefined;
-
-    try {
-        for (var _iterator = ranges[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-            var range = _step.value;
-
-            pushDelta(range, acsRanges, options);
-        }
-    } catch (err) {
-        _didIteratorError = true;
-        _iteratorError = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion && _iterator.return) {
-                _iterator.return();
-            }
-        } finally {
-            if (_didIteratorError) {
-                throw _iteratorError;
-            }
-        }
+    for (var range of ranges) {
+        pushDelta(range, acsRanges, options);
     }
-
     if (acsRanges.length > 0) {
         return acs + acsRanges.join(', ');
     } else {
@@ -30079,37 +30000,15 @@ function pushDelta(range, acsRanges, options) {
             }
             strings += Math.min(...fromTo).toFixed(options.nbDecimalDelta) + '-' + Math.max(...fromTo).toFixed(options.nbDecimalDelta);
             strings += ' (' + getIntegral(range, options);
-            var _iteratorNormalCompletion2 = true;
-            var _didIteratorError2 = false;
-            var _iteratorError2 = undefined;
-
-            try {
-                for (var _iterator2 = signals[Symbol.iterator](), _step2; !(_iteratorNormalCompletion2 = (_step2 = _iterator2.next()).done); _iteratorNormalCompletion2 = true) {
-                    var signal = _step2.value;
-
-                    parenthesis = [];
-                    if (signal.delta !== undefined) {
-                        strings = appendSeparator(strings);
-                        strings += signal.delta.toFixed(options.nbDecimalDelta);
-                    }
-                    switchFormat({}, signal, parenthesis, options);
-                    if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
+            for (var signal of signals) {
+                parenthesis = [];
+                if (signal.delta !== undefined) {
+                    strings = appendSeparator(strings);
+                    strings += signal.delta.toFixed(options.nbDecimalDelta);
                 }
-            } catch (err) {
-                _didIteratorError2 = true;
-                _iteratorError2 = err;
-            } finally {
-                try {
-                    if (!_iteratorNormalCompletion2 && _iterator2.return) {
-                        _iterator2.return();
-                    }
-                } finally {
-                    if (_didIteratorError2) {
-                        throw _iteratorError2;
-                    }
-                }
+                switchFormat({}, signal, parenthesis, options);
+                if (parenthesis.length > 0) strings += ' (' + parenthesis.join(', ') + ')';
             }
-
             strings += ')';
         } else {
             parenthesis = [];
@@ -30147,48 +30046,27 @@ function pushIntegral(range, parenthesis, options) {
 }
 
 function pushMultiplicityFromSignal(signal, parenthesis) {
-    var multiplicity = signal.multiplicity || joinCoupling(signal, 0.05);
+    var multiplicity = signal.multiplicity || (0, _spectraNmrUtilities.joinCoupling)(signal, 0.05);
     if (multiplicity.length > 0) parenthesis.push(multiplicity);
 }
 
 function switchFormat(range, signal, parenthesis, options) {
-    var _iteratorNormalCompletion3 = true;
-    var _didIteratorError3 = false;
-    var _iteratorError3 = undefined;
-
-    try {
-        for (var _iterator3 = options.format[Symbol.iterator](), _step3; !(_iteratorNormalCompletion3 = (_step3 = _iterator3.next()).done); _iteratorNormalCompletion3 = true) {
-            var char = _step3.value;
-
-            switch (char.toUpperCase()) {
-                case 'I':
-                    pushIntegral(range, parenthesis, options);
-                    break;
-                case 'M':
-                    pushMultiplicityFromSignal(signal, parenthesis);
-                    break;
-                case 'A':
-                    pushAssignment(signal, parenthesis);
-                    break;
-                case 'J':
-                    pushCoupling(signal, parenthesis, options);
-                    break;
-                default:
-                    throw new Error('Unknow format letter: ' + char);
-            }
-        }
-    } catch (err) {
-        _didIteratorError3 = true;
-        _iteratorError3 = err;
-    } finally {
-        try {
-            if (!_iteratorNormalCompletion3 && _iterator3.return) {
-                _iterator3.return();
-            }
-        } finally {
-            if (_didIteratorError3) {
-                throw _iteratorError3;
-            }
+    for (var char of options.format) {
+        switch (char.toUpperCase()) {
+            case 'I':
+                pushIntegral(range, parenthesis, options);
+                break;
+            case 'M':
+                pushMultiplicityFromSignal(signal, parenthesis);
+                break;
+            case 'A':
+                pushAssignment(signal, parenthesis);
+                break;
+            case 'J':
+                pushCoupling(signal, parenthesis, options);
+                break;
+            default:
+                throw new Error('Unknow format letter: ' + char);
         }
     }
 }
@@ -30221,33 +30099,11 @@ function pushCoupling(signal, parenthesis, options) {
         });
 
         var values = [];
-        var _iteratorNormalCompletion4 = true;
-        var _didIteratorError4 = false;
-        var _iteratorError4 = undefined;
-
-        try {
-            for (var _iterator4 = signal.j[Symbol.iterator](), _step4; !(_iteratorNormalCompletion4 = (_step4 = _iterator4.next()).done); _iteratorNormalCompletion4 = true) {
-                var j = _step4.value;
-
-                if (j.coupling !== undefined) {
-                    values.push(j.coupling.toFixed(options.nbDecimalJ));
-                }
-            }
-        } catch (err) {
-            _didIteratorError4 = true;
-            _iteratorError4 = err;
-        } finally {
-            try {
-                if (!_iteratorNormalCompletion4 && _iterator4.return) {
-                    _iterator4.return();
-                }
-            } finally {
-                if (_didIteratorError4) {
-                    throw _iteratorError4;
-                }
+        for (var j of signal.j) {
+            if (j.coupling !== undefined) {
+                values.push(j.coupling.toFixed(options.nbDecimalJ));
             }
         }
-
         if (values.length > 0) parenthesis.push('<i>J</i> = ' + values.join(', ') + ' Hz');
     }
 }
@@ -30259,22 +30115,86 @@ function pushAssignment(signal, parenthesis) {
         parenthesis.push(formatAssignment(signal.assignment));
     }
 }
-module.exports = toAcs;
 
-},{"spectra-nmr-utilities":157}],132:[function(require,module,exports){
+},{"spectra-nmr-utilities":161}],136:[function(require,module,exports){
 'use strict';
 
-module.exports.GUI = require('./visualizer/annotations');
-module.exports.Ranges = require('./range/Ranges');
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.Ranges = exports.GUI = undefined;
 
-},{"./range/Ranges":133,"./visualizer/annotations":135}],133:[function(require,module,exports){
+var _Ranges = require('./range/Ranges');
+
+Object.defineProperty(exports, 'Ranges', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_Ranges).default;
+  }
+});
+
+var _annotations = require('./visualizer/annotations');
+
+var GUI = _interopRequireWildcard(_annotations);
+
+function _interopRequireWildcard(obj) {
+  if (obj && obj.__esModule) {
+    return obj;
+  } else {
+    var newObj = {};if (obj != null) {
+      for (var key in obj) {
+        if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key];
+      }
+    }newObj.default = obj;return newObj;
+  }
+}
+
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+
+exports.GUI = GUI;
+
+},{"./range/Ranges":137,"./visualizer/annotations":139}],137:[function(require,module,exports){
 'use strict';
 
-var acs = require('../acs/acs');
-var peak2Vector = require('./peak2Vector');
-var GUI = require('../visualizer/annotations');
-var utils = require('spectra-nmr-utilities');
-var arrayUtils = require('ml-stat').array;
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+var _acs = require('../acs/acs');
+
+var _acs2 = _interopRequireDefault(_acs);
+
+var _peak2Vector = require('./peak2Vector');
+
+var _peak2Vector2 = _interopRequireDefault(_peak2Vector);
+
+var _annotations = require('../visualizer/annotations');
+
+var GUI = _interopRequireWildcard(_annotations);
+
+var _spectraNmrUtilities = require('spectra-nmr-utilities');
+
+var utils = _interopRequireWildcard(_spectraNmrUtilities);
+
+var _mlStat = require('ml-stat');
+
+function _interopRequireWildcard(obj) {
+    if (obj && obj.__esModule) {
+        return obj;
+    } else {
+        var newObj = {};if (obj != null) {
+            for (var key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key];
+            }
+        }newObj.default = obj;return newObj;
+    }
+}
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 class Ranges extends Array {
 
@@ -30401,7 +30321,7 @@ class Ranges extends Array {
      */
     getVector(options) {
         if (this[0].signal[0].peak) {
-            return peak2Vector(this.getPeakList(), options);
+            return (0, _peak2Vector2.default)(this.getPeakList(), options);
         } else {
             throw Error('This method is only for signals with peaks');
         }
@@ -30432,7 +30352,7 @@ class Ranges extends Array {
      * @return {*}
      */
     getACS(options) {
-        return acs(this, options);
+        return (0, _acs2.default)(this, options);
     }
 
     getAnnotations(options) {
@@ -30444,47 +30364,25 @@ class Ranges extends Array {
         if (options.joinCouplings) {
             this.joinCouplings(options);
         }
-        var _iteratorNormalCompletion = true;
-        var _didIteratorError = false;
-        var _iteratorError = undefined;
-
-        try {
-            for (var _iterator = this[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                var range = _step.value;
-
-                if (Array.isArray(range.signal) && range.signal.length > 0) {
-                    var l = range.signal.length;
-                    var delta = new Array(l);
-                    for (var i = 0; i < l; i++) {
-                        delta[i] = range.signal[i].delta;
-                    }
-                    index.push({
-                        multiplicity: l > 1 ? 'm' : range.signal[0].multiplicity || utils.joinCoupling(range.signal[0], options.tolerance),
-                        delta: arrayUtils.arithmeticMean(delta) || (range.to + range.from) * 0.5,
-                        integral: range.integral
-                    });
-                } else {
-                    index.push({
-                        delta: (range.to + range.from) * 0.5,
-                        multiplicity: 'm'
-                    });
+        for (var range of this) {
+            if (Array.isArray(range.signal) && range.signal.length > 0) {
+                var l = range.signal.length;
+                var delta = new Array(l);
+                for (var i = 0; i < l; i++) {
+                    delta[i] = range.signal[i].delta;
                 }
-            }
-        } catch (err) {
-            _didIteratorError = true;
-            _iteratorError = err;
-        } finally {
-            try {
-                if (!_iteratorNormalCompletion && _iterator.return) {
-                    _iterator.return();
-                }
-            } finally {
-                if (_didIteratorError) {
-                    throw _iteratorError;
-                }
+                index.push({
+                    multiplicity: l > 1 ? 'm' : range.signal[0].multiplicity || utils.joinCoupling(range.signal[0], options.tolerance),
+                    delta: _mlStat.array.arithmeticMean(delta) || (range.to + range.from) * 0.5,
+                    integral: range.integral
+                });
+            } else {
+                index.push({
+                    delta: (range.to + range.from) * 0.5,
+                    multiplicity: 'm'
+                });
             }
         }
-
         return index;
     }
 
@@ -30519,11 +30417,15 @@ class Ranges extends Array {
         return new Ranges(newRanges);
     }
 }
+exports.default = Ranges;
 
-module.exports = Ranges;
-
-},{"../acs/acs":131,"../visualizer/annotations":135,"./peak2Vector":134,"ml-stat":102,"spectra-nmr-utilities":157}],134:[function(require,module,exports){
+},{"../acs/acs":135,"../visualizer/annotations":139,"./peak2Vector":138,"ml-stat":106,"spectra-nmr-utilities":161}],138:[function(require,module,exports){
 'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = peak2Vector;
 /**
  * This function converts an array of peaks [{x, y, width}] in a vector equally x,y vector from a given window
  * TODO: This function is very general and should be placed somewhere else
@@ -30614,11 +30516,12 @@ function peak2Vector(peaks, options = {}) {
     return { x: x, y: y };
 }
 
-module.exports = peak2Vector;
-
-},{}],135:[function(require,module,exports){
+},{}],139:[function(require,module,exports){
 'use strict';
 
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
 var options1D = { type: 'rect', line: 0, lineLabel: 1, labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: 0.05, height: 10, toFixed: 1, maxLines: Number.MAX_VALUE, selectable: true, fromToc: false };
 var options2D = { type: 'rect', labelColor: 'red', strokeColor: 'red', strokeWidth: '1px', fillColor: 'green', width: '6px', height: '6px' };
 
@@ -30643,8 +30546,10 @@ function annotations1D(ranges, optionsG) {
             if (!annotation._highlight || annotation._highlight.length === 0) {
                 annotation._highlight = [index.signalID];
                 index.signal.forEach(function (signal) {
-                    for (var j = 0; j < signal.diaID.length; j++) {
-                        annotation._highlight.push(signal.diaID[j]);
+                    if (signal.diaID) {
+                        for (var j = 0; j < signal.diaID.length; j++) {
+                            annotation._highlight.push(signal.diaID[j]);
+                        }
                     }
                 });
             }
@@ -30714,106 +30619,59 @@ function annotations2D(zones, optionsG) {
     return annotations;
 }
 
-module.exports = { annotations2D: annotations2D, annotations1D: annotations1D };
+exports.annotations2D = annotations2D;
+exports.annotations1D = annotations1D;
 
-},{}],136:[function(require,module,exports){
-module.exports={
-  "_args": [
-    [
-      "spectra-data@3.1.11",
-      "/Users/lpatiny/git/cheminfo/eln-plugin"
-    ]
-  ],
-  "_from": "spectra-data@3.1.11",
-  "_id": "spectra-data@3.1.11",
-  "_inBundle": false,
-  "_integrity": "sha1-pw2bocSkB+Vn/taXABIoIOaL/Lc=",
-  "_location": "/spectra-data",
-  "_phantomChildren": {},
-  "_requested": {
-    "type": "version",
-    "registry": true,
-    "raw": "spectra-data@3.1.11",
-    "name": "spectra-data",
-    "escapedName": "spectra-data",
-    "rawSpec": "3.1.11",
-    "saveSpec": null,
-    "fetchSpec": "3.1.11"
-  },
-  "_requiredBy": [
-    "/nmr-metadata"
-  ],
-  "_resolved": "https://registry.npmjs.org/spectra-data/-/spectra-data-3.1.11.tgz",
-  "_spec": "3.1.11",
-  "_where": "/Users/lpatiny/git/cheminfo/eln-plugin",
-  "author": {
-    "name": "Andres Castillo"
-  },
-  "bugs": {
-    "url": "https://github.com/cheminfo-js/spectra/issues"
-  },
-  "contributors": [
-    {
-      "name": "Michaël Zasso"
-    },
-    {
-      "name": "Luc Patiny"
-    }
-  ],
-  "dependencies": {
-    "brukerconverter": "^1.0.1",
-    "jcampconverter": "^2.4.5",
-    "ml-array-utils": "^0.3.0",
-    "ml-curve-fitting": "^0.0.7",
-    "ml-fft": "^1.3.5",
-    "ml-gsd": "^2.0.1",
-    "ml-matrix-peaks-finder": "^0.2.1",
-    "ml-simple-clustering": "^0.1.0",
-    "ml-stat": "^1.3.0",
-    "nmr-simulation": "^1.0.7",
-    "spectra-data-ranges": "^0.0.7",
-    "spectra-nmr-utilities": "^0.0.5"
-  },
-  "description": "spectra-data project - manipulate spectra",
-  "devDependencies": {
-    "nmr-predictor": "^1.1.0"
-  },
-  "files": [
-    "src"
-  ],
-  "homepage": "https://github.com/cheminfo-js/spectra/packages/spectra-data",
-  "jest": {
-    "testEnvironment": "node"
-  },
-  "keywords": [
-    "spectra-data",
-    "project"
-  ],
-  "license": "MIT",
-  "main": "./src/index.js",
-  "name": "spectra-data",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/cheminfo-js/spectra.git"
-  },
-  "version": "3.1.11"
-}
-
-},{}],137:[function(require,module,exports){
+},{}],140:[function(require,module,exports){
 'use strict';
 
-var SD = require('./SD');
-var Filters = require('./filters/Filters.js');
-var Brukerconverter = require('brukerconverter');
-var peaks2Ranges = require('./peakPicking/peaks2Ranges');
-var simulator = require('nmr-simulation');
-var impurities = require('./peakPicking/impurities.json');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+var _SD = require('./SD');
+
+var _SD2 = _interopRequireDefault(_SD);
+
+var _Filters = require('./filters/Filters.js');
+
+var Filters = _interopRequireWildcard(_Filters);
+
+var _brukerconverter = require('brukerconverter');
+
+var _brukerconverter2 = _interopRequireDefault(_brukerconverter);
+
+var _peaks2Ranges = require('./peakPicking/peaks2Ranges');
+
+var _peaks2Ranges2 = _interopRequireDefault(_peaks2Ranges);
+
+var _nmrSimulation = require('nmr-simulation');
+
+var _impurities = require('./peakPicking/impurities.js');
+
+var _impurities2 = _interopRequireDefault(_impurities);
+
+function _interopRequireWildcard(obj) {
+    if (obj && obj.__esModule) {
+        return obj;
+    } else {
+        var newObj = {};if (obj != null) {
+            for (var key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key];
+            }
+        }newObj.default = obj;return newObj;
+    }
+}
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 /**
  * @class NMR
  * @extends SD
  */
-class NMR extends SD {
+class NMR extends _SD2.default {
 
     constructor(sd) {
         super(sd);
@@ -30834,10 +30692,10 @@ class NMR extends SD {
             output: 'xy'
         }, options);
 
-        var spinSystem = simulator.SpinSystem.fromPrediction(prediction);
+        var spinSystem = _nmrSimulation.SpinSystem.fromPrediction(prediction);
 
         spinSystem.ensureClusterSize(options);
-        var data = simulator.simulate1D(spinSystem, options);
+        var data = (0, _nmrSimulation.simulate1D)(spinSystem, options);
         return NMR.fromXY(data.x, data.y, options);
     }
 
@@ -30854,7 +30712,7 @@ class NMR extends SD {
             yUnit: 'Intensity',
             dataType: 'NMR SPECTRUM'
         });
-        var spectraData = SD.fromXY(x, y, options);
+        var spectraData = _SD2.default.fromXY(x, y, options);
         var spectrum = spectraData.sd.spectra[0];
 
         spectrum.observeFrequency = options.frequency || 400;
@@ -30882,9 +30740,9 @@ class NMR extends SD {
         options = Object.assign({}, { xy: true, keepSpectra: true, keepRecordsRegExp: /^.+$/ }, options);
         var brukerSpectra = null;
         if (Array.isArray(brukerFile)) {
-            brukerSpectra = Brukerconverter.converFolder(brukerFile, options);
+            brukerSpectra = _brukerconverter2.default.converFolder(brukerFile, options);
         } else {
-            brukerSpectra = Brukerconverter.convertZip(brukerFile, options);
+            brukerSpectra = _brukerconverter2.default.convertZip(brukerFile, options);
         }
         if (brukerSpectra) {
             return brukerSpectra.map(function (spectrum) {
@@ -31178,7 +31036,7 @@ class NMR extends SD {
             return this.ranges;
         } else {
             var peaks = this.getPeaks(options);
-            var ranges = peaks2Ranges(this, peaks, options);
+            var ranges = (0, _peaks2Ranges2.default)(this, peaks, options);
             return ranges;
         }
     }
@@ -31215,7 +31073,7 @@ class NMR extends SD {
      * @return {object}
      */
     getImpurities(solvent) {
-        return this.getImpurity(solvent, null);
+        return this.getImpurity(solvent);
     }
 
     /**
@@ -31224,32 +31082,97 @@ class NMR extends SD {
      * @param {string} impurity - impurity name
      * @return {object}
      */
-    getImpurity(solvent, impurity) {
+    getImpurity(solvent, impurity = null) {
         solvent = solvent.toLowerCase();
         if (solvent === '(cd3)2so') solvent = 'dmso';
-        var result = impurities[solvent];
+        var result = _impurities2.default[solvent];
         if (impurity) {
             result = result[impurity.toLocaleLowerCase()];
         }
         return result;
     }
 
+    /**
+     * Change the intensities of a respective impurities signals based on peak picking and solvent impurities
+     * @param {string} solvent - solvent name
+     * @param {object} [options = {}] - object may have the peak picking options if this.peaks does not exist.
+     * @param {string} [options.impurity = null] - options to fill a particular impurity of the solvent some thing like 'solvent_residual_peak'
+     * @param {number} [options.value = 0] - value to fill
+     * @param {number} [options.error = 0.025] - tolerance to find the chemical shift of the impurities.
+     */
+    fillImpurity(solvent, options = {}) {
+        var _options$impurity = options.impurity,
+            impurity = _options$impurity === undefined ? null : _options$impurity,
+            _options$value = options.value,
+            value = _options$value === undefined ? 0 : _options$value,
+            _options$error = options.error,
+            error = _options$error === undefined ? 0.025 : _options$error;
+
+
+        var solventImpurities = this.getImpurities(solvent, impurity);
+        if (!solventImpurities) {
+            throw Error('The solvent does not mach with a impurities into the list');
+        }
+
+        var peaks = this.getPeaks(options);
+
+        peaks.forEach(peak => {
+            for (var _impurity in solventImpurities) {
+                for (var signal of _impurity) {
+                    if (peak.width + error > Math.abs(signal.shift - peak.x)) {
+                        var from = peak.x + peak.width;
+                        var to = peak.x - peak.width;
+                        this.fill(from, to, value);
+                    }
+                }
+            }
+        });
+    }
 }
+exports.default = NMR;
 
-module.exports = NMR;
-
-},{"./SD":139,"./filters/Filters.js":140,"./peakPicking/impurities.json":151,"./peakPicking/peaks2Ranges":156,"brukerconverter":3,"nmr-simulation":108}],138:[function(require,module,exports){
+},{"./SD":142,"./filters/Filters.js":143,"./peakPicking/impurities.js":154,"./peakPicking/peaks2Ranges":159,"brukerconverter":3,"nmr-simulation":112}],141:[function(require,module,exports){
 'use strict';
 
-var SD = require('./SD');
-var peakPicking2D = require('./peakPicking/peakPicking2D');
-var PeakOptimizer = require('./peakPicking/peakOptimizer');
-var Brukerconverter = require('brukerconverter');
-var Filters = require('./filters/Filters.js');
-var StatArray = require('ml-stat').array;
-var simule2DNmrSpectrum = require('nmr-simulation').simulate2D;
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
 
-class NMR2D extends SD {
+var _SD = require('./SD');
+
+var _SD2 = _interopRequireDefault(_SD);
+
+var _peakPicking2D = require('./peakPicking/peakPicking2D');
+
+var _peakPicking2D2 = _interopRequireDefault(_peakPicking2D);
+
+var _peakOptimizer = require('./peakPicking/peakOptimizer');
+
+var _peakOptimizer2 = _interopRequireDefault(_peakOptimizer);
+
+var _brukerconverter = require('brukerconverter');
+
+var _brukerconverter2 = _interopRequireDefault(_brukerconverter);
+
+var _Filters = require('./filters/Filters.js');
+
+var _Filters2 = _interopRequireDefault(_Filters);
+
+var _mlArrayMin = require('ml-array-min');
+
+var _mlArrayMin2 = _interopRequireDefault(_mlArrayMin);
+
+var _mlArrayMax = require('ml-array-max');
+
+var _mlArrayMax2 = _interopRequireDefault(_mlArrayMax);
+
+var _nmrSimulation = require('nmr-simulation');
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
+
+class NMR2D extends _SD2.default {
 
     constructor(sd) {
         super(sd);
@@ -31262,7 +31185,7 @@ class NMR2D extends SD {
      * @return {SD}
      */
     static fromPrediction(prediction, options) {
-        var data = simule2DNmrSpectrum(prediction, options);
+        var data = (0, _nmrSimulation.simulate2D)(prediction, options);
         var spectrum = NMR2D.fromMatrix(data, options);
         var jcamp = spectrum.toJcamp({ type: 'NTUPLES' });
         return NMR2D.fromJcamp(jcamp);
@@ -31283,10 +31206,10 @@ class NMR2D extends SD {
         var brukerSpectra = null;
         if (Array.isArray(brukerFile)) {
             //It is a folder
-            brukerSpectra = Brukerconverter.converFolder(brukerFile, options);
+            brukerSpectra = _brukerconverter2.default.converFolder(brukerFile, options);
         } else {
             //It is a zip
-            brukerSpectra = Brukerconverter.convertZip(brukerFile, options);
+            brukerSpectra = _brukerconverter2.default.convertZip(brukerFile, options);
         }
         if (brukerSpectra) {
             return brukerSpectra.map(function (spectrum) {
@@ -31349,9 +31272,10 @@ class NMR2D extends SD {
             result.xType = options.xType || options.nucleusX || '1H';
             spectra.push(spectrum);
 
-            var minMax = StatArray.minMax(y);
-            minZ = Math.min(minZ, minMax.min);
-            maxZ = Math.max(maxZ, minMax.max);
+            // let minMax = StatArray.minMax(y);
+
+            minZ = Math.min(minZ, (0, _mlArrayMin2.default)(y));
+            maxZ = Math.max(maxZ, (0, _mlArrayMax2.default)(y));
         });
 
         result.ntuples = [{ units: options.xUnit || 'PPM' }, { units: options.yUnit || 'PPM' }, { units: options.zUnit || 'Intensity' }];
@@ -31486,7 +31410,7 @@ class NMR2D extends SD {
         if (options.idPrefix) {
             id = options.idPrefix;
         }
-        var peakList = peakPicking2D(this, options.thresholdFactor);
+        var peakList = (0, _peakPicking2D2.default)(this, options.thresholdFactor);
 
         //lets add an unique ID for each peak.
         for (var i = 0; i < peakList.length; i++) {
@@ -31494,7 +31418,7 @@ class NMR2D extends SD {
             peakList[i].signalID = id + '_' + i;
         }
         if (options.references) {
-            PeakOptimizer.alignDimensions(peakList, options.references);
+            _peakOptimizer2.default.alignDimensions(peakList, options.references);
         }
 
         if (options.format === 'new') {
@@ -31559,7 +31483,7 @@ class NMR2D extends SD {
      * @return {NMR2D} this object
      */
     zeroFilling(nPointsX, nPointsY) {
-        return Filters.zeroFilling(this, nPointsX, nPointsY);
+        return _Filters2.default.zeroFilling(this, nPointsX, nPointsY);
     }
 
     /**
@@ -31569,7 +31493,7 @@ class NMR2D extends SD {
      * @return {NMR2D} this object
      */
     brukerFilter() {
-        return Filters.digitalFilter(this, { brukerFilter: true });
+        return _Filters2.default.digitalFilter(this, { brukerFilter: true });
     }
 
     /**
@@ -31583,7 +31507,7 @@ class NMR2D extends SD {
      * @return {NMR2D} this object
      */
     digitalFilter(options) {
-        return Filters.digitalFilter(this, options);
+        return _Filters2.default.digitalFilter(this, options);
     }
 
     /**
@@ -31591,7 +31515,7 @@ class NMR2D extends SD {
      * @return {NMR2D} this object
      */
     fourierTransform() {
-        return Filters.fourierTransform(this);
+        return _Filters2.default.fourierTransform(this);
     }
 
     /**
@@ -31604,22 +31528,56 @@ class NMR2D extends SD {
      * @return {NMR2D} this object
      */
     postFourierTransform(ph1corr) {
-        return Filters.phaseCorrection(0, ph1corr);
+        return _Filters2.default.phaseCorrection(0, ph1corr);
     }
 }
+exports.default = NMR2D;
 
-module.exports = NMR2D;
-
-},{"./SD":139,"./filters/Filters.js":140,"./peakPicking/peakOptimizer":153,"./peakPicking/peakPicking2D":155,"brukerconverter":3,"ml-stat":102,"nmr-simulation":108}],139:[function(require,module,exports){
+},{"./SD":142,"./filters/Filters.js":143,"./peakPicking/peakOptimizer":156,"./peakPicking/peakPicking2D":158,"brukerconverter":3,"ml-array-max":36,"ml-array-min":38,"nmr-simulation":112}],142:[function(require,module,exports){
 'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+var _mlArrayUtils = require('ml-array-utils');
+
+var _mlArrayUtils2 = _interopRequireDefault(_mlArrayUtils);
+
+var _mlArrayMin = require('ml-array-min');
+
+var _mlArrayMin2 = _interopRequireDefault(_mlArrayMin);
+
+var _mlArrayMax = require('ml-array-max');
+
+var _mlArrayMax2 = _interopRequireDefault(_mlArrayMax);
+
+var _mlArrayMedian = require('ml-array-median');
+
+var _mlArrayMedian2 = _interopRequireDefault(_mlArrayMedian);
+
+var _mlArrayRescale = require('ml-array-rescale');
+
+var _mlArrayRescale2 = _interopRequireDefault(_mlArrayRescale);
+
+var _jcampconverter = require('jcampconverter');
+
+var _jcampconverter2 = _interopRequireDefault(_jcampconverter);
+
+var _JcampCreator = require('./jcampEncoder/JcampCreator');
+
+var _JcampCreator2 = _interopRequireDefault(_JcampCreator);
+
+var _peakPicking = require('./peakPicking/peakPicking');
+
+var _peakPicking2 = _interopRequireDefault(_peakPicking);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
+
 // small note on the best way to define array
 // http://jsperf.com/lp-array-and-loops/2
-
-var StatArray = require('ml-stat').array;
-var ArrayUtils = require('ml-array-utils');
-var JcampConverter = require('jcampconverter');
-var JcampCreator = require('./jcampEncoder/JcampCreator');
-var peakPicking = require('./peakPicking/peakPicking');
 
 var DATACLASS_XY = 1;
 var DATACLASS_PEAK = 2;
@@ -31644,9 +31602,9 @@ class SD {
      * @param {RegExp} [options.keepRecordsRegExp=/^.+$/] A regular expression for metadata fields to extract from the jcamp
      * @return {SD} Return the constructed SD instance
      */
-    static fromJcamp(jcamp, options) {
+    static fromJcamp(jcamp, options = {}) {
         options = Object.assign({}, { keepSpectra: true, keepRecordsRegExp: /^.+$/ }, options, { xy: true });
-        var spectrum = JcampConverter.convert(jcamp, options);
+        var spectrum = _jcampconverter2.default.convert(jcamp, options);
         return new this(spectrum);
     }
 
@@ -31972,7 +31930,7 @@ class SD {
      * @return {number}
      */
     getMinY(i) {
-        return StatArray.min(this.getYData(i));
+        return (0, _mlArrayMin2.default)(this.getYData(i));
     }
 
     /**
@@ -31981,7 +31939,7 @@ class SD {
      * @return {number}
      */
     getMaxY(i) {
-        return StatArray.max(this.getYData(i));
+        return (0, _mlArrayMax2.default)(this.getYData(i));
     }
 
     /**
@@ -31990,7 +31948,7 @@ class SD {
      * @return {{min, max}|*}
      */
     getMinMaxY(i) {
-        return StatArray.minMax(this.getYData(i));
+        return { min: this.getMinY(i), max: this.getMaxY(i) };
     }
 
     /**
@@ -32007,7 +31965,7 @@ class SD {
         } else {
             data = this.getYData();
         }
-        var median = StatArray.median(data);
+        var median = (0, _mlArrayMedian2.default)(data);
         return median * this.getNMRPeakThreshold(this.getNucleus(1));
     }
 
@@ -32092,7 +32050,9 @@ class SD {
      * @param {number} max - Maximum desired value for Y
      */
     setMinMax(min, max) {
-        ArrayUtils.scale(this.getYData(), { min: min, max: max, inPlace: true });
+        var y = this.getYData();
+        (0, _mlArrayRescale2.default)(y, { min: min, max: max, output: y });
+        this.updateFirstLastY();
     }
 
     /**
@@ -32100,7 +32060,9 @@ class SD {
      * @param {number} min - Minimum desired value for Y
      */
     setMin(min) {
-        ArrayUtils.scale(this.getYData(), { min: min, inPlace: true });
+        var y = this.getYData();
+        (0, _mlArrayRescale2.default)(y, { min: min, output: y, autoMinMax: true });
+        this.updateFirstLastY();
     }
 
     /**
@@ -32108,7 +32070,9 @@ class SD {
      * @param {number} max - Maximum desired value for Y
      */
     setMax(max) {
-        ArrayUtils.scale(this.getYData(), { max: max, inPlace: true });
+        var y = this.getYData();
+        (0, _mlArrayRescale2.default)(y, { max: max, output: y, autoMinMax: true });
+        this.updateFirstLastY();
     }
 
     /**
@@ -32116,13 +32080,11 @@ class SD {
      * @param {number} value - Distance of the shift
      */
     yShift(value) {
-        var y = this.getSpectrumData().y;
-        var length = this.getNbPoints();
-        for (var i = 0; i < length; i++) {
+        var y = this.getYData();
+        for (var i = 0; i < y.length; i++) {
             y[i] += value;
         }
-        this.getSpectrum().firstY += value;
-        this.getSpectrum().lastY += value;
+        this.updateFirstLastY(y);
     }
 
     /**
@@ -32138,12 +32100,33 @@ class SD {
             for (var j = 0; j < length; j++) {
                 x[j] += globalShift;
             }
-
-            this.getSpectrum().firstX += globalShift;
-            this.getSpectrum().lastX += globalShift;
+            this.updateFirstLastX(x);
         }
     }
 
+    /**
+     * Update first and last values of Y data.
+     * @param {Array} y - array of Y spectra data.
+     */
+    updateFirstLastY(y) {
+        if (!Array.isArray(y)) {
+            y = this.getYData();
+        }
+        this.setFirstY(y[0]);
+        this.setLastY(y[y.length - 1]);
+    }
+
+    /**
+     * Update first and last values of X data.
+     * @param {Array} x - array of X spectra data.
+     */
+    updateFirstLastX(x) {
+        if (!Array.isArray(x)) {
+            x = this.getXData();
+        }
+        this.setFirstX(x[0]);
+        this.setLastX(x[x.length - 1]);
+    }
     /**
      * Fills a zone of the spectrum with the given value.
      * If value is undefined it will suppress the elements
@@ -32153,7 +32136,6 @@ class SD {
      */
     fill(from, to, value) {
         var start, end, x, y;
-
         for (var i = 0; i < this.getNbSubSpectra(); i++) {
             this.setActiveElement(i);
 
@@ -32191,6 +32173,11 @@ class SD {
         this.setDataClass(DATACLASS_PEAK);
     }
 
+    /**
+     * This function suppress a zones of the given spectraData within the given x range.
+     * Returns a spectraData of type PEAKDATA without peaks in the given region
+     * @param {Array} zones - Array with from-to limits of the spectrum to suppress.
+     */
     suppressZones(zones = []) {
         for (var i = 0; i < zones.length; i++) {
             this.suppressZone(zones[i].from, zones[i].to);
@@ -32361,7 +32348,7 @@ class SD {
      * @param {Array} ranges - array of objects ranges
      * @param {object} options - option such as nH for normalization, if it is nH is zero the integral value returned is absolute value
      */
-    updateIntegrals(ranges, options) {
+    updateIntegrals(ranges, options = {}) {
         var sum = 0;
         ranges.forEach(range => {
             range.integral = this.getArea(range.from, range.to);
@@ -32384,7 +32371,7 @@ class SD {
      */
     getVector(from, to, nPoints) {
         if (nPoints) {
-            return ArrayUtils.getEquallySpacedData(this.getSpectraDataX(), this.getSpectraDataY(), { from: from, to: to, numberOfPoints: nPoints });
+            return _mlArrayUtils2.default.getEquallySpacedData(this.getSpectraDataX(), this.getSpectraDataY(), { from: from, to: to, numberOfPoints: nPoints });
         } else {
             return this.getPointsInWindow(from, to);
         }
@@ -32420,7 +32407,7 @@ class SD {
                         from = _ref4[0];
                         to = _ref4[1];
                     }
-                    y = ArrayUtils.getEquallySpacedData(x, y, { from: from, to: to, numberOfPoints: options.nbPoints });
+                    y = _mlArrayUtils2.default.getEquallySpacedData(x, y, { from: from, to: to, numberOfPoints: options.nbPoints });
 
                     var step = (to - from) / (y.length - 1);
                     x = new Array(y.length).fill(from);
@@ -32536,7 +32523,7 @@ class SD {
      * @return {*}
      */
     createPeaks(options = {}) {
-        this.peaks = peakPicking(this, options);
+        this.peaks = (0, _peakPicking2.default)(this, options);
         return this.peaks;
     }
 
@@ -32545,12 +32532,12 @@ class SD {
      * @param {object} options - parameters to calculation of peakPicking
      * @return {*}
      */
-    getPeaks(options = {}) {
+    getPeaks(options) {
         var peaks = void 0;
         if (this.peaks) {
             peaks = this.peaks;
         } else {
-            peaks = peakPicking(this, options);
+            peaks = (0, _peakPicking2.default)(this, options);
         }
         return peaks;
     }
@@ -32572,25 +32559,75 @@ class SD {
      * @return {*} a string containing the jcamp-DX file
      */
     toJcamp(options = {}) {
-        var creator = new JcampCreator();
+        var creator = new _JcampCreator2.default();
         return creator.convert(this, Object.assign({}, { yFactor: 1, encode: 'DIFDUP', type: 'SIMPLE' }, options));
     }
 }
+exports.default = SD;
 
-module.exports = SD;
-
-},{"./jcampEncoder/JcampCreator":148,"./peakPicking/peakPicking":154,"jcampconverter":10,"ml-array-utils":38,"ml-stat":102}],140:[function(require,module,exports){
+},{"./jcampEncoder/JcampCreator":151,"./peakPicking/peakPicking":157,"jcampconverter":10,"ml-array-max":36,"ml-array-median":37,"ml-array-min":38,"ml-array-rescale":39,"ml-array-utils":42}],143:[function(require,module,exports){
 'use strict';
 
-module.exports.fourierTransform = require('./fourierTransform');
-module.exports.zeroFilling = require('./zeroFilling');
-module.exports.apodization = require('./apodization');
-module.exports.phaseCorrection = require('./phaseCorrection');
-module.exports.digitalFilter = require('./digitalFilter');
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
 
-},{"./apodization":141,"./digitalFilter":142,"./fourierTransform":143,"./phaseCorrection":144,"./zeroFilling":146}],141:[function(require,module,exports){
-'use strict';
+var _fourierTransform = require('./fourierTransform');
 
+Object.defineProperty(exports, 'fourierTransform', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_fourierTransform).default;
+  }
+});
+
+var _zeroFilling = require('./zeroFilling');
+
+Object.defineProperty(exports, 'zeroFilling', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_zeroFilling).default;
+  }
+});
+
+var _apodization = require('./apodization');
+
+Object.defineProperty(exports, 'apodization', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_apodization).default;
+  }
+});
+
+var _phaseCorrection = require('./phaseCorrection');
+
+Object.defineProperty(exports, 'phaseCorrection', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_phaseCorrection).default;
+  }
+});
+
+var _digitalFilter = require('./digitalFilter');
+
+Object.defineProperty(exports, 'digitalFilter', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_digitalFilter).default;
+  }
+});
+
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+
+},{"./apodization":144,"./digitalFilter":145,"./fourierTransform":146,"./phaseCorrection":147,"./zeroFilling":149}],144:[function(require,module,exports){
+"use strict";
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = apodization;
 function apodization(spectraData, parameters) {
     var params = Object.assign({}, parameters);
     if (!params) {
@@ -32619,12 +32656,21 @@ function apodization(spectraData, parameters) {
      }*/
 }
 
-module.exports = apodization;
-
-},{}],142:[function(require,module,exports){
+},{}],145:[function(require,module,exports){
 'use strict';
 
-var rotate = require('./rotate');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = digitalFilter;
+
+var _rotate = require('./rotate');
+
+var _rotate2 = _interopRequireDefault(_rotate);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 function digitalFilter(spectraData, options) {
     var activeElement = spectraData.activeElement;
@@ -32643,9 +32689,9 @@ function digitalFilter(spectraData, options) {
     if (nbPoints !== 0) {
         for (var iSubSpectra = 0; iSubSpectra < nbSubSpectra; iSubSpectra++) {
             spectraData.setActiveElement(iSubSpectra);
-            rotate(spectraData.getYData(), nbPoints);
+            (0, _rotate2.default)(spectraData.getYData(), nbPoints);
             if (options.rotateX) {
-                rotate(spectraData.getXData(), nbPoints);
+                (0, _rotate2.default)(spectraData.getXData(), nbPoints);
                 spectraData.setFirstX(spectraData.getX(0));
                 spectraData.setLastX(spectraData.getX(spectraData.getNbPoints() - 1));
             }
@@ -32655,12 +32701,21 @@ function digitalFilter(spectraData, options) {
     return spectraData;
 }
 
-module.exports = digitalFilter;
-
-},{"./rotate":145}],143:[function(require,module,exports){
+},{"./rotate":148}],146:[function(require,module,exports){
 'use strict';
 
-var fft = require('ml-fft');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = fourierTransform;
+
+var _mlFft = require('ml-fft');
+
+var _mlFft2 = _interopRequireDefault(_mlFft);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 /**
  * This function make a fourier transformation to each FID withing a SD instance
@@ -32673,7 +32728,7 @@ function fourierTransform(spectraData) {
     var nbPoints = spectraData.getNbPoints();
     var nSubSpectra = spectraData.getNbSubSpectra() / 2;
     var spectraType = 'NMR SPECTRUM'; //spectraData.TYPE_NMR_SPECTRUM;
-    var FFT = fft.FFT;
+    var FFT = _mlFft2.default.FFT;
     if (nSubSpectra > 1) {
         spectraType = 'nD NMR SPECTRUM';
     } //spectraData.TYPE_2DNMR_SPECTRUM;
@@ -32744,11 +32799,13 @@ function updateSpectra(spectraData, spectraType) {
     //TODO update minmax in Y axis
 }
 
-module.exports = fourierTransform;
-
-},{"ml-fft":45}],144:[function(require,module,exports){
+},{"ml-fft":49}],147:[function(require,module,exports){
 'use strict';
 
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = phaseCorrection;
 /**
  * Phase correction filter
  * @param {SD} spectraData - SD instance
@@ -32756,7 +32813,6 @@ module.exports = fourierTransform;
  * @param {number} [phi1 = 0] - value
  * @return {SD} returns the modified spectraData
  */
-
 function phaseCorrection(spectraData, phi0, phi1) {
 
     phi0 = Number.isFinite(phi0) ? phi0 : 0;
@@ -32796,11 +32852,13 @@ function phaseCorrection(spectraData, phi0, phi1) {
     return spectraData;
 }
 
-module.exports = phaseCorrection;
+},{}],148:[function(require,module,exports){
+"use strict";
 
-},{}],145:[function(require,module,exports){
-'use strict';
-
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = rotate;
 /**
  * This function performs a circular shift of the input object without realocating memory.
  * Positive values of shifts will shift to the right and negative values will do to the left
@@ -32809,7 +32867,6 @@ module.exports = phaseCorrection;
  * @param {Array} array - the array that will be rotated
  * @param {number} shift
  */
-
 function rotate(array, shift) {
     var nbPoints = array.length;
     //Lets calculate the lest amount of points to shift.
@@ -32863,17 +32920,20 @@ function putInRange(value, nbPoints) {
     return value;
 }
 
-module.exports = rotate;
+},{}],149:[function(require,module,exports){
+"use strict";
 
-},{}],146:[function(require,module,exports){
-'use strict';
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = zeroFilling;
 /**
  * This function make a zero filling to each Active element in a SD instance.
- * @param {SD} spectra-data instance.
+ * @param {SD} spectraData instance.
  * @param {number} zeroFillingX - number of points that FID will have, if is it lower
  * than initial number of points, the FID will be spliced
+ * @return {SD}
  */
-
 function zeroFilling(spectraData, zeroFillingX) {
     var nbSubSpectra = spectraData.getNbSubSpectra();
     //var zeroPadding = spectraData.getParamDouble("$$ZEROPADDING", 0);
@@ -32903,21 +32963,75 @@ function zeroFilling(spectraData, zeroFillingX) {
     return spectraData;
     // @TODO implement zeroFillingY for 2D spectra
 }
-module.exports = zeroFilling;
 
-},{}],147:[function(require,module,exports){
+},{}],150:[function(require,module,exports){
 'use strict';
 
-exports.SD = require('./SD');
-exports.NMR = require('./NMR');
-exports.NMR2D = require('./NMR2D');
-exports.Ranges = require('spectra-data-ranges').Ranges;
-exports.GUI = require('spectra-data-ranges').GUI;
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
 
-},{"./NMR":137,"./NMR2D":138,"./SD":139,"spectra-data-ranges":132}],148:[function(require,module,exports){
+var _SD = require('./SD');
+
+Object.defineProperty(exports, 'SD', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_SD).default;
+  }
+});
+
+var _NMR = require('./NMR');
+
+Object.defineProperty(exports, 'NMR', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_NMR).default;
+  }
+});
+
+var _NMR2D = require('./NMR2D');
+
+Object.defineProperty(exports, 'NMR2D', {
+  enumerable: true,
+  get: function get() {
+    return _interopRequireDefault(_NMR2D).default;
+  }
+});
+
+var _spectraDataRanges = require('spectra-data-ranges');
+
+Object.defineProperty(exports, 'Ranges', {
+  enumerable: true,
+  get: function get() {
+    return _spectraDataRanges.Ranges;
+  }
+});
+Object.defineProperty(exports, 'GUI', {
+  enumerable: true,
+  get: function get() {
+    return _spectraDataRanges.GUI;
+  }
+});
+
+function _interopRequireDefault(obj) {
+  return obj && obj.__esModule ? obj : { default: obj };
+}
+
+},{"./NMR":140,"./NMR2D":141,"./SD":142,"spectra-data-ranges":136}],151:[function(require,module,exports){
 'use strict';
 
-var Encoder = require('./VectorEncoder');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+
+var _VectorEncoder = require('./VectorEncoder');
+
+var _VectorEncoder2 = _interopRequireDefault(_VectorEncoder);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
+
 var CRLF = '\r\n';
 var version = 'Cheminfo tools ' + require('../../package.json').version;
 var defaultParameters = { encode: 'DIFDUP', yFactor: 1, type: 'SIMPLE', keep: [] };
@@ -32990,6 +33104,7 @@ class JcampCreator {
     }
 }
 
+exports.default = JcampCreator;
 function ntuplesHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams) {
     var outString = '';
     var variableX = spectraData.getSpectraVariable(0);
@@ -33195,7 +33310,7 @@ function ntuplesHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams
                 data[_point] = Math.round(spectraData.getY(_point) * scale);
             }
 
-            tempString += Encoder.encode(data, spectraData.getFirstX() * scaleX, spectraData.getDeltaX() * scaleX, encodeFormat);
+            tempString += _VectorEncoder2.default.encode(data, spectraData.getFirstX() * scaleX, spectraData.getDeltaX() * scaleX, encodeFormat);
             outString += tempString + CRLF;
         }
     }
@@ -33276,7 +33391,7 @@ function simpleHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams)
             data[_point2] = Math.round(spectraData.getY(_point2) * scale);
         }
 
-        tempString += Encoder.encode(data, spectraData.getFirstX() * scaleX, spectraData.getDeltaX() * scaleX, encodeFormat);
+        tempString += _VectorEncoder2.default.encode(data, spectraData.getFirstX() * scaleX, spectraData.getDeltaX() * scaleX, encodeFormat);
 
         outString += tempString + CRLF;
         outString += '##END= ';
@@ -33286,9 +33401,7 @@ function simpleHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams)
     return outString;
 }
 
-module.exports = JcampCreator;
-
-},{"../../package.json":136,"./VectorEncoder":149}],149:[function(require,module,exports){
+},{"../../package.json":160,"./VectorEncoder":152}],152:[function(require,module,exports){
 'use strict';
 
 /**
@@ -33653,10 +33766,22 @@ module.exports = {
     differenceEncoding
 };
 
-},{}],150:[function(require,module,exports){
+},{}],153:[function(require,module,exports){
 'use strict';
 
-var impurities = require('./impurities.json');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = removeImpurities;
+
+var _impurities = require('./impurities');
+
+var _impurities2 = _interopRequireDefault(_impurities);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
+
 var toCheck = ['solvent_residual_peak', 'H2O', 'TMS'];
 
 function checkImpurity(peakList, impurity, options) {
@@ -33685,3184 +33810,2490 @@ function removeImpurities(peakList, options = {}) {
 
     solvent = solvent.toLowerCase();
     if (solvent === '(cd3)2so') solvent = 'dmso';
-    var solventImpurities = impurities[solvent];
+    var solventImpurities = _impurities2.default[solvent];
     if (solventImpurities) {
-        var _iteratorNormalCompletion = true;
-        var _didIteratorError = false;
-        var _iteratorError = undefined;
-
-        try {
-            for (var _iterator = toCheck[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
-                var impurity = _step.value;
-
-                var impurityShifts = solventImpurities[impurity.toLowerCase()];
-                checkImpurity(peakList, impurityShifts, { error: error });
-            }
-        } catch (err) {
-            _didIteratorError = true;
-            _iteratorError = err;
-        } finally {
-            try {
-                if (!_iteratorNormalCompletion && _iterator.return) {
-                    _iterator.return();
-                }
-            } finally {
-                if (_didIteratorError) {
-                    throw _iteratorError;
-                }
-            }
+        for (var impurity of toCheck) {
+            var impurityShifts = solventImpurities[impurity.toLowerCase()];
+            checkImpurity(peakList, impurityShifts, { error: error });
         }
     }
     return peakList;
 }
 
-module.exports = removeImpurities;
+},{"./impurities":154}],154:[function(require,module,exports){
+'use strict';
 
-},{"./impurities.json":151}],151:[function(require,module,exports){
-module.exports={
-  "cdcl3": {
-    "tms": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 0
-      }
-    ],
-    "solvent_residual_peak": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "ds",
-        "shift": 7.26
-      }
-    ],
-    "h2o": [
-      {
-        "proton": "H2O",
-        "coupling": 0,
-        "multiplicity": "bs",
-        "shift": 1.56
-      }
-    ],
-    "acetic_acid": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.1
-      }
-    ],
-    "acetone": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.17
-      }
-    ],
-    "acetonitrile": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.1
-      }
-    ],
-    "benzene": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.36
-      }
-    ],
-    "tert-butyl_alcohol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.28
-      }
-    ],
-    "tert-butyl_methyl_ether": [
-      {
-        "proton": "CCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.19
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.22
-      }
-    ],
-    "bhtb": [
-      {
-        "proton": "ArH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 6.98
-      },
-      {
-        "proton": "OHc",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 5.01
-      },
-      {
-        "proton": "ArCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.27
-      },
-      {
-        "proton": "ArC(CH3)3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.43
-      }
-    ],
-    "chloroform": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.26
-      }
-    ],
-    "cyclohexane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.43
-      }
-    ],
-    "1,2-dichloroethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.73
-      }
-    ],
-    "dichloromethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 5.3
-      }
-    ],
-    "diethyl_ether": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.21
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.48
-      }
-    ],
-    "diglyme": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.65
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.57
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.39
-      }
-    ],
-    "1,2-dimethoxyethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.4
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.55
-      }
-    ],
-    "dimethylacetamide": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.09
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.02
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.94
-      }
-    ],
-    "dimethylformamide": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 8.02
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.96
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.88
-      }
-    ],
-    "dimethyl_sulfoxide": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.62
-      }
-    ],
-    "dioxane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.71
-      }
-    ],
-    "ethanol": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.25
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.72
-      },
-      {
-        "proton": "OH",
-        "coupling": 5,
-        "multiplicity": "s,t",
-        "shift": 1.32
-      }
-    ],
-    "ethyl_acetate": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.05
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 4.12
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.26
-      }
-    ],
-    "ethyl_methyl_ketone": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.14
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.46
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.06
-      }
-    ],
-    "ethylene_glycol": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.76
-      }
-    ],
-    "grease^f": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 0.86
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "br_s",
-        "shift": 1.26
-      }
-    ],
-    "n-hexane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "t",
-        "shift": 0.88
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.26
-      }
-    ],
-    "hmpag": [
-      {
-        "proton": "CH3",
-        "coupling": 9.5,
-        "multiplicity": "d",
-        "shift": 2.65
-      }
-    ],
-    "methanol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.49
-      },
-      {
-        "proton": "OH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.09
-      }
-    ],
-    "nitromethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.33
-      }
-    ],
-    "n-pentane": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 7
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.27
-      }
-    ],
-    "2-propanol": [
-      {
-        "proton": "CH3",
-        "coupling": 6,
-        "multiplicity": "d",
-        "shift": 1.22
-      },
-      {
-        "proton": "CH",
-        "coupling": 6,
-        "multiplicity": "sep",
-        "shift": 4.04
-      }
-    ],
-    "pyridine": [
-      {
-        "proton": "CH(2)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 8.62
-      },
-      {
-        "proton": "CH(3)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.29
-      },
-      {
-        "proton": "CH(4)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.68
-      }
-    ],
-    "silicone_greasei": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 0.07
-      }
-    ],
-    "tetrahydrofuran": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.85
-      },
-      {
-        "proton": "CH2O",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.76
-      }
-    ],
-    "toluene": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.36
-      },
-      {
-        "proton": "CH(o/p)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.17
-      },
-      {
-        "proton": "CH(m)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.25
-      }
-    ],
-    "triethylamine": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.03
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.53
-      }
-    ]
-  },
-  "(cd3)2co": {
-    "tms": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 0
-      }
-    ],
-    "solvent_residual_peak": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 2.05
-      }
-    ],
-    "h2o": [
-      {
-        "proton": "H2O",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.84
-      }
-    ],
-    "acetic_acid": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.96
-      }
-    ],
-    "acetone": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.09
-      }
-    ],
-    "acetonitrile": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.05
-      }
-    ],
-    "benzene": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.36
-      }
-    ],
-    "tert-butyl_alcohol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.18
-      }
-    ],
-    "tert-butyl_methyl_ether": [
-      {
-        "proton": "CCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.13
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.13
-      }
-    ],
-    "bhtb": [
-      {
-        "proton": "ArH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 6.96
-      },
-      {
-        "proton": "ArCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.22
-      },
-      {
-        "proton": "ArC(CH3)3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.41
-      }
-    ],
-    "chloroform": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 8.02
-      }
-    ],
-    "cyclohexane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.43
-      }
-    ],
-    "1,2-dichloroethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.87
-      }
-    ],
-    "dichloromethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 5.63
-      }
-    ],
-    "diethyl_ether": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.11
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.41
-      }
-    ],
-    "diglyme": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.56
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.47
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.28
-      }
-    ],
-    "1,2-dimethoxyethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.28
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.46
-      }
-    ],
-    "dimethylacetamide": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.97
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.83
-      }
-    ],
-    "dimethylformamide": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.96
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.94
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.78
-      }
-    ],
-    "dimethyl_sulfoxide": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.52
-      }
-    ],
-    "dioxane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.59
-      }
-    ],
-    "ethanol": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.12
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.57
-      },
-      {
-        "proton": "OH",
-        "coupling": 5,
-        "multiplicity": "s,t",
-        "shift": 3.39
-      }
-    ],
-    "ethyl_acetate": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.97
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 4.05
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.2
-      }
-    ],
-    "ethyl_methyl_ketone": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.07
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.45
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.96
-      }
-    ],
-    "ethylene_glycol": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.28
-      }
-    ],
-    "grease^f": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 0.87
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "br_s",
-        "shift": 1.29
-      }
-    ],
-    "n-hexane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "t",
-        "shift": 0.88
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.28
-      }
-    ],
-    "hmpag": [
-      {
-        "proton": "CH3",
-        "coupling": 9.5,
-        "multiplicity": "d",
-        "shift": 2.59
-      }
-    ],
-    "methanol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.31
-      },
-      {
-        "proton": "OH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.12
-      }
-    ],
-    "nitromethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.43
-      }
-    ],
-    "n-pentane": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.88
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.27
-      }
-    ],
-    "2-propanol": [
-      {
-        "proton": "CH3",
-        "coupling": 6,
-        "multiplicity": "d",
-        "shift": 1.1
-      },
-      {
-        "proton": "CH",
-        "coupling": 6,
-        "multiplicity": "sep",
-        "shift": 3.9
-      }
-    ],
-    "pyridine": [
-      {
-        "proton": "CH(2)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 8.58
-      },
-      {
-        "proton": "CH(3)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.35
-      },
-      {
-        "proton": "CH(4)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.76
-      }
-    ],
-    "silicone_greasei": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 0.13
-      }
-    ],
-    "tetrahydrofuran": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.79
-      },
-      {
-        "proton": "CH2O",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.63
-      }
-    ],
-    "toluene": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.32
-      },
-      {
-        "proton": "CH(o/p)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.5
-      },
-      {
-        "proton": "CH(m)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.5
-      }
-    ],
-    "triethylamine": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.96
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.45
-      }
-    ]
-  },
-  "dmso": {
-    "tms": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 0
-      }
-    ],
-    "solvent_residual_peak": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "quint",
-        "shift": 2.5
-      }
-    ],
-    "h2o": [
-      {
-        "proton": "H2O",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.33
-      }
-    ],
-    "acetic_acid": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.91
-      }
-    ],
-    "acetone": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.09
-      }
-    ],
-    "acetonitrile": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.07
-      }
-    ],
-    "benzene": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.37
-      }
-    ],
-    "tert-butyl_alcohol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.11
-      },
-      {
-        "proton": "OHc",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.19
-      }
-    ],
-    "tert-butyl_methyl_ether": [
-      {
-        "proton": "CCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.11
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.08
-      }
-    ],
-    "bhtb": [
-      {
-        "proton": "ArH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 6.87
-      },
-      {
-        "proton": "OHc",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 6.65
-      },
-      {
-        "proton": "ArCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.18
-      },
-      {
-        "proton": "ArC(CH3)3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.36
-      }
-    ],
-    "chloroform": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 8.32
-      }
-    ],
-    "cyclohexane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.4
-      }
-    ],
-    "1,2-dichloroethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.9
-      }
-    ],
-    "dichloromethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 5.76
-      }
-    ],
-    "diethyl_ether": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.09
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.38
-      }
-    ],
-    "diglyme": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.51
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.38
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.24
-      }
-    ],
-    "1,2-dimethoxyethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.24
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.43
-      }
-    ],
-    "dimethylacetamide": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.96
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.94
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.78
-      }
-    ],
-    "dimethylformamide": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.95
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.89
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.73
-      }
-    ],
-    "dimethyl_sulfoxide": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.54
-      }
-    ],
-    "dioxane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.57
-      }
-    ],
-    "ethanol": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.06
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.44
-      },
-      {
-        "proton": "OH",
-        "coupling": 5,
-        "multiplicity": "s,t",
-        "shift": 4.63
-      }
-    ],
-    "ethyl_acetate": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.99
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 4.03
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.17
-      }
-    ],
-    "ethyl_methyl_ketone": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.07
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.43
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.91
-      }
-    ],
-    "ethylene_glycol": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.34
-      }
-    ],
-    "grease^f": [],
-    "n-hexane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "t",
-        "shift": 0.86
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.25
-      }
-    ],
-    "hmpag": [
-      {
-        "proton": "CH3",
-        "coupling": 9.5,
-        "multiplicity": "d",
-        "shift": 2.53
-      }
-    ],
-    "methanol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.16
-      },
-      {
-        "proton": "OH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.01
-      }
-    ],
-    "nitromethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.42
-      }
-    ],
-    "n-pentane": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.88
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.27
-      }
-    ],
-    "2-propanol": [
-      {
-        "proton": "CH3",
-        "coupling": 6,
-        "multiplicity": "d",
-        "shift": 1.04
-      },
-      {
-        "proton": "CH",
-        "coupling": 6,
-        "multiplicity": "sep",
-        "shift": 3.78
-      }
-    ],
-    "pyridine": [
-      {
-        "proton": "CH(2)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 8.58
-      },
-      {
-        "proton": "CH(3)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.39
-      },
-      {
-        "proton": "CH(4)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.79
-      }
-    ],
-    "silicone_greasei": [],
-    "tetrahydrofuran": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.76
-      },
-      {
-        "proton": "CH2O",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.6
-      }
-    ],
-    "toluene": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.3
-      },
-      {
-        "proton": "CH(o/p)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.18
-      },
-      {
-        "proton": "CH(m)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.25
-      }
-    ],
-    "triethylamine": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.93
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.43
-      }
-    ]
-  },
-  "c6d6": {
-    "tms": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 0
-      }
-    ],
-    "solvent_residual_peak": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 7.16
-      }
-    ],
-    "h2o": [
-      {
-        "proton": "H2O",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 0.4
-      }
-    ],
-    "acetic_acid": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.55
-      }
-    ],
-    "acetone": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.55
-      }
-    ],
-    "acetonitrile": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.55
-      }
-    ],
-    "benzene": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.15
-      }
-    ],
-    "tert-butyl_alcohol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.05
-      },
-      {
-        "proton": "OHc",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.55
-      }
-    ],
-    "tert-butyl_methyl_ether": [
-      {
-        "proton": "CCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.07
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.04
-      }
-    ],
-    "bhtb": [
-      {
-        "proton": "ArH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.05
-      },
-      {
-        "proton": "OHc",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.79
-      },
-      {
-        "proton": "ArCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.24
-      },
-      {
-        "proton": "ArC(CH3)3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.38
-      }
-    ],
-    "chloroform": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 6.15
-      }
-    ],
-    "cyclohexane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.4
-      }
-    ],
-    "1,2-dichloroethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.9
-      }
-    ],
-    "dichloromethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.27
-      }
-    ],
-    "diethyl_ether": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.11
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.26
-      }
-    ],
-    "diglyme": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.46
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.34
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.11
-      }
-    ],
-    "1,2-dimethoxyethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.12
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.33
-      }
-    ],
-    "dimethylacetamide": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.6
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.57
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.05
-      }
-    ],
-    "dimethylformamide": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.63
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.36
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.86
-      }
-    ],
-    "dimethyl_sulfoxide": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.68
-      }
-    ],
-    "dioxane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.35
-      }
-    ],
-    "ethanol": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.96
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.34
-      }
-    ],
-    "ethyl_acetate": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.65
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.89
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.92
-      }
-    ],
-    "ethyl_methyl_ketone": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.58
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 1.81
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.85
-      }
-    ],
-    "ethylene_glycol": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.41
-      }
-    ],
-    "grease^f": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 0.92
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "br_s",
-        "shift": 1.36
-      }
-    ],
-    "n-hexane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "t",
-        "shift": 0.89
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.24
-      }
-    ],
-    "hmpag": [
-      {
-        "proton": "CH3",
-        "coupling": 9.5,
-        "multiplicity": "d",
-        "shift": 2.4
-      }
-    ],
-    "methanol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.07
-      }
-    ],
-    "nitromethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.94
-      }
-    ],
-    "n-pentane": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.86
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.23
-      }
-    ],
-    "2-propanol": [
-      {
-        "proton": "CH3",
-        "coupling": 6,
-        "multiplicity": "d",
-        "shift": 0.95
-      },
-      {
-        "proton": "CH",
-        "coupling": 6,
-        "multiplicity": "sep",
-        "shift": 3.67
-      }
-    ],
-    "pyridine": [
-      {
-        "proton": "CH(2)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 8.53
-      },
-      {
-        "proton": "CH(3)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 6.66
-      },
-      {
-        "proton": "CH(4)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 6.98
-      }
-    ],
-    "silicone_greasei": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 0.29
-      }
-    ],
-    "tetrahydrofuran": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.4
-      },
-      {
-        "proton": "CH2O",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.57
-      }
-    ],
-    "toluene": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.11
-      },
-      {
-        "proton": "CH(o/p)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.02
-      },
-      {
-        "proton": "CH(m)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.13
-      }
-    ],
-    "triethylamine": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.96
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.4
-      }
-    ]
-  },
-  "cd3cn": {
-    "tms": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 0
-      }
-    ],
-    "solvent_residual_peak": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 1.94
-      }
-    ],
-    "h2o": [
-      {
-        "proton": "H2O",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.13
-      }
-    ],
-    "acetic_acid": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.96
-      }
-    ],
-    "acetone": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.08
-      }
-    ],
-    "acetonitrile": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.96
-      }
-    ],
-    "benzene": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.37
-      }
-    ],
-    "tert-butyl_alcohol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.16
-      },
-      {
-        "proton": "OHc",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.18
-      }
-    ],
-    "tert-butyl_methyl_ether": [
-      {
-        "proton": "CCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.14
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.13
-      }
-    ],
-    "bhtb": [
-      {
-        "proton": "ArH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 6.97
-      },
-      {
-        "proton": "OHc",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 5.2
-      },
-      {
-        "proton": "ArCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.22
-      },
-      {
-        "proton": "ArC(CH3)3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.39
-      }
-    ],
-    "chloroform": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.58
-      }
-    ],
-    "cyclohexane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.44
-      }
-    ],
-    "1,2-dichloroethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.81
-      }
-    ],
-    "dichloromethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 5.44
-      }
-    ],
-    "diethyl_ether": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.12
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.42
-      }
-    ],
-    "diglyme": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.53
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.45
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.29
-      }
-    ],
-    "1,2-dimethoxyethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.28
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.45
-      }
-    ],
-    "dimethylacetamide": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.97
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.96
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.83
-      }
-    ],
-    "dimethylformamide": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.92
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.89
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.77
-      }
-    ],
-    "dimethyl_sulfoxide": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.5
-      }
-    ],
-    "dioxane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.6
-      }
-    ],
-    "ethanol": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.12
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.54
-      },
-      {
-        "proton": "OH",
-        "coupling": 5,
-        "multiplicity": "s,t",
-        "shift": 2.47
-      }
-    ],
-    "ethyl_acetate": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.97
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 4.06
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.2
-      }
-    ],
-    "ethyl_methyl_ketone": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.06
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.43
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.96
-      }
-    ],
-    "ethylene_glycol": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.51
-      }
-    ],
-    "grease^f": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 0.86
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "br_s",
-        "shift": 1.27
-      }
-    ],
-    "n-hexane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "t",
-        "shift": 0.89
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.28
-      }
-    ],
-    "hmpag": [
-      {
-        "proton": "CH3",
-        "coupling": 9.5,
-        "multiplicity": "d",
-        "shift": 2.57
-      }
-    ],
-    "methanol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.28
-      },
-      {
-        "proton": "OH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.16
-      }
-    ],
-    "nitromethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.31
-      }
-    ],
-    "n-pentane": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.87
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.29
-      }
-    ],
-    "2-propanol": [
-      {
-        "proton": "CH3",
-        "coupling": 6,
-        "multiplicity": "d",
-        "shift": 1.09
-      },
-      {
-        "proton": "CH",
-        "coupling": 6,
-        "multiplicity": "sep",
-        "shift": 3.87
-      }
-    ],
-    "pyridine": [
-      {
-        "proton": "CH(2)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 8.57
-      },
-      {
-        "proton": "CH(3)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.33
-      },
-      {
-        "proton": "CH(4)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.73
-      }
-    ],
-    "silicone_greasei": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 0.08
-      }
-    ],
-    "tetrahydrofuran": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.8
-      },
-      {
-        "proton": "CH2O",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.64
-      }
-    ],
-    "toluene": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.33
-      },
-      {
-        "proton": "CH(o/p)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.2
-      },
-      {
-        "proton": "CH(m)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.2
-      }
-    ],
-    "triethylamine": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.96
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.45
-      }
-    ]
-  },
-  "cd3od": {
-    "tms": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 0
-      }
-    ],
-    "solvent_residual_peak": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 3.31
-      }
-    ],
-    "h2o": [
-      {
-        "proton": "H2O",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.87
-      }
-    ],
-    "acetic_acid": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.99
-      }
-    ],
-    "acetone": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.15
-      }
-    ],
-    "acetonitrile": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.03
-      }
-    ],
-    "benzene": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.33
-      }
-    ],
-    "tert-butyl_alcohol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.4
-      }
-    ],
-    "tert-butyl_methyl_ether": [
-      {
-        "proton": "CCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.15
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.2
-      }
-    ],
-    "bhtb": [
-      {
-        "proton": "ArH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 6.92
-      },
-      {
-        "proton": "ArCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.21
-      },
-      {
-        "proton": "ArC(CH3)3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.4
-      }
-    ],
-    "chloroform": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.9
-      }
-    ],
-    "cyclohexane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.45
-      }
-    ],
-    "1,2-dichloroethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.78
-      }
-    ],
-    "dichloromethane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 5.49
-      }
-    ],
-    "diethyl_ether": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.18
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.49
-      }
-    ],
-    "diglyme": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.61
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.58
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.35
-      }
-    ],
-    "1,2-dimethoxyethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.35
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.52
-      }
-    ],
-    "dimethylacetamide": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.07
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.31
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.92
-      }
-    ],
-    "dimethylformamide": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.97
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.99
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.86
-      }
-    ],
-    "dimethyl_sulfoxide": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.65
-      }
-    ],
-    "dioxane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.66
-      }
-    ],
-    "ethanol": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.19
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.6
-      }
-    ],
-    "ethyl_acetate": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.01
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 4.09
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.24
-      }
-    ],
-    "ethyl_methyl_ketone": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.12
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.5
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.01
-      }
-    ],
-    "ethylene_glycol": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.59
-      }
-    ],
-    "grease^f": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 0.88
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "br_s",
-        "shift": 1.29
-      }
-    ],
-    "n-hexane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "t",
-        "shift": 0.9
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.29
-      }
-    ],
-    "hmpag": [
-      {
-        "proton": "CH3",
-        "coupling": 9.5,
-        "multiplicity": "d",
-        "shift": 2.64
-      }
-    ],
-    "methanol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.34
-      }
-    ],
-    "nitromethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.34
-      }
-    ],
-    "n-pentane": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.89
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.29
-      }
-    ],
-    "2-propanol": [
-      {
-        "proton": "CH3",
-        "coupling": 6,
-        "multiplicity": "d",
-        "shift": 1.5
-      },
-      {
-        "proton": "CH",
-        "coupling": 6,
-        "multiplicity": "sep",
-        "shift": 3.92
-      }
-    ],
-    "pyridine": [
-      {
-        "proton": "CH(2)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 8.53
-      },
-      {
-        "proton": "CH(3)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.44
-      },
-      {
-        "proton": "CH(4)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.85
-      }
-    ],
-    "silicone_greasei": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 0.1
-      }
-    ],
-    "tetrahydrofuran": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.87
-      },
-      {
-        "proton": "CH2O",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.71
-      }
-    ],
-    "toluene": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.32
-      },
-      {
-        "proton": "CH(o/p)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.16
-      },
-      {
-        "proton": "CH(m)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.16
-      }
-    ],
-    "triethylamine": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.05
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.58
-      }
-    ]
-  },
-  "d2o": {
-    "tms": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 0
-      }
-    ],
-    "solvent_residual_peak": [
-      {
-        "proton": "X",
-        "coupling": 0,
-        "multiplicity": "",
-        "shift": 4.79
-      }
-    ],
-    "h2o": [],
-    "acetic_acid": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.08
-      }
-    ],
-    "acetone": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.22
-      }
-    ],
-    "acetonitrile": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.06
-      }
-    ],
-    "benzene": [],
-    "tert-butyl_alcohol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.24
-      }
-    ],
-    "tert-butyl_methyl_ether": [
-      {
-        "proton": "CCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 1.21
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.22
-      }
-    ],
-    "bhtb": [],
-    "chloroform": [],
-    "cyclohexane": [],
-    "1,2-dichloroethane": [],
-    "dichloromethane": [],
-    "diethyl_ether": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.17
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.56
-      }
-    ],
-    "diglyme": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.67
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.61
-      },
-      {
-        "proton": "OCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.37
-      }
-    ],
-    "1,2-dimethoxyethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.37
-      },
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.6
-      }
-    ],
-    "dimethylacetamide": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.08
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.06
-      },
-      {
-        "proton": "NCH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.9
-      }
-    ],
-    "dimethylformamide": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 7.92
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.01
-      },
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.85
-      }
-    ],
-    "dimethyl_sulfoxide": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.71
-      }
-    ],
-    "dioxane": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.75
-      }
-    ],
-    "ethanol": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.17
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.65
-      }
-    ],
-    "ethyl_acetate": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.07
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 4.14
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.24
-      }
-    ],
-    "ethyl_methyl_ketone": [
-      {
-        "proton": "CH3CO",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 2.19
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 3.18
-      },
-      {
-        "proton": "CH2CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 1.26
-      }
-    ],
-    "ethylene_glycol": [
-      {
-        "proton": "CH",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.65
-      }
-    ],
-    "grease^f": [],
-    "n-hexane": [],
-    "hmpag": [
-      {
-        "proton": "CH3",
-        "coupling": 9.5,
-        "multiplicity": "d",
-        "shift": 2.61
-      }
-    ],
-    "methanol": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 3.34
-      }
-    ],
-    "nitromethane": [
-      {
-        "proton": "CH3",
-        "coupling": 0,
-        "multiplicity": "s",
-        "shift": 4.4
-      }
-    ],
-    "n-pentane": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.9
-      }
-    ],
-    "2-propanol": [
-      {
-        "proton": "CH3",
-        "coupling": 6,
-        "multiplicity": "d",
-        "shift": 1.17
-      },
-      {
-        "proton": "CH",
-        "coupling": 6,
-        "multiplicity": "sep",
-        "shift": 4.02
-      }
-    ],
-    "pyridine": [
-      {
-        "proton": "CH(2)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 8.52
-      },
-      {
-        "proton": "CH(3)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.45
-      },
-      {
-        "proton": "CH(4)",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 7.87
-      }
-    ],
-    "silicone_greasei": [],
-    "tetrahydrofuran": [
-      {
-        "proton": "CH2",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 1.88
-      },
-      {
-        "proton": "CH2O",
-        "coupling": 0,
-        "multiplicity": "m",
-        "shift": 3.74
-      }
-    ],
-    "toluene": [],
-    "triethylamine": [
-      {
-        "proton": "CH3",
-        "coupling": 7,
-        "multiplicity": "t",
-        "shift": 0.99
-      },
-      {
-        "proton": "CH2",
-        "coupling": 7,
-        "multiplicity": "q",
-        "shift": 2.57
-      }
-    ]
-  }
-}
-},{}],152:[function(require,module,exports){
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+/* eslint-disable camelcase */
+exports.default = {
+    cdcl3: {
+        tms: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 0
+        }],
+        solvent_residual_peak: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: 'ds',
+            shift: 7.26
+        }],
+        h2o: [{
+            proton: 'H2O',
+            coupling: 0,
+            multiplicity: 'bs',
+            shift: 1.56
+        }],
+        acetic_acid: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.1
+        }],
+        acetone: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.17
+        }],
+        acetonitrile: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.1
+        }],
+        benzene: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.36
+        }],
+        'tert-butyl_alcohol': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.28
+        }],
+        'tert-butyl_methyl_ether': [{
+            proton: 'CCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.19
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.22
+        }],
+        bhtb: [{
+            proton: 'ArH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 6.98
+        }, {
+            proton: 'OHc',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 5.01
+        }, {
+            proton: 'ArCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.27
+        }, {
+            proton: 'ArC(CH3)3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.43
+        }],
+        chloroform: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.26
+        }],
+        cyclohexane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.43
+        }],
+        '1,2-dichloroethane': [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.73
+        }],
+        dichloromethane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 5.3
+        }],
+        diethyl_ether: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.21
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.48
+        }],
+        diglyme: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.65
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.57
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.39
+        }],
+        '1,2-dimethoxyethane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.4
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.55
+        }],
+        dimethylacetamide: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.09
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.02
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.94
+        }],
+        dimethylformamide: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 8.02
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.96
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.88
+        }],
+        dimethyl_sulfoxide: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.62
+        }],
+        dioxane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.71
+        }],
+        ethanol: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.25
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.72
+        }, {
+            proton: 'OH',
+            coupling: 5,
+            multiplicity: 's,t',
+            shift: 1.32
+        }],
+        ethyl_acetate: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.05
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 4.12
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.26
+        }],
+        ethyl_methyl_ketone: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.14
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.46
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.06
+        }],
+        ethylene_glycol: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.76
+        }],
+        'grease^f': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 0.86
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'br_s',
+            shift: 1.26
+        }],
+        'n-hexane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 't',
+            shift: 0.88
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.26
+        }],
+        hmpag: [{
+            proton: 'CH3',
+            coupling: 9.5,
+            multiplicity: 'd',
+            shift: 2.65
+        }],
+        methanol: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.49
+        }, {
+            proton: 'OH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.09
+        }],
+        nitromethane: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.33
+        }],
+        'n-pentane': [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 7
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.27
+        }],
+        '2-propanol': [{
+            proton: 'CH3',
+            coupling: 6,
+            multiplicity: 'd',
+            shift: 1.22
+        }, {
+            proton: 'CH',
+            coupling: 6,
+            multiplicity: 'sep',
+            shift: 4.04
+        }],
+        pyridine: [{
+            proton: 'CH(2)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 8.62
+        }, {
+            proton: 'CH(3)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.29
+        }, {
+            proton: 'CH(4)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.68
+        }],
+        silicone_greasei: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 0.07
+        }],
+        tetrahydrofuran: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.85
+        }, {
+            proton: 'CH2O',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.76
+        }],
+        toluene: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.36
+        }, {
+            proton: 'CH(o/p)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.17
+        }, {
+            proton: 'CH(m)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.25
+        }],
+        triethylamine: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.03
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.53
+        }]
+    },
+    '(cd3)2co': {
+        tms: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 0
+        }],
+        solvent_residual_peak: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 2.05
+        }],
+        h2o: [{
+            proton: 'H2O',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.84
+        }],
+        acetic_acid: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.96
+        }],
+        acetone: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.09
+        }],
+        acetonitrile: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.05
+        }],
+        benzene: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.36
+        }],
+        'tert-butyl_alcohol': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.18
+        }],
+        'tert-butyl_methyl_ether': [{
+            proton: 'CCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.13
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.13
+        }],
+        bhtb: [{
+            proton: 'ArH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 6.96
+        }, {
+            proton: 'ArCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.22
+        }, {
+            proton: 'ArC(CH3)3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.41
+        }],
+        chloroform: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 8.02
+        }],
+        cyclohexane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.43
+        }],
+        '1,2-dichloroethane': [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.87
+        }],
+        dichloromethane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 5.63
+        }],
+        diethyl_ether: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.11
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.41
+        }],
+        diglyme: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.56
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.47
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.28
+        }],
+        '1,2-dimethoxyethane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.28
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.46
+        }],
+        dimethylacetamide: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.97
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.83
+        }],
+        dimethylformamide: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.96
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.94
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.78
+        }],
+        dimethyl_sulfoxide: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.52
+        }],
+        dioxane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.59
+        }],
+        ethanol: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.12
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.57
+        }, {
+            proton: 'OH',
+            coupling: 5,
+            multiplicity: 's,t',
+            shift: 3.39
+        }],
+        ethyl_acetate: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.97
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 4.05
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.2
+        }],
+        ethyl_methyl_ketone: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.07
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.45
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.96
+        }],
+        ethylene_glycol: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.28
+        }],
+        'grease^f': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 0.87
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'br_s',
+            shift: 1.29
+        }],
+        'n-hexane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 't',
+            shift: 0.88
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.28
+        }],
+        hmpag: [{
+            proton: 'CH3',
+            coupling: 9.5,
+            multiplicity: 'd',
+            shift: 2.59
+        }],
+        methanol: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.31
+        }, {
+            proton: 'OH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.12
+        }],
+        nitromethane: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.43
+        }],
+        'n-pentane': [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.88
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.27
+        }],
+        '2-propanol': [{
+            proton: 'CH3',
+            coupling: 6,
+            multiplicity: 'd',
+            shift: 1.1
+        }, {
+            proton: 'CH',
+            coupling: 6,
+            multiplicity: 'sep',
+            shift: 3.9
+        }],
+        pyridine: [{
+            proton: 'CH(2)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 8.58
+        }, {
+            proton: 'CH(3)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.35
+        }, {
+            proton: 'CH(4)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.76
+        }],
+        silicone_greasei: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 0.13
+        }],
+        tetrahydrofuran: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.79
+        }, {
+            proton: 'CH2O',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.63
+        }],
+        toluene: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.32
+        }, {
+            proton: 'CH(o/p)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.5
+        }, {
+            proton: 'CH(m)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.5
+        }],
+        triethylamine: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.96
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.45
+        }]
+    },
+    dmso: {
+        tms: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 0
+        }],
+        solvent_residual_peak: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: 'quint',
+            shift: 2.5
+        }],
+        h2o: [{
+            proton: 'H2O',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.33
+        }],
+        acetic_acid: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.91
+        }],
+        acetone: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.09
+        }],
+        acetonitrile: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.07
+        }],
+        benzene: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.37
+        }],
+        'tert-butyl_alcohol': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.11
+        }, {
+            proton: 'OHc',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.19
+        }],
+        'tert-butyl_methyl_ether': [{
+            proton: 'CCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.11
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.08
+        }],
+        bhtb: [{
+            proton: 'ArH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 6.87
+        }, {
+            proton: 'OHc',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 6.65
+        }, {
+            proton: 'ArCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.18
+        }, {
+            proton: 'ArC(CH3)3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.36
+        }],
+        chloroform: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 8.32
+        }],
+        cyclohexane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.4
+        }],
+        '1,2-dichloroethane': [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.9
+        }],
+        dichloromethane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 5.76
+        }],
+        diethyl_ether: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.09
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.38
+        }],
+        diglyme: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.51
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.38
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.24
+        }],
+        '1,2-dimethoxyethane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.24
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.43
+        }],
+        dimethylacetamide: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.96
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.94
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.78
+        }],
+        dimethylformamide: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.95
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.89
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.73
+        }],
+        dimethyl_sulfoxide: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.54
+        }],
+        dioxane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.57
+        }],
+        ethanol: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.06
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.44
+        }, {
+            proton: 'OH',
+            coupling: 5,
+            multiplicity: 's,t',
+            shift: 4.63
+        }],
+        ethyl_acetate: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.99
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 4.03
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.17
+        }],
+        ethyl_methyl_ketone: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.07
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.43
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.91
+        }],
+        ethylene_glycol: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.34
+        }],
+        'grease^f': [],
+        'n-hexane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 't',
+            shift: 0.86
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.25
+        }],
+        hmpag: [{
+            proton: 'CH3',
+            coupling: 9.5,
+            multiplicity: 'd',
+            shift: 2.53
+        }],
+        methanol: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.16
+        }, {
+            proton: 'OH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.01
+        }],
+        nitromethane: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.42
+        }],
+        'n-pentane': [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.88
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.27
+        }],
+        '2-propanol': [{
+            proton: 'CH3',
+            coupling: 6,
+            multiplicity: 'd',
+            shift: 1.04
+        }, {
+            proton: 'CH',
+            coupling: 6,
+            multiplicity: 'sep',
+            shift: 3.78
+        }],
+        pyridine: [{
+            proton: 'CH(2)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 8.58
+        }, {
+            proton: 'CH(3)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.39
+        }, {
+            proton: 'CH(4)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.79
+        }],
+        silicone_greasei: [],
+        tetrahydrofuran: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.76
+        }, {
+            proton: 'CH2O',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.6
+        }],
+        toluene: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.3
+        }, {
+            proton: 'CH(o/p)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.18
+        }, {
+            proton: 'CH(m)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.25
+        }],
+        triethylamine: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.93
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.43
+        }]
+    },
+    c6d6: {
+        tms: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 0
+        }],
+        solvent_residual_peak: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 7.16
+        }],
+        h2o: [{
+            proton: 'H2O',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 0.4
+        }],
+        acetic_acid: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.55
+        }],
+        acetone: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.55
+        }],
+        acetonitrile: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.55
+        }],
+        benzene: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.15
+        }],
+        'tert-butyl_alcohol': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.05
+        }, {
+            proton: 'OHc',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.55
+        }],
+        'tert-butyl_methyl_ether': [{
+            proton: 'CCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.07
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.04
+        }],
+        bhtb: [{
+            proton: 'ArH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.05
+        }, {
+            proton: 'OHc',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.79
+        }, {
+            proton: 'ArCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.24
+        }, {
+            proton: 'ArC(CH3)3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.38
+        }],
+        chloroform: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 6.15
+        }],
+        cyclohexane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.4
+        }],
+        '1,2-dichloroethane': [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.9
+        }],
+        dichloromethane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.27
+        }],
+        diethyl_ether: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.11
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.26
+        }],
+        diglyme: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.46
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.34
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.11
+        }],
+        '1,2-dimethoxyethane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.12
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.33
+        }],
+        dimethylacetamide: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.6
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.57
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.05
+        }],
+        dimethylformamide: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.63
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.36
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.86
+        }],
+        dimethyl_sulfoxide: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.68
+        }],
+        dioxane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.35
+        }],
+        ethanol: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.96
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.34
+        }],
+        ethyl_acetate: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.65
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.89
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.92
+        }],
+        ethyl_methyl_ketone: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.58
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 1.81
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.85
+        }],
+        ethylene_glycol: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.41
+        }],
+        'grease^f': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 0.92
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'br_s',
+            shift: 1.36
+        }],
+        'n-hexane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 't',
+            shift: 0.89
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.24
+        }],
+        hmpag: [{
+            proton: 'CH3',
+            coupling: 9.5,
+            multiplicity: 'd',
+            shift: 2.4
+        }],
+        methanol: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.07
+        }],
+        nitromethane: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.94
+        }],
+        'n-pentane': [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.86
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.23
+        }],
+        '2-propanol': [{
+            proton: 'CH3',
+            coupling: 6,
+            multiplicity: 'd',
+            shift: 0.95
+        }, {
+            proton: 'CH',
+            coupling: 6,
+            multiplicity: 'sep',
+            shift: 3.67
+        }],
+        pyridine: [{
+            proton: 'CH(2)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 8.53
+        }, {
+            proton: 'CH(3)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 6.66
+        }, {
+            proton: 'CH(4)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 6.98
+        }],
+        silicone_greasei: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 0.29
+        }],
+        tetrahydrofuran: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.4
+        }, {
+            proton: 'CH2O',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.57
+        }],
+        toluene: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.11
+        }, {
+            proton: 'CH(o/p)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.02
+        }, {
+            proton: 'CH(m)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.13
+        }],
+        triethylamine: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.96
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.4
+        }]
+    },
+    cd3cn: {
+        tms: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 0
+        }],
+        solvent_residual_peak: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 1.94
+        }],
+        h2o: [{
+            proton: 'H2O',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.13
+        }],
+        acetic_acid: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.96
+        }],
+        acetone: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.08
+        }],
+        acetonitrile: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.96
+        }],
+        benzene: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.37
+        }],
+        'tert-butyl_alcohol': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.16
+        }, {
+            proton: 'OHc',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.18
+        }],
+        'tert-butyl_methyl_ether': [{
+            proton: 'CCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.14
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.13
+        }],
+        bhtb: [{
+            proton: 'ArH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 6.97
+        }, {
+            proton: 'OHc',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 5.2
+        }, {
+            proton: 'ArCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.22
+        }, {
+            proton: 'ArC(CH3)3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.39
+        }],
+        chloroform: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.58
+        }],
+        cyclohexane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.44
+        }],
+        '1,2-dichloroethane': [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.81
+        }],
+        dichloromethane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 5.44
+        }],
+        diethyl_ether: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.12
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.42
+        }],
+        diglyme: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.53
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.45
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.29
+        }],
+        '1,2-dimethoxyethane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.28
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.45
+        }],
+        dimethylacetamide: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.97
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.96
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.83
+        }],
+        dimethylformamide: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.92
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.89
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.77
+        }],
+        dimethyl_sulfoxide: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.5
+        }],
+        dioxane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.6
+        }],
+        ethanol: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.12
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.54
+        }, {
+            proton: 'OH',
+            coupling: 5,
+            multiplicity: 's,t',
+            shift: 2.47
+        }],
+        ethyl_acetate: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.97
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 4.06
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.2
+        }],
+        ethyl_methyl_ketone: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.06
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.43
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.96
+        }],
+        ethylene_glycol: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.51
+        }],
+        'grease^f': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 0.86
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'br_s',
+            shift: 1.27
+        }],
+        'n-hexane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 't',
+            shift: 0.89
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.28
+        }],
+        hmpag: [{
+            proton: 'CH3',
+            coupling: 9.5,
+            multiplicity: 'd',
+            shift: 2.57
+        }],
+        methanol: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.28
+        }, {
+            proton: 'OH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.16
+        }],
+        nitromethane: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.31
+        }],
+        'n-pentane': [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.87
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.29
+        }],
+        '2-propanol': [{
+            proton: 'CH3',
+            coupling: 6,
+            multiplicity: 'd',
+            shift: 1.09
+        }, {
+            proton: 'CH',
+            coupling: 6,
+            multiplicity: 'sep',
+            shift: 3.87
+        }],
+        pyridine: [{
+            proton: 'CH(2)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 8.57
+        }, {
+            proton: 'CH(3)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.33
+        }, {
+            proton: 'CH(4)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.73
+        }],
+        silicone_greasei: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 0.08
+        }],
+        tetrahydrofuran: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.8
+        }, {
+            proton: 'CH2O',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.64
+        }],
+        toluene: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.33
+        }, {
+            proton: 'CH(o/p)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.2
+        }, {
+            proton: 'CH(m)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.2
+        }],
+        triethylamine: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.96
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.45
+        }]
+    },
+    cd3od: {
+        tms: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 0
+        }],
+        solvent_residual_peak: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 3.31
+        }],
+        h2o: [{
+            proton: 'H2O',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.87
+        }],
+        acetic_acid: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.99
+        }],
+        acetone: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.15
+        }],
+        acetonitrile: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.03
+        }],
+        benzene: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.33
+        }],
+        'tert-butyl_alcohol': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.4
+        }],
+        'tert-butyl_methyl_ether': [{
+            proton: 'CCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.15
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.2
+        }],
+        bhtb: [{
+            proton: 'ArH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 6.92
+        }, {
+            proton: 'ArCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.21
+        }, {
+            proton: 'ArC(CH3)3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.4
+        }],
+        chloroform: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.9
+        }],
+        cyclohexane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.45
+        }],
+        '1,2-dichloroethane': [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.78
+        }],
+        dichloromethane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 5.49
+        }],
+        diethyl_ether: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.18
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.49
+        }],
+        diglyme: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.61
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.58
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.35
+        }],
+        '1,2-dimethoxyethane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.35
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.52
+        }],
+        dimethylacetamide: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.07
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.31
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.92
+        }],
+        dimethylformamide: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.97
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.99
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.86
+        }],
+        dimethyl_sulfoxide: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.65
+        }],
+        dioxane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.66
+        }],
+        ethanol: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.19
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.6
+        }],
+        ethyl_acetate: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.01
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 4.09
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.24
+        }],
+        ethyl_methyl_ketone: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.12
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.5
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.01
+        }],
+        ethylene_glycol: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.59
+        }],
+        'grease^f': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 0.88
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'br_s',
+            shift: 1.29
+        }],
+        'n-hexane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 't',
+            shift: 0.9
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.29
+        }],
+        hmpag: [{
+            proton: 'CH3',
+            coupling: 9.5,
+            multiplicity: 'd',
+            shift: 2.64
+        }],
+        methanol: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.34
+        }],
+        nitromethane: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.34
+        }],
+        'n-pentane': [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.89
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.29
+        }],
+        '2-propanol': [{
+            proton: 'CH3',
+            coupling: 6,
+            multiplicity: 'd',
+            shift: 1.5
+        }, {
+            proton: 'CH',
+            coupling: 6,
+            multiplicity: 'sep',
+            shift: 3.92
+        }],
+        pyridine: [{
+            proton: 'CH(2)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 8.53
+        }, {
+            proton: 'CH(3)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.44
+        }, {
+            proton: 'CH(4)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.85
+        }],
+        silicone_greasei: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 0.1
+        }],
+        tetrahydrofuran: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.87
+        }, {
+            proton: 'CH2O',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.71
+        }],
+        toluene: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.32
+        }, {
+            proton: 'CH(o/p)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.16
+        }, {
+            proton: 'CH(m)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.16
+        }],
+        triethylamine: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.05
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.58
+        }]
+    },
+    d2o: {
+        tms: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 0
+        }],
+        solvent_residual_peak: [{
+            proton: 'X',
+            coupling: 0,
+            multiplicity: '',
+            shift: 4.79
+        }],
+        h2o: [],
+        acetic_acid: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.08
+        }],
+        acetone: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.22
+        }],
+        acetonitrile: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.06
+        }],
+        benzene: [],
+        'tert-butyl_alcohol': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.24
+        }],
+        'tert-butyl_methyl_ether': [{
+            proton: 'CCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 1.21
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.22
+        }],
+        bhtb: [],
+        chloroform: [],
+        cyclohexane: [],
+        '1,2-dichloroethane': [],
+        dichloromethane: [],
+        diethyl_ether: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.17
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.56
+        }],
+        diglyme: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.67
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.61
+        }, {
+            proton: 'OCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.37
+        }],
+        '1,2-dimethoxyethane': [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.37
+        }, {
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.6
+        }],
+        dimethylacetamide: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.08
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.06
+        }, {
+            proton: 'NCH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.9
+        }],
+        dimethylformamide: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 7.92
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.01
+        }, {
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.85
+        }],
+        dimethyl_sulfoxide: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.71
+        }],
+        dioxane: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.75
+        }],
+        ethanol: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.17
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.65
+        }],
+        ethyl_acetate: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.07
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 4.14
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.24
+        }],
+        ethyl_methyl_ketone: [{
+            proton: 'CH3CO',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 2.19
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 3.18
+        }, {
+            proton: 'CH2CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 1.26
+        }],
+        ethylene_glycol: [{
+            proton: 'CH',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.65
+        }],
+        'grease^f': [],
+        'n-hexane': [],
+        hmpag: [{
+            proton: 'CH3',
+            coupling: 9.5,
+            multiplicity: 'd',
+            shift: 2.61
+        }],
+        methanol: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 3.34
+        }],
+        nitromethane: [{
+            proton: 'CH3',
+            coupling: 0,
+            multiplicity: 's',
+            shift: 4.4
+        }],
+        'n-pentane': [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.9
+        }],
+        '2-propanol': [{
+            proton: 'CH3',
+            coupling: 6,
+            multiplicity: 'd',
+            shift: 1.17
+        }, {
+            proton: 'CH',
+            coupling: 6,
+            multiplicity: 'sep',
+            shift: 4.02
+        }],
+        pyridine: [{
+            proton: 'CH(2)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 8.52
+        }, {
+            proton: 'CH(3)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.45
+        }, {
+            proton: 'CH(4)',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 7.87
+        }],
+        silicone_greasei: [],
+        tetrahydrofuran: [{
+            proton: 'CH2',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 1.88
+        }, {
+            proton: 'CH2O',
+            coupling: 0,
+            multiplicity: 'm',
+            shift: 3.74
+        }],
+        toluene: [],
+        triethylamine: [{
+            proton: 'CH3',
+            coupling: 7,
+            multiplicity: 't',
+            shift: 0.99
+        }, {
+            proton: 'CH2',
+            coupling: 7,
+            multiplicity: 'q',
+            shift: 2.57
+        }]
+    }
+};
+
+},{}],155:[function(require,module,exports){
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
 /*
  * This library implements the J analyser described by Cobas et al in the paper:
  * A two-stage approach to automatic determination of 1H NMR coupling constants
  */
-'use strict';
-
 var patterns = ['s', 'd', 't', 'q', 'quint', 'h', 'sept', 'o', 'n'];
 var symRatio = 1.5;
 var maxErrorIter1 = 2.5; //Hz
 var maxErrorIter2 = 1; //Hz
 
-module.exports = {
+exports.default = {
     /**
      * The compilation process implements at the first stage a normalization procedure described by Golotvin et al.
      * embedding in peak-component-counting method described by Hoyes et al.
@@ -37416,13 +36847,16 @@ function getArea(peak) {
     return Math.abs(peak.intensity * peak.width * 1.57); //1.772453851);
 }
 
-},{}],153:[function(require,module,exports){
-'use strict';
+},{}],156:[function(require,module,exports){
+"use strict";
 
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
 var diagonalError = 0.05;
 var tolerance = 0.05;
 
-module.exports = {
+exports.default = {
 
     clean: function clean(peaks, threshold) {
         var max = Number.NEGATIVE_INFINITY;
@@ -37713,10 +37147,21 @@ function alignSingleDimension(signals2D, references) {
     }
 }
 
-},{}],154:[function(require,module,exports){
+},{}],157:[function(require,module,exports){
 'use strict';
 
-var GSD = require('ml-gsd');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = extractPeaks;
+
+var _mlGsd = require('ml-gsd');
+
+var _mlGsd2 = _interopRequireDefault(_mlGsd);
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 /**
  * Implementation of the peak picking method described by Cobas in:
@@ -37762,13 +37207,13 @@ function extractPeaks(spectrum, options = {}) {
     if (options.from && options.to) {
         data = spectrum.getVector(options.from, options.to);
     }
-    var peakList = GSD.gsd(data[0], data[1], options);
+    var peakList = _mlGsd2.default.gsd(data[0], data[1], options);
 
     if (options.broadWidth) {
-        peakList = GSD.post.joinBroadPeaks(peakList, { width: options.broadWidth });
+        peakList = _mlGsd2.default.post.joinBroadPeaks(peakList, { width: options.broadWidth });
     }
     if (options.optimize) {
-        peakList = GSD.post.optimizePeaks(peakList, data[0], data[1], options);
+        peakList = _mlGsd2.default.post.optimizePeaks(peakList, data[0], data[1], options);
     }
 
     return clearList(peakList, options.noiseLevel);
@@ -37790,15 +37235,31 @@ function clearList(peakList, threshold) {
     return peakList;
 }
 
-module.exports = extractPeaks;
-
-},{"ml-gsd":47}],155:[function(require,module,exports){
+},{"ml-gsd":51}],158:[function(require,module,exports){
 'use strict';
 
-var PeakOptimizer = require('./peakOptimizer');
-var simpleClustering = require('ml-simple-clustering');
-var matrixPeakFinders = require('ml-matrix-peaks-finder');
-var FFTUtils = require('ml-fft').FFTUtils;
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = getZones;
+
+var _peakOptimizer = require('./peakOptimizer');
+
+var _peakOptimizer2 = _interopRequireDefault(_peakOptimizer);
+
+var _mlSimpleClustering = require('ml-simple-clustering');
+
+var _mlSimpleClustering2 = _interopRequireDefault(_mlSimpleClustering);
+
+var _mlMatrixPeaksFinder = require('ml-matrix-peaks-finder');
+
+var _mlMatrixPeaksFinder2 = _interopRequireDefault(_mlMatrixPeaksFinder);
+
+var _mlFft = require('ml-fft');
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 var smallFilter = [[0, 0, 1, 2, 2, 2, 1, 0, 0], [0, 1, 4, 7, 7, 7, 4, 1, 0], [1, 4, 5, 3, 0, 3, 5, 4, 1], [2, 7, 3, -12, -23, -12, 3, 7, 2], [2, 7, 0, -23, -40, -23, 0, 7, 2], [2, 7, 3, -12, -23, -12, 3, 7, 2], [1, 4, 5, 3, 0, 3, 5, 4, 1], [0, 1, 3, 7, 7, 7, 3, 1, 0], [0, 0, 1, 2, 2, 2, 1, 0, 0]];
 
@@ -37828,19 +37289,19 @@ function getZones(spectraData, thresholdFactor) {
 
     var nStdDev = getLoGnStdDevNMR(spectraData);
     if (isHomonuclear) {
-        var convolutedSpectrum = FFTUtils.convolute(data, smallFilter, nbSubSpectra, nbPoints);
-        var peaksMC1 = matrixPeakFinders.findPeaks2DRegion(data, { filteredData: convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: nStdDev * thresholdFactor }); //)1.5);
-        var peaksMax1 = matrixPeakFinders.findPeaks2DMax(data, { filteredData: convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: (nStdDev + 0.5) * thresholdFactor }); //2.0);
+        var convolutedSpectrum = _mlFft.FFTUtils.convolute(data, smallFilter, nbSubSpectra, nbPoints);
+        var peaksMC1 = _mlMatrixPeaksFinder2.default.findPeaks2DRegion(data, { filteredData: convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: nStdDev * thresholdFactor }); //)1.5);
+        var peaksMax1 = _mlMatrixPeaksFinder2.default.findPeaks2DMax(data, { filteredData: convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: (nStdDev + 0.5) * thresholdFactor }); //2.0);
         for (var i = 0; i < peaksMC1.length; i++) {
             peaksMax1.push(peaksMC1[i]);
         }
-        return PeakOptimizer.enhanceSymmetry(createSignals2D(peaksMax1, spectraData, 24));
+        return _peakOptimizer2.default.enhanceSymmetry(createSignals2D(peaksMax1, spectraData, 24));
     } else {
-        var _convolutedSpectrum = FFTUtils.convolute(data, smallFilter, nbSubSpectra, nbPoints);
-        var _peaksMC = matrixPeakFinders.findPeaks2DRegion(data, { filteredData: _convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: nStdDev * thresholdFactor });
+        var _convolutedSpectrum = _mlFft.FFTUtils.convolute(data, smallFilter, nbSubSpectra, nbPoints);
+        var _peaksMC = _mlMatrixPeaksFinder2.default.findPeaks2DRegion(data, { filteredData: _convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: nStdDev * thresholdFactor });
         //Peak2D[] peaksMC1 = matrixPeakFinders.findPeaks2DMax(data, nbSubSpectra, nbPoints, (nStdDev+0.5)*thresholdFactor);
         //Remove peaks with less than 3% of the intensity of the highest peak
-        return createSignals2D(PeakOptimizer.clean(_peaksMC, 0.05), spectraData, 24);
+        return createSignals2D(_peakOptimizer2.default.clean(_peaksMC, 0.05), spectraData, 24);
     }
 }
 
@@ -37897,7 +37358,7 @@ function createSignals2D(peaks, spectraData, tolerance) {
         }
     }
 
-    var clusters = simpleClustering(connectivity);
+    var clusters = (0, _mlSimpleClustering2.default)(connectivity);
 
     var signals = [];
     if (peaks != null) {
@@ -37946,14 +37407,27 @@ function createSignals2D(peaks, spectraData, tolerance) {
     return signals;
 }
 
-module.exports = getZones;
-
-},{"./peakOptimizer":153,"ml-fft":45,"ml-matrix-peaks-finder":61,"ml-simple-clustering":99}],156:[function(require,module,exports){
+},{"./peakOptimizer":156,"ml-fft":49,"ml-matrix-peaks-finder":65,"ml-simple-clustering":103}],159:[function(require,module,exports){
 'use strict';
 
-var JAnalyzer = require('./jAnalyzer');
-var Ranges = require('spectra-data-ranges').Ranges;
-var impurityRemover = require('./ImpurityRemover');
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.default = createRanges;
+
+var _jAnalyzer = require('./jAnalyzer');
+
+var _jAnalyzer2 = _interopRequireDefault(_jAnalyzer);
+
+var _ImpurityRemover = require('./ImpurityRemover');
+
+var _ImpurityRemover2 = _interopRequireDefault(_ImpurityRemover);
+
+var _spectraDataRanges = require('spectra-data-ranges');
+
+function _interopRequireDefault(obj) {
+    return obj && obj.__esModule ? obj : { default: obj };
+}
 
 var defaultOptions = {
     nH: 100,
@@ -37984,7 +37458,7 @@ function createRanges(spectrum, peakList, options) {
     options = Object.assign({}, defaultOptions, options);
     var i, j;
     var nH = options.nH;
-    peakList = impurityRemover(peakList, options.removeImpurity);
+    peakList = (0, _ImpurityRemover2.default)(peakList, options.removeImpurity);
     var signals = detectSignals(spectrum, peakList, options);
 
     if (options.clean) {
@@ -37998,7 +37472,7 @@ function createRanges(spectrum, peakList, options) {
     if (options.compile) {
         var nHi, sum;
         for (i = 0; i < signals.length; i++) {
-            JAnalyzer.compilePattern(signals[i]);
+            _jAnalyzer2.default.compilePattern(signals[i]);
 
             if (signals[i].maskPattern && signals[i].multiplicity !== 'm' && signals[i].multiplicity !== '') {
                 //Create a new signal with the removed peaks
@@ -38095,7 +37569,7 @@ function createRanges(spectrum, peakList, options) {
         }
     }
 
-    return new Ranges(ranges);
+    return new _spectraDataRanges.Ranges(ranges);
 }
 
 /**
@@ -38195,14 +37669,108 @@ function computeArea(peak) {
     return Math.abs(peak.intensity * peak.width * 1.57); // todo add an option with this value: 1.772453851
 }
 
-module.exports = createRanges;
+},{"./ImpurityRemover":153,"./jAnalyzer":155,"spectra-data-ranges":136}],160:[function(require,module,exports){
+module.exports={
+  "_args": [
+    [
+      "spectra-data@3.1.15",
+      "/usr/local/www/sites/www.lactame.com/node/grm-data/git/cheminfo/eln-plugin"
+    ]
+  ],
+  "_from": "spectra-data@3.1.15",
+  "_id": "spectra-data@3.1.15",
+  "_inBundle": false,
+  "_integrity": "sha512-SXdqGFl1hoOdmZkAnRhO3GcVKwd9rx7N88l5Wn5K/1sDFEXHEBLEu5TLYK/5PgWuMx28pDpv3+aMsK2NadAj9Q==",
+  "_location": "/spectra-data",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "version",
+    "registry": true,
+    "raw": "spectra-data@3.1.15",
+    "name": "spectra-data",
+    "escapedName": "spectra-data",
+    "rawSpec": "3.1.15",
+    "saveSpec": null,
+    "fetchSpec": "3.1.15"
+  },
+  "_requiredBy": [
+    "/nmr-metadata"
+  ],
+  "_resolved": "https://registry.npmjs.org/spectra-data/-/spectra-data-3.1.15.tgz",
+  "_spec": "3.1.15",
+  "_where": "/usr/local/www/sites/www.lactame.com/node/grm-data/git/cheminfo/eln-plugin",
+  "author": {
+    "name": "Andres Castillo"
+  },
+  "bugs": {
+    "url": "https://github.com/cheminfo-js/spectra/issues"
+  },
+  "contributors": [
+    {
+      "name": "Michaël Zasso"
+    },
+    {
+      "name": "Luc Patiny"
+    }
+  ],
+  "dependencies": {
+    "brukerconverter": "^1.0.1",
+    "jcampconverter": "^2.4.5",
+    "ml-array-max": "^1.0.1",
+    "ml-array-median": "^1.0.0",
+    "ml-array-min": "^1.0.1",
+    "ml-array-rescale": "^1.1.0",
+    "ml-array-utils": "^0.3.0",
+    "ml-curve-fitting": "^0.0.7",
+    "ml-fft": "^1.3.5",
+    "ml-gsd": "^2.0.1",
+    "ml-matrix-peaks-finder": "^0.2.1",
+    "ml-simple-clustering": "^0.1.0",
+    "nmr-simulation": "^1.0.11",
+    "spectra-data-ranges": "^1.0.1",
+    "spectra-nmr-utilities": "^1.0.1"
+  },
+  "description": "spectra-data project - manipulate spectra",
+  "devDependencies": {
+    "nmr-predictor": "^1.1.4"
+  },
+  "files": [
+    "lib",
+    "src"
+  ],
+  "homepage": "https://github.com/cheminfo-js/spectra/packages/spectra-data",
+  "jest": {
+    "testEnvironment": "node"
+  },
+  "keywords": [
+    "spectra-data",
+    "project"
+  ],
+  "license": "MIT",
+  "main": "./lib/index.js",
+  "module": "./src/index.js",
+  "name": "spectra-data",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cheminfo-js/spectra.git"
+  },
+  "version": "3.1.15"
+}
 
-},{"./ImpurityRemover":150,"./jAnalyzer":152,"spectra-data-ranges":132}],157:[function(require,module,exports){
+},{}],161:[function(require,module,exports){
 'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+    value: true
+});
+exports.nmrJ = nmrJ;
+exports.joinCoupling = joinCoupling;
+exports.group = group;
+exports.compilePattern = compilePattern;
 
 var patterns = ['s', 'd', 't', 'q', 'quint', 'h', 'sept', 'o', 'n'];
 
-module.exports.nmrJ = function nmrJ(Js, options = {}) {
+function nmrJ(Js, options = {}) {
     var jString = '';
     options = Object.assign({}, { separator: ', ', nbDecimal: 2 }, options);
     var j = void 0,
@@ -38215,9 +37783,9 @@ module.exports.nmrJ = function nmrJ(Js, options = {}) {
         jString += j.multiplicity + ' ' + j.coupling.toFixed(options.nbDecimal);
     }
     return jString;
-};
+}
 
-module.exports.joinCoupling = function joinCoupling(signal, tolerance = 0.05) {
+function joinCoupling(signal, tolerance = 0.05) {
     var jc = signal.j;
     if (jc && jc.length > 0) {
         var cont = jc[0].assignment ? jc[0].assignment.length : 1;
@@ -38281,9 +37849,9 @@ module.exports.joinCoupling = function joinCoupling(signal, tolerance = 0.05) {
         pattern = 'm';
     }
     return pattern;
-};
+}
 
-module.exports.group = function group(signals, options = {}) {
+function group(signals, options = {}) {
     var i, k;
     for (i = 0; i < signals.length; i++) {
         var j = signals[i].j;
@@ -38319,9 +37887,9 @@ module.exports.group = function group(signals, options = {}) {
         signals[i].multiplicity = module.exports.compilePattern(signals[i], options.tolerance);
     }
     return signals;
-};
+}
 
-module.exports.compilePattern = function compilePattern(signal, tolerance = 0.05) {
+function compilePattern(signal, tolerance = 0.05) {
     var jc = signal.j;
     var pattern = '';
     if (jc && jc.length > 0) {
@@ -38344,9 +37912,9 @@ module.exports.compilePattern = function compilePattern(signal, tolerance = 0.05
         pattern = 'm';
     }
     return pattern;
-};
+}
 
-},{}],158:[function(require,module,exports){
+},{}],162:[function(require,module,exports){
 'use strict';
 
 if (typeof Object.create === 'function') {
@@ -38373,14 +37941,14 @@ if (typeof Object.create === 'function') {
   };
 }
 
-},{}],159:[function(require,module,exports){
+},{}],163:[function(require,module,exports){
 'use strict';
 
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object' && typeof arg.copy === 'function' && typeof arg.fill === 'function' && typeof arg.readUInt8 === 'function';
 };
 
-},{}],160:[function(require,module,exports){
+},{}],164:[function(require,module,exports){
 (function (process,global){
 'use strict';
 
@@ -38930,7 +38498,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":159,"_process":130,"inherits":158}],161:[function(require,module,exports){
+},{"./support/isBuffer":163,"_process":134,"inherits":162}],165:[function(require,module,exports){
 'use strict';
 
 var types = require('./types');
@@ -39039,10 +38607,10 @@ function getTextContent(content) {
     }
 }
 
-},{"./types":162,"./types/common":163,"./util/defaults":176}],162:[function(require,module,exports){
+},{"./types":166,"./types/common":167,"./util/defaults":182}],166:[function(require,module,exports){
 'use strict';
 
-var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "xray": require("./types/sample/xray.js") } } };
+var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "xray": require("./types/sample/xray.js") } } };
 
 module.exports = {
     getType(type, kind, custom) {
@@ -39073,7 +38641,7 @@ module.exports = {
     }
 };
 
-},{"./types/common.js":163,"./types/default.js":164,"./types/nmr.js":165,"./types/reaction/general.js":166,"./types/sample/chromatogram.js":167,"./types/sample/general.js":168,"./types/sample/image.js":169,"./types/sample/ir.js":170,"./types/sample/mass.js":171,"./types/sample/nmr.js":172,"./types/sample/physical.js":173,"./types/sample/raman.js":174,"./types/sample/xray.js":175}],163:[function(require,module,exports){
+},{"./types/common.js":167,"./types/default.js":168,"./types/nmr.js":169,"./types/reaction/general.js":170,"./types/sample/chromatogram.js":171,"./types/sample/differentialScanningCalorimetry.js":172,"./types/sample/general.js":173,"./types/sample/image.js":174,"./types/sample/ir.js":175,"./types/sample/mass.js":176,"./types/sample/nmr.js":177,"./types/sample/physical.js":178,"./types/sample/raman.js":179,"./types/sample/thermogravimetricAnalysis.js":180,"./types/sample/xray.js":181}],167:[function(require,module,exports){
 'use strict';
 
 var common = module.exports = {};
@@ -39129,12 +38697,17 @@ common.getTargetProperty = function (filename) {
             return 'cdf';
         case 'pdf':
             return 'pdf';
+        case 'txt':
+        case 'text':
+        case 'csv':
+        case 'tsv':
+            return 'text';
         default:
             return 'file';
     }
 };
 
-},{}],164:[function(require,module,exports){
+},{}],168:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39147,7 +38720,7 @@ module.exports = {
     }
 };
 
-},{}],165:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 'use strict';
 
 var nmrMetadata = require('nmr-metadata');
@@ -39156,7 +38729,7 @@ exports.getMetadata = nmrMetadata.parseJcamp;
 exports.getSpectrumType = nmrMetadata.getSpectrumType;
 exports.getNucleusFrom2DExperiment = nmrMetadata.getNucleusFrom2DExperiment;
 
-},{"nmr-metadata":106}],166:[function(require,module,exports){
+},{"nmr-metadata":110}],170:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39177,7 +38750,7 @@ module.exports = {
     }
 };
 
-},{}],167:[function(require,module,exports){
+},{}],171:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39188,7 +38761,18 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":163}],168:[function(require,module,exports){
+},{"../common":167}],172:[function(require,module,exports){
+'use strict';
+
+var common = require('../common');
+
+module.exports = {
+    jpath: ['spectra', 'differentialScanningCalorimetry'],
+    find: common.basenameFind,
+    getProperty: common.getTargetProperty
+};
+
+},{"../common":167}],173:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39208,7 +38792,7 @@ module.exports = {
     }
 };
 
-},{}],169:[function(require,module,exports){
+},{}],174:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39219,7 +38803,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":163}],170:[function(require,module,exports){
+},{"../common":167}],175:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39230,7 +38814,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":163}],171:[function(require,module,exports){
+},{"../common":167}],176:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39241,7 +38825,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":163}],172:[function(require,module,exports){
+},{"../common":167}],177:[function(require,module,exports){
 'use strict';
 
 var isFid = /[^a-z]fid[^a-z]/i;
@@ -39295,7 +38879,7 @@ function getReference(filename) {
     return reference;
 }
 
-},{"../common":163,"../nmr":165}],173:[function(require,module,exports){
+},{"../common":167,"../nmr":169}],178:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39305,7 +38889,7 @@ module.exports = {
     }
 };
 
-},{}],174:[function(require,module,exports){
+},{}],179:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39316,7 +38900,18 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":163}],175:[function(require,module,exports){
+},{"../common":167}],180:[function(require,module,exports){
+'use strict';
+
+var common = require('../common');
+
+module.exports = {
+    jpath: ['spectra', 'thermogravimetricAnalysis'],
+    find: common.basenameFind,
+    getProperty: common.getTargetProperty
+};
+
+},{"../common":167}],181:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39327,7 +38922,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":163}],176:[function(require,module,exports){
+},{"../common":167}],182:[function(require,module,exports){
 /*
     Modified from https://github.com/justmoon/node-extend
     Copyright (c) 2014 Stefan Thomas
@@ -39425,5 +39020,5 @@ module.exports = function defaults() {
     return target;
 };
 
-},{}]},{},[161])(161)
+},{}]},{},[165])(165)
 });
