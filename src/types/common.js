@@ -41,6 +41,7 @@ common.getTargetProperty = function (filename) {
         case 'jpeg':
         case 'tif':
         case 'tiff':
+        case 'svg':
             return 'image';
         case 'cif':
             return 'cif';
