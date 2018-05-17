@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "bulk-require": "^1.0.1",
+    "genbank-parser": "^0.1.0",
     "nmr-metadata": "^2.0.3"
   }
 }
