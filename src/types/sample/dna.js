@@ -8,7 +8,7 @@ module.exports = {
     let reference = common.getBasename(filename);
 
     return dna.find(dna => {
-      return getReference(common.getFilename(dna)) === reference;
+      return common.getBasename(common.getFilename(dna)) === reference;
     });
   },
 
