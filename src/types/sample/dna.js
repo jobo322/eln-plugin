@@ -7,8 +7,8 @@ module.exports = {
   find(dna, filename) {
     let reference = common.getBasename(filename);
 
-    return nmr.find(nmr => {
-      return getReference(common.getFilename(nmr)) === reference;
+    return dna.find(dna => {
+      return getReference(common.getFilename(dna)) === reference;
     });
   },
 
@@ -28,5 +28,5 @@ module.exports = {
     return toReturn;
   },
 
-  jpath: ['spectra', 'nmr']
+  jpath: ['biology', 'dna']
 };
