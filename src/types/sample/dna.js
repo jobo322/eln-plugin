@@ -18,7 +18,7 @@ module.exports = {
 
   process(filename, content) {
     let toReturn;
-    const parsed = genbankParser(contents);
+    const parsed = genbankParser(content);
     if (parsed.some(p => p.success !== true)) {
       throw new Error('Error parsing genbank');
     }
