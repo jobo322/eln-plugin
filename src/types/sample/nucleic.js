@@ -4,11 +4,11 @@ const common = require('../common');
 const genbankParser = require('genbank-parser');
 
 module.exports = {
-  find(dna, filename) {
+  find(nucleic, filename) {
     let reference = common.getBasename(filename);
 
-    return dna.find(dna => {
-      return common.getBasename(common.getFilename(dna)) === reference;
+    return nucleic.find(nucleic => {
+      return common.getBasename(common.getFilename(nucleic)) === reference;
     });
   },
 
@@ -28,5 +28,5 @@ module.exports = {
     return toReturn;
   },
 
-  jpath: ['biology', 'dna']
+  jpath: ['biology', 'nucleic']
 };
