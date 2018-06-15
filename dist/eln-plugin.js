@@ -39162,7 +39162,7 @@ function getTextContent(content) {
 },{"./types":170,"./types/common":171,"./util/defaults":187}],170:[function(require,module,exports){
 'use strict';
 
-var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "nucleic": require("./types/sample/nucleic.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "xray": require("./types/sample/xray.js") } } };
+var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "genbank": require("./types/sample/genbank.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "xray": require("./types/sample/xray.js") } } };
 
 module.exports = {
     getType(type, kind, custom) {
@@ -39193,7 +39193,7 @@ module.exports = {
     }
 };
 
-},{"./types/common.js":171,"./types/default.js":172,"./types/nmr.js":173,"./types/reaction/general.js":174,"./types/sample/chromatogram.js":175,"./types/sample/differentialScanningCalorimetry.js":176,"./types/sample/general.js":177,"./types/sample/image.js":178,"./types/sample/ir.js":179,"./types/sample/mass.js":180,"./types/sample/nmr.js":181,"./types/sample/nucleic.js":182,"./types/sample/physical.js":183,"./types/sample/raman.js":184,"./types/sample/thermogravimetricAnalysis.js":185,"./types/sample/xray.js":186}],171:[function(require,module,exports){
+},{"./types/common.js":171,"./types/default.js":172,"./types/nmr.js":173,"./types/reaction/general.js":174,"./types/sample/chromatogram.js":175,"./types/sample/differentialScanningCalorimetry.js":176,"./types/sample/genbank.js":177,"./types/sample/general.js":178,"./types/sample/image.js":179,"./types/sample/ir.js":180,"./types/sample/mass.js":181,"./types/sample/nmr.js":182,"./types/sample/physical.js":183,"./types/sample/raman.js":184,"./types/sample/thermogravimetricAnalysis.js":185,"./types/sample/xray.js":186}],171:[function(require,module,exports){
 'use strict';
 
 var common = module.exports = {};
@@ -39331,6 +39331,40 @@ module.exports = {
 },{"../common":171}],177:[function(require,module,exports){
 'use strict';
 
+var common = require('../common');
+var genbankParser = require('genbank-parser');
+
+module.exports = {
+  find(genbank, filename) {
+    var reference = common.getBasename(filename);
+
+    return genbank.find(genbank => {
+      return common.getBasename(common.getFilename(genbank)) === reference;
+    });
+  },
+
+  getProperty(filename, content) {
+    return common.getTargetProperty(filename);
+  },
+
+  process(filename, content) {
+    var toReturn = void 0;
+    var parsed = genbankParser(content);
+    if (parsed.some(p => p.success !== true)) {
+      throw new Error('Error parsing genbank');
+    }
+    toReturn = {
+      seq: parsed
+    };
+    return toReturn;
+  },
+
+  jpath: ['biology', 'nucleic']
+};
+
+},{"../common":171,"genbank-parser":6}],178:[function(require,module,exports){
+'use strict';
+
 module.exports = {
     jpath: ['general'],
     getEmpty() {
@@ -39348,7 +39382,7 @@ module.exports = {
     }
 };
 
-},{}],178:[function(require,module,exports){
+},{}],179:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39359,7 +39393,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":171}],179:[function(require,module,exports){
+},{"../common":171}],180:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39370,7 +39404,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":171}],180:[function(require,module,exports){
+},{"../common":171}],181:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39381,7 +39415,7 @@ module.exports = {
     getProperty: common.getTargetProperty
 };
 
-},{"../common":171}],181:[function(require,module,exports){
+},{"../common":171}],182:[function(require,module,exports){
 'use strict';
 
 var isFid = /[^a-z]fid[^a-z]/i;
@@ -39435,41 +39469,7 @@ function getReference(filename) {
     return reference;
 }
 
-},{"../common":171,"../nmr":173}],182:[function(require,module,exports){
-'use strict';
-
-var common = require('../common');
-var genbankParser = require('genbank-parser');
-
-module.exports = {
-  find(nucleic, filename) {
-    var reference = common.getBasename(filename);
-
-    return nucleic.find(nucleic => {
-      return common.getBasename(common.getFilename(nucleic)) === reference;
-    });
-  },
-
-  getProperty(filename, content) {
-    return common.getTargetProperty(filename);
-  },
-
-  process(filename, content) {
-    var toReturn = void 0;
-    var parsed = genbankParser(content);
-    if (parsed.some(p => p.success !== true)) {
-      throw new Error('Error parsing genbank');
-    }
-    toReturn = {
-      seq: parsed
-    };
-    return toReturn;
-  },
-
-  jpath: ['biology', 'nucleic']
-};
-
-},{"../common":171,"genbank-parser":6}],183:[function(require,module,exports){
+},{"../common":171,"../nmr":173}],183:[function(require,module,exports){
 'use strict';
 
 module.exports = {
