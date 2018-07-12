@@ -18,7 +18,7 @@ module.exports = {
 
     getProperty(filename, content) {
         const extension = common.getExtension(filename);
-        if(extension === 'jdx' || extension === 'dx') {
+        if(extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
             if(isFid.test(filename)) {
                 return 'jcampFID';
             }
@@ -29,7 +29,7 @@ module.exports = {
     process(filename, content) {
         const extension = common.getExtension(filename);
         var metaData = {};
-        if(extension === 'jdx' || extension === 'dx') {
+        if(extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
             metaData =  nmrLib.getMetadata(content);
         }
         return metaData;
