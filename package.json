@@ -1,6 +1,6 @@
 {
   "name": "eln-plugin",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "description": "Extract metainfo from chemical file formats into a well defined json structure",
   "main": "src/index.js",
   "scripts": {
@@ -27,7 +27,7 @@
     "babel-preset-es2015": "^6.24.1",
     "babelify": "^8.0.0",
     "babili": "^0.1.4",
-    "browserify": "^16.2.2",
+    "browserify": "^16.2.3",
     "bulkify": "^1.1.1",
     "eslint": "^4.19.1",
     "eslint-config-cheminfo": "^1.17.4",
@@ -38,6 +38,6 @@
   "dependencies": {
     "bulk-require": "^1.0.1",
     "genbank-parser": "^0.2.0",
-    "nmr-metadata": "^2.0.3"
+    "nmr-metadata": "^2.2.0"
   }
 }
