@@ -3,7 +3,7 @@
 const common = require('../common');
 
 module.exports = {
-    jpath: ['spectra', 'ir'],
-    find: common.basenameFind,
-    getProperty: common.getTargetProperty
+  jpath: ['spectra', 'ir'],
+  find: common.basenameFind,
+  getProperty: common.getTargetProperty
 };

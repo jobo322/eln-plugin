@@ -5,6 +5,8 @@
   "main": "src/index.js",
   "scripts": {
     "test": "jest",
+    "eslint": "eslint src --cache",
+    "eslint-fix": "npm run eslint -- --fix",
     "build": "mkdir -p dist && browserify src/index.js --transform=bulkify --global-transform=babelify --standalone=elnPlugin > dist/eln-plugin.js && babili dist/eln-plugin.js > dist/eln-plugin.min.js"
   },
   "repository": {
@@ -27,6 +29,10 @@
     "babili": "^0.1.4",
     "browserify": "^16.2.2",
     "bulkify": "^1.1.1",
+    "eslint": "^4.19.1",
+    "eslint-config-cheminfo": "^1.17.4",
+    "eslint-plugin-import": "^2.11.0",
+    "eslint-plugin-jest": "^21.15.1",
     "jest": "^23.1.0"
   },
   "dependencies": {

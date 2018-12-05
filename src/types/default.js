@@ -1,11 +1,11 @@
 'use strict';
 
 module.exports = {
-    process() {
-        return {};
-    },
+  process() {
+    return {};
+  },
 
-    getEmpty() {
-        return [];
-    }
+  getEmpty() {
+    return [];
+  }
 };

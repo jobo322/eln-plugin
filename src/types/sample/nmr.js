@@ -6,49 +6,47 @@ const replaceFid = /[^a-z]fid[^a-z]?/i;
 const common = require('../common');
 const nmrLib = require('../nmr');
 
-
 module.exports = {
-    find(nmr, filename) {
-        let reference = getReference(filename);
+  find(nmr, filename) {
+    let reference = getReference(filename);
 
-        return nmr.find(nmr => {
-            return getReference(common.getFilename(nmr)) === reference;
-        });
-    },
+    return nmr.find((nmr) => {
+      return getReference(common.getFilename(nmr)) === reference;
+    });
+  },
 
-    getProperty(filename, content) {
-        const extension = common.getExtension(filename);
-        if(extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
-            if(isFid.test(filename)) {
-                return 'jcampFID';
-            }
-        }
-        return common.getTargetProperty(filename);
-    },
+  getProperty(filename) {
+    const extension = common.getExtension(filename);
+    if (extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
+      if (isFid.test(filename)) {
+        return 'jcampFID';
+      }
+    }
+    return common.getTargetProperty(filename);
+  },
 
-    process(filename, content) {
-        const extension = common.getExtension(filename);
-        var metaData = {};
-        if(extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
-            metaData =  nmrLib.getMetadata(content);
-        }
-        return metaData;
-    },
+  process(filename, content) {
+    const extension = common.getExtension(filename);
+    var metaData = {};
+    if (extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
+      metaData = nmrLib.getMetadata(content);
+    }
+    return metaData;
+  },
 
-    jpath: ['spectra', 'nmr']
+  jpath: ['spectra', 'nmr']
 };
 
 const reg2 = /(.*)\.(.*)/;
 
 function getReference(filename) {
-    if(typeof filename === 'undefined') return;
+  if (typeof filename === 'undefined') return;
 
-    let reference = common.getBasename(filename);
-    reference = reference.replace(reg2, '$1');
+  let reference = common.getBasename(filename);
+  reference = reference.replace(reg2, '$1');
 
-
-    if(isFid.test(filename)) {
-        reference = reference.replace(replaceFid, '');
-    }
-    return reference;
+  if (isFid.test(filename)) {
+    reference = reference.replace(replaceFid, '');
+  }
+  return reference;
 }
