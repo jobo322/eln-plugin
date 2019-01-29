@@ -1,5 +1,7 @@
 'use strict';
 
+const atob = require('atob');
+
 const types = require('./types');
 const defaults = require('./util/defaults');
 const util = require('./types/common');

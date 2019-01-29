@@ -3,6 +3,7 @@
     Copyright (c) 2014 Stefan Thomas
  */
 
+/* eslint prefer-rest-params: 0 */
 
 'use strict';
 
@@ -23,7 +24,10 @@ var isPlainObject = function isPlainObject(obj) {
   }
 
   var hasOwnConstructor = hasOwn.call(obj, 'constructor');
-  var hasIsPrototypeOf = obj.constructor && obj.constructor.prototype && hasOwn.call(obj.constructor.prototype, 'isPrototypeOf');
+  var hasIsPrototypeOf =
+    obj.constructor &&
+    obj.constructor.prototype &&
+    hasOwn.call(obj.constructor.prototype, 'isPrototypeOf');
   // Not own constructor property must be Object
   if (obj.constructor && !hasOwnConstructor && !hasIsPrototypeOf) {
     return false;
@@ -32,7 +36,9 @@ var isPlainObject = function isPlainObject(obj) {
   // Own properties are enumerated firstly, so to speed up,
   // if last one is own, then all properties are own.
   var key;
-  for (key in obj) { /**/ }
+  for (key in obj) {
+    /**/
+  }
 
   return typeof key === 'undefined' || hasOwn.call(obj, key);
 };
@@ -50,7 +56,10 @@ module.exports = function defaults() {
     target = arguments[1] || {};
     // skip the boolean and the target
     i = 2;
-  } else if ((typeof target !== 'object' && typeof target !== 'function') || target == null) {
+  } else if (
+    (typeof target !== 'object' && typeof target !== 'function') ||
+    target == null
+  ) {
     target = {};
   }
 
@@ -66,7 +75,11 @@ module.exports = function defaults() {
         // Prevent never-ending loop
         if (target !== copy) {
           // Recurse if we're merging plain objects or arrays
-          if (deep && copy && (isPlainObject(copy) || (copyIsArray = isArray(copy)))) {
+          if (
+            deep &&
+            copy &&
+            (isPlainObject(copy) || (copyIsArray = isArray(copy)))
+          ) {
             if (copyIsArray) {
               copyIsArray = false;
               clone = src && isArray(src) ? src : [];
@@ -80,7 +93,6 @@ module.exports = function defaults() {
             } else {
               defaults(deep, clone, copy);
             }
-
 
             // Don't bring in undefined values
           } else if (typeof copy !== 'undefined') {
