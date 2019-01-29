@@ -19,6 +19,7 @@ common.getFilename = function (typeEntry) {
       return typeEntry[keys[i]].filename;
     }
   }
+  return undefined;
 };
 
 common.basenameFind = function (typeEntries, filename) {

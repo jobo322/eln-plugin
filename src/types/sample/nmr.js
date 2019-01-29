@@ -40,7 +40,7 @@ module.exports = {
 const reg2 = /(.*)\.(.*)/;
 
 function getReference(filename) {
-  if (typeof filename === 'undefined') return;
+  if (typeof filename === 'undefined') return undefined;
 
   let reference = common.getBasename(filename);
   reference = reference.replace(reg2, '$1');

@@ -85,7 +85,7 @@ function createFromJpath(doc, typeProcessor) {
 }
 
 function getFromJpath(doc, typeProcessor) {
-  if (!doc) return;
+  if (!doc) return undefined;
   const jpath = typeProcessor.jpath;
   if (!jpath) throw new Error('getFromJpath: undefined jpath argument');
   for (let i = 0; i < jpath.length; i++) {

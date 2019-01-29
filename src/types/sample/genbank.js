@@ -13,7 +13,7 @@ module.exports = {
     });
   },
 
-  getProperty(filename, content) {
+  getProperty(filename) {
     return common.getTargetProperty(filename);
   },
 
