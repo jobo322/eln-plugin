@@ -18,8 +18,9 @@ module.exports = {
   },
 
   process(filename, content) {
+    let textContent = common.getTextContent(content);
     let toReturn;
-    const parsed = genbankParser(content);
+    const parsed = genbankParser(textContent);
     toReturn = {
       seq: parsed.map((p) => p.parsedSequence)
     };

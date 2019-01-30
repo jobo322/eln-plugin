@@ -8,7 +8,8 @@ function process(filename, content) {
   const extension = common.getExtension(filename);
   var metaData = {};
   if (extension === 'cdf' || extension === 'netcdf') {
-    let parsed = parseNetCDF(content, { meta: true });
+    let bufferContent = common.getBufferContent(content);
+    let parsed = parseNetCDF(bufferContent, { meta: true });
     if (parsed.series.length === 1) {
       metaData.detector = parsed.series[0].name;
     }

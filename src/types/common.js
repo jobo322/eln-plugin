@@ -1,5 +1,8 @@
 'use strict';
 
+const atob = require('atob');
+const { toByteArray } = require('base64-js');
+
 const common = (module.exports = {});
 
 common.getBasename = function (filename) {
@@ -65,5 +68,23 @@ common.getTargetProperty = function (filename) {
       return 'genbank';
     default:
       return 'file';
+  }
+};
+
+common.getTextContent = function getTextContent(content) {
+  switch (content.encoding) {
+    case 'base64':
+      return atob(content.content);
+    default:
+      return content.content;
+  }
+};
+
+common.getBufferContent = function getBufferContent(content) {
+  switch (content.encoding) {
+    case 'base64':
+      return toByteArray(content.content);
+    default:
+      return content.content;
   }
 };

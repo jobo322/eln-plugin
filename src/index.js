@@ -1,16 +1,13 @@
 'use strict';
 
-const atob = require('atob');
-
 const types = require('./types');
 const defaults = require('./util/defaults');
 const util = require('./types/common');
 
 module.exports = {
-  util: util,
+  util,
   process: function (type, doc, content, customMetadata) {
     let filename = content.filename;
-    let fileContent = getTextContent(content);
 
     const typeProcessor = types.getType(type);
     const arr = createFromJpath(doc, typeProcessor);
@@ -19,9 +16,8 @@ module.exports = {
     if (property === undefined) {
       throw new Error(`Could not get property of ${filename} (type ${type}`);
     }
-    const metadata = typeProcessor.process(filename, fileContent);
+    const metadata = typeProcessor.process(filename, content);
 
-    // process
     metadata[property] = {
       filename: module.exports.getFilename(type, content.filename)
     };
@@ -97,13 +93,4 @@ function getFromJpath(doc, typeProcessor) {
     doc = doc[jpath[i]];
   }
   return doc;
-}
-
-function getTextContent(content) {
-  switch (content.encoding) {
-    case 'base64':
-      return atob(content.content);
-    default:
-      return content.content;
-  }
 }

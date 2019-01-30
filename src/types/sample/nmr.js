@@ -29,7 +29,8 @@ module.exports = {
     const extension = common.getExtension(filename);
     var metaData = {};
     if (extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
-      metaData = nmrLib.getMetadata(content);
+      let textContent = common.getTextContent(content);
+      metaData = nmrLib.getMetadata(textContent);
     }
     return metaData;
   },

@@ -6,8 +6,11 @@ const { join } = require('path');
 const nmr = require('../src/types/sample/nmr');
 
 test('nmr meta info', () => {
-  let jcamp = fs.readFileSync(join(__dirname, 'data/nmr_1d.jdx'));
-  let metadata = nmr.process('test_code_batch.jdx', jcamp);
+  let jcamp = fs.readFileSync(join(__dirname, 'data/nmr_1d.jdx'), 'base64');
+  let metadata = nmr.process('test_code_batch.jdx', {
+    content: jcamp,
+    encoding: 'base64'
+  });
   expect(metadata).toStrictEqual({
     acquisitionMode: 0,
     date: '2013-08-20T15:50:44.000Z',
