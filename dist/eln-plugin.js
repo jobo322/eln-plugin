@@ -1,4 +1,54 @@
 (function(f){if(typeof exports==="object"&&typeof module!=="undefined"){module.exports=f()}else if(typeof define==="function"&&define.amd){define([],f)}else{var g;if(typeof window!=="undefined"){g=window}else if(typeof global!=="undefined"){g=global}else if(typeof self!=="undefined"){g=self}else{g=this}g.elnPlugin = f()}})(function(){var define,module,exports;return (function(){function r(e,n,t){function o(i,f){if(!n[i]){if(!e[i]){var c="function"==typeof require&&require;if(!f&&c)return c(i,!0);if(u)return u(i,!0);var a=new Error("Cannot find module '"+i+"'");throw a.code="MODULE_NOT_FOUND",a}var p=n[i]={exports:{}};e[i][0].call(p.exports,function(r){var n=e[i][1][r];return o(n||r)},p,p.exports,r,e,n,t)}return n[i].exports}for(var u="function"==typeof require&&require,i=0;i<t.length;i++)o(t[i]);return o}return r})()({1:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+(function (w) {
+  "use strict";
+
+  function findBest(atobNative) {
+    // normal window
+    if ('function' === typeof atobNative) {
+      return atobNative;
+    }
+
+    // browserify (web worker)
+    if ('function' === typeof Buffer) {
+      return function atobBrowserify(a) {
+        //!! Deliberately using an API that's deprecated in node.js because
+        //!! this file is for browsers and we expect them to cope with it.
+        //!! Discussion: github.com/node-browser-compat/atob/pull/9
+        return new Buffer(a, 'base64').toString('binary');
+      };
+    }
+
+    // ios web worker with base64js
+    if ('object' === typeof w.base64js) {
+      // bufferToBinaryString
+      // https://git.coolaj86.com/coolaj86/unibabel.js/blob/master/index.js#L50
+      return function atobWebWorker_iOS(a) {
+        var buf = w.base64js.b64ToByteArray(a);
+        return Array.prototype.map.call(buf, function (ch) {
+          return String.fromCharCode(ch);
+        }).join('');
+      };
+    }
+
+    return function () {
+      // ios web worker without base64js
+      throw new Error("You're probably in an old browser or an iOS webworker." + " It might help to include beatgammit's base64-js.");
+    };
+  }
+
+  var atobBest = findBest(w.atob);
+  w.atob = atobBest;
+
+  if (typeof module === 'object' && module && module.exports) {
+    module.exports = atobBest;
+  }
+})(window);
+
+}).call(this,require("buffer").Buffer)
+},{"buffer":6}],2:[function(require,module,exports){
 'use strict';
 
 exports.byteLength = byteLength;
@@ -121,7 +171,7 @@ function fromByteArray(uint8) {
   return parts.join('');
 }
 
-},{}],2:[function(require,module,exports){
+},{}],3:[function(require,module,exports){
 "use strict";
 
 module.exports = function (haystack, needle, comparator, low, high) {
@@ -157,7 +207,254 @@ module.exports = function (haystack, needle, comparator, low, high) {
   return ~low;
 };
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
+'use strict';
+
+var defaultByteLength = 1024 * 8;
+var charArray = [];
+
+class IOBuffer {
+    constructor(data, options) {
+        options = options || {};
+        if (data === undefined) {
+            data = defaultByteLength;
+        }
+        if (typeof data === 'number') {
+            data = new ArrayBuffer(data);
+        }
+        var length = data.byteLength;
+        var offset = options.offset ? options.offset >>> 0 : 0;
+        if (data.buffer) {
+            length = data.byteLength - offset;
+            if (data.byteLength !== data.buffer.byteLength) {
+                // Node.js buffer from pool
+                data = data.buffer.slice(data.byteOffset + offset, data.byteOffset + data.byteLength);
+            } else if (offset) {
+                data = data.buffer.slice(offset);
+            } else {
+                data = data.buffer;
+            }
+        }
+        this.buffer = data;
+        this.length = length;
+        this.byteLength = length;
+        this.byteOffset = 0;
+        this.offset = 0;
+        this.littleEndian = true;
+        this._data = new DataView(this.buffer);
+        this._increment = length || defaultByteLength;
+        this._mark = 0;
+    }
+
+    available(byteLength) {
+        if (byteLength === undefined) byteLength = 1;
+        return this.offset + byteLength <= this.length;
+    }
+
+    isLittleEndian() {
+        return this.littleEndian;
+    }
+
+    setLittleEndian() {
+        this.littleEndian = true;
+    }
+
+    isBigEndian() {
+        return !this.littleEndian;
+    }
+
+    setBigEndian() {
+        this.littleEndian = false;
+    }
+
+    skip(n) {
+        if (n === undefined) n = 1;
+        this.offset += n;
+    }
+
+    seek(offset) {
+        this.offset = offset;
+    }
+
+    mark() {
+        this._mark = this.offset;
+    }
+
+    reset() {
+        this.offset = this._mark;
+    }
+
+    rewind() {
+        this.offset = 0;
+    }
+
+    ensureAvailable(byteLength) {
+        if (byteLength === undefined) byteLength = 1;
+        if (!this.available(byteLength)) {
+            var newIncrement = this._increment + this._increment;
+            this._increment = newIncrement;
+            var newLength = this.length + newIncrement;
+            var newArray = new Uint8Array(newLength);
+            newArray.set(new Uint8Array(this.buffer));
+            this.buffer = newArray.buffer;
+            this.length = newLength;
+            this._data = new DataView(this.buffer);
+        }
+    }
+
+    readBoolean() {
+        return this.readUint8() !== 0;
+    }
+
+    readInt8() {
+        return this._data.getInt8(this.offset++);
+    }
+
+    readUint8() {
+        return this._data.getUint8(this.offset++);
+    }
+
+    readByte() {
+        return this.readUint8();
+    }
+
+    readBytes(n) {
+        if (n === undefined) n = 1;
+        var bytes = new Uint8Array(n);
+        for (var i = 0; i < n; i++) {
+            bytes[i] = this.readByte();
+        }
+        return bytes;
+    }
+
+    readInt16() {
+        var value = this._data.getInt16(this.offset, this.littleEndian);
+        this.offset += 2;
+        return value;
+    }
+
+    readUint16() {
+        var value = this._data.getUint16(this.offset, this.littleEndian);
+        this.offset += 2;
+        return value;
+    }
+
+    readInt32() {
+        var value = this._data.getInt32(this.offset, this.littleEndian);
+        this.offset += 4;
+        return value;
+    }
+
+    readUint32() {
+        var value = this._data.getUint32(this.offset, this.littleEndian);
+        this.offset += 4;
+        return value;
+    }
+
+    readFloat32() {
+        var value = this._data.getFloat32(this.offset, this.littleEndian);
+        this.offset += 4;
+        return value;
+    }
+
+    readFloat64() {
+        var value = this._data.getFloat64(this.offset, this.littleEndian);
+        this.offset += 8;
+        return value;
+    }
+
+    readChar() {
+        return String.fromCharCode(this.readInt8());
+    }
+
+    readChars(n) {
+        if (n === undefined) n = 1;
+        charArray.length = n;
+        for (var i = 0; i < n; i++) {
+            charArray[i] = this.readChar();
+        }
+        return charArray.join('');
+    }
+
+    writeBoolean(bool) {
+        this.writeUint8(bool ? 0xff : 0x00);
+    }
+
+    writeInt8(value) {
+        this.ensureAvailable(1);
+        this._data.setInt8(this.offset++, value);
+    }
+
+    writeUint8(value) {
+        this.ensureAvailable(1);
+        this._data.setUint8(this.offset++, value);
+    }
+
+    writeByte(value) {
+        this.writeUint8(value);
+    }
+
+    writeBytes(bytes) {
+        this.ensureAvailable(bytes.length);
+        for (var i = 0; i < bytes.length; i++) {
+            this._data.setUint8(this.offset++, bytes[i]);
+        }
+    }
+
+    writeInt16(value) {
+        this.ensureAvailable(2);
+        this._data.setInt16(this.offset, value, this.littleEndian);
+        this.offset += 2;
+    }
+
+    writeUint16(value) {
+        this.ensureAvailable(2);
+        this._data.setUint16(this.offset, value, this.littleEndian);
+        this.offset += 2;
+    }
+
+    writeInt32(value) {
+        this.ensureAvailable(4);
+        this._data.setInt32(this.offset, value, this.littleEndian);
+        this.offset += 4;
+    }
+
+    writeUint32(value) {
+        this.ensureAvailable(4);
+        this._data.setUint32(this.offset, value, this.littleEndian);
+        this.offset += 4;
+    }
+
+    writeFloat32(value) {
+        this.ensureAvailable(4);
+        this._data.setFloat32(this.offset, value, this.littleEndian);
+        this.offset += 4;
+    }
+
+    writeFloat64(value) {
+        this.ensureAvailable(8);
+        this._data.setFloat64(this.offset, value, this.littleEndian);
+        this.offset += 8;
+    }
+
+    writeChar(str) {
+        this.writeUint8(str.charCodeAt(0));
+    }
+
+    writeChars(str) {
+        for (var i = 0; i < str.length; i++) {
+            this.writeUint8(str.charCodeAt(i));
+        }
+    }
+
+    toArray() {
+        return new Uint8Array(this.buffer, 0, this.offset);
+    }
+}
+
+module.exports = IOBuffer;
+
+},{}],5:[function(require,module,exports){
 "use strict";
 
 var Converter = require("jcampconverter");
@@ -691,7 +988,7 @@ module.exports = {
     converFolder: convert
 };
 
-},{"iobuffer":14,"jcampconverter":16,"jszip":26}],4:[function(require,module,exports){
+},{"iobuffer":4,"jcampconverter":18,"jszip":28}],6:[function(require,module,exports){
 /*!
  * The buffer module from node.js, for the browser.
  *
@@ -2397,11 +2694,13 @@ function numberIsNaN(obj) {
   return obj !== obj; // eslint-disable-line no-self-compare
 }
 
-},{"base64-js":1,"ieee754":12}],5:[function(require,module,exports){
+},{"base64-js":2,"ieee754":14}],7:[function(require,module,exports){
 'use strict';
 
 var hasOwn = Object.prototype.hasOwnProperty;
 var toStr = Object.prototype.toString;
+var defineProperty = Object.defineProperty;
+var gOPD = Object.getOwnPropertyDescriptor;
 
 var isArray = function isArray(arr) {
 	if (typeof Array.isArray === 'function') {
@@ -2431,17 +2730,41 @@ var isPlainObject = function isPlainObject(obj) {
 	return typeof key === 'undefined' || hasOwn.call(obj, key);
 };
 
+// If name is '__proto__', and Object.defineProperty is available, define __proto__ as an own property on target
+var setProperty = function setProperty(target, options) {
+	if (defineProperty && options.name === '__proto__') {
+		defineProperty(target, options.name, {
+			enumerable: true,
+			configurable: true,
+			value: options.newValue,
+			writable: true
+		});
+	} else {
+		target[options.name] = options.newValue;
+	}
+};
+
+// Return undefined instead of __proto__ if '__proto__' is not an own property
+var getProperty = function getProperty(obj, name) {
+	if (name === '__proto__') {
+		if (!hasOwn.call(obj, name)) {
+			return void 0;
+		} else if (gOPD) {
+			// In early versions of node, obj['__proto__'] is buggy when obj has
+			// __proto__ as an own property. Object.getOwnPropertyDescriptor() works.
+			return gOPD(obj, name).value;
+		}
+	}
+
+	return obj[name];
+};
+
 module.exports = function extend() {
-	var options,
-	    name,
-	    src,
-	    copy,
-	    copyIsArray,
-	    clone,
-	    target = arguments[0],
-	    i = 1,
-	    length = arguments.length,
-	    deep = false;
+	var options, name, src, copy, copyIsArray, clone;
+	var target = arguments[0];
+	var i = 1;
+	var length = arguments.length;
+	var deep = false;
 
 	// Handle a deep copy situation
 	if (typeof target === 'boolean') {
@@ -2449,7 +2772,8 @@ module.exports = function extend() {
 		target = arguments[1] || {};
 		// skip the boolean and the target
 		i = 2;
-	} else if (typeof target !== 'object' && typeof target !== 'function' || target == null) {
+	}
+	if (target == null || typeof target !== 'object' && typeof target !== 'function') {
 		target = {};
 	}
 
@@ -2459,8 +2783,8 @@ module.exports = function extend() {
 		if (options != null) {
 			// Extend the base object
 			for (name in options) {
-				src = target[name];
-				copy = options[name];
+				src = getProperty(target, name);
+				copy = getProperty(options, name);
 
 				// Prevent never-ending loop
 				if (target !== copy) {
@@ -2474,11 +2798,11 @@ module.exports = function extend() {
 						}
 
 						// Never move original objects, clone them
-						target[name] = extend(deep, clone, copy);
+						setProperty(target, { name: name, newValue: extend(deep, clone, copy) });
 
 						// Don't bring in undefined values
 					} else if (typeof copy !== 'undefined') {
-						target[name] = copy;
+						setProperty(target, { name: name, newValue: copy });
 					}
 				}
 			}
@@ -2489,7 +2813,7 @@ module.exports = function extend() {
 	return target;
 };
 
-},{}],6:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 /* eslint no-div-regex: 0*/
 
 'use strict';
@@ -2977,7 +3301,7 @@ function getLengthOfWhiteSpaceBeforeStartOfLetters(string) {
 
 module.exports = genbankToJson;
 
-},{"./utils/createInitialSequence":7,"./utils/months":8,"./utils/splitStringIntoLines.js":9}],7:[function(require,module,exports){
+},{"./utils/createInitialSequence":9,"./utils/months":10,"./utils/splitStringIntoLines.js":11}],9:[function(require,module,exports){
 'use strict';
 
 module.exports = function createInitialSequence() {
@@ -2992,12 +3316,12 @@ module.exports = function createInitialSequence() {
   };
 };
 
-},{}],8:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 'use strict';
 
 module.exports = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-},{}],9:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 'use strict';
 
 module.exports = function splitStringIntoLines(string) {
@@ -3014,12 +3338,12 @@ module.exports = function splitStringIntoLines(string) {
   }
 };
 
-},{}],10:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./lib/heap');
 
-},{"./lib/heap":11}],11:[function(require,module,exports){
+},{"./lib/heap":13}],13:[function(require,module,exports){
 'use strict';
 
 // Generated by CoffeeScript 1.8.0
@@ -3388,7 +3712,7 @@ module.exports = require('./lib/heap');
   });
 }).call(undefined);
 
-},{}],12:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 "use strict";
 
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
@@ -3476,7 +3800,7 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128;
 };
 
-},{}],13:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 'use strict';
 
 if (typeof Object.create === 'function') {
@@ -3503,117 +3827,246 @@ if (typeof Object.create === 'function') {
   };
 }
 
-},{}],14:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
+(function (Buffer){
 'use strict';
+
+var utf8 = require('utf8');
 
 var defaultByteLength = 1024 * 8;
 var charArray = [];
 
+/**
+ * IOBuffer
+ * @constructor
+ * @param {undefined|number|ArrayBuffer|TypedArray|IOBuffer|Buffer} data - The data to construct the IOBuffer with.
+ *
+ * If it's a number, it will initialize the buffer with the number as the buffer's length<br>
+ * If it's undefined, it will initialize the buffer with a default length of 8 Kb<br>
+ * If its an ArrayBuffer, a TypedArray, an IOBuffer instance,
+ * or a Node.js Buffer, it will create a view over the underlying ArrayBuffer.
+ * @param {object} [options]
+ * @param {number} [options.offset=0] - Ignore the first n bytes of the ArrayBuffer
+ * @property {ArrayBuffer} buffer - Reference to the internal ArrayBuffer object
+ * @property {number} length - Byte length of the internal ArrayBuffer
+ * @property {number} offset - The current offset of the buffer's pointer
+ * @property {number} byteLength - Byte length of the internal ArrayBuffer
+ * @property {number} byteOffset - Byte offset of the internal ArrayBuffer
+ */
 class IOBuffer {
     constructor(data, options) {
         options = options || {};
+        var dataIsGiven = false;
         if (data === undefined) {
             data = defaultByteLength;
         }
         if (typeof data === 'number') {
             data = new ArrayBuffer(data);
+        } else {
+            dataIsGiven = true;
+            this._lastWrittenByte = data.byteLength;
         }
-        var length = data.byteLength;
+
         var offset = options.offset ? options.offset >>> 0 : 0;
+        var byteLength = data.byteLength - offset;
+        var dvOffset = offset;
         if (data.buffer) {
-            length = data.byteLength - offset;
             if (data.byteLength !== data.buffer.byteLength) {
-                // Node.js buffer from pool
-                data = data.buffer.slice(data.byteOffset + offset, data.byteOffset + data.byteLength);
-            } else if (offset) {
-                data = data.buffer.slice(offset);
-            } else {
-                data = data.buffer;
+                dvOffset = data.byteOffset + offset;
             }
+            data = data.buffer;
+        }
+        if (dataIsGiven) {
+            this._lastWrittenByte = byteLength;
+        } else {
+            this._lastWrittenByte = 0;
         }
         this.buffer = data;
-        this.length = length;
-        this.byteLength = length;
-        this.byteOffset = 0;
+        this.length = byteLength;
+        this.byteLength = byteLength;
+        this.byteOffset = dvOffset;
         this.offset = 0;
         this.littleEndian = true;
-        this._data = new DataView(this.buffer);
-        this._increment = length || defaultByteLength;
+        this._data = new DataView(this.buffer, dvOffset, byteLength);
         this._mark = 0;
+        this._marks = [];
     }
 
+    /**
+     * Checks if the memory allocated to the buffer is sufficient to store more bytes after the offset
+     * @param {number} [byteLength=1] The needed memory in bytes
+     * @return {boolean} Returns true if there is sufficient space and false otherwise
+     */
     available(byteLength) {
         if (byteLength === undefined) byteLength = 1;
         return this.offset + byteLength <= this.length;
     }
 
+    /**
+     * Check if little-endian mode is used for reading and writing multi-byte values
+     * @return {boolean} Returns true if little-endian mode is used, false otherwise
+     */
     isLittleEndian() {
         return this.littleEndian;
     }
 
+    /**
+     * Set little-endian mode for reading and writing multi-byte values
+     * @return {IOBuffer}
+     */
     setLittleEndian() {
         this.littleEndian = true;
+        return this;
     }
 
+    /**
+     * Check if big-endian mode is used for reading and writing multi-byte values
+     * @return {boolean} Returns true if big-endian mode is used, false otherwise
+     */
     isBigEndian() {
         return !this.littleEndian;
     }
 
+    /**
+     * Switches to big-endian mode for reading and writing multi-byte values
+     * @return {IOBuffer}
+     */
     setBigEndian() {
         this.littleEndian = false;
+        return this;
     }
 
+    /**
+     * Move the pointer n bytes forward
+     * @param {number} n
+     * @return {IOBuffer}
+     */
     skip(n) {
         if (n === undefined) n = 1;
         this.offset += n;
+        return this;
     }
 
+    /**
+     * Move the pointer to the given offset
+     * @param {number} offset
+     * @return {IOBuffer}
+     */
     seek(offset) {
         this.offset = offset;
+        return this;
     }
 
+    /**
+     * Store the current pointer offset.
+     * @see {@link IOBuffer#reset}
+     * @return {IOBuffer}
+     */
     mark() {
         this._mark = this.offset;
+        return this;
     }
 
+    /**
+     * Move the pointer back to the last pointer offset set by mark
+     * @see {@link IOBuffer#mark}
+     * @return {IOBuffer}
+     */
     reset() {
         this.offset = this._mark;
+        return this;
     }
 
+    /**
+     * Push the current pointer offset to the mark stack
+     * @see {@link IOBuffer#popMark}
+     * @return {IOBuffer}
+     */
+    pushMark() {
+        this._marks.push(this.offset);
+        return this;
+    }
+
+    /**
+     * Pop the last pointer offset from the mark stack, and set the current pointer offset to the popped value
+     * @see {@link IOBuffer#pushMark}
+     * @return {IOBuffer}
+     */
+    popMark() {
+        var offset = this._marks.pop();
+        if (offset === undefined) throw new Error('Mark stack empty');
+        this.seek(offset);
+        return this;
+    }
+
+    /**
+     * Move the pointer offset back to 0
+     * @return {IOBuffer}
+     */
     rewind() {
         this.offset = 0;
+        return this;
     }
 
+    /**
+     * Make sure the buffer has sufficient memory to write a given byteLength at the current pointer offset
+     * If the buffer's memory is insufficient, this method will create a new buffer (a copy) with a length
+     * that is twice (byteLength + current offset)
+     * @param {number} [byteLength = 1]
+     * @return {IOBuffer}
+     */
     ensureAvailable(byteLength) {
         if (byteLength === undefined) byteLength = 1;
         if (!this.available(byteLength)) {
-            var newIncrement = this._increment + this._increment;
-            this._increment = newIncrement;
-            var newLength = this.length + newIncrement;
+            var lengthNeeded = this.offset + byteLength;
+            var newLength = lengthNeeded * 2;
             var newArray = new Uint8Array(newLength);
             newArray.set(new Uint8Array(this.buffer));
             this.buffer = newArray.buffer;
-            this.length = newLength;
+            this.length = this.byteLength = newLength;
             this._data = new DataView(this.buffer);
         }
+        return this;
     }
 
+    /**
+     * Read a byte and return false if the byte's value is 0, or true otherwise
+     * Moves pointer forward
+     * @return {boolean}
+     */
     readBoolean() {
         return this.readUint8() !== 0;
     }
 
+    /**
+     * Read a signed 8-bit integer and move pointer forward
+     * @return {number}
+     */
     readInt8() {
         return this._data.getInt8(this.offset++);
     }
 
+    /**
+     * Read an unsigned 8-bit integer and move pointer forward
+     * @return {number}
+     */
     readUint8() {
         return this._data.getUint8(this.offset++);
     }
 
+    /**
+     * Alias for {@link IOBuffer#readUint8}
+     * @return {number}
+     */
     readByte() {
         return this.readUint8();
     }
 
+    /**
+     * Read n bytes and move pointer forward.
+     * @param {number} n
+     * @return {Uint8Array}
+     */
     readBytes(n) {
         if (n === undefined) n = 1;
         var bytes = new Uint8Array(n);
@@ -3623,46 +4076,79 @@ class IOBuffer {
         return bytes;
     }
 
+    /**
+     * Read a 16-bit signed integer and move pointer forward
+     * @return {number}
+     */
     readInt16() {
         var value = this._data.getInt16(this.offset, this.littleEndian);
         this.offset += 2;
         return value;
     }
 
+    /**
+     * Read a 16-bit unsigned integer and move pointer forward
+     * @return {number}
+     */
     readUint16() {
         var value = this._data.getUint16(this.offset, this.littleEndian);
         this.offset += 2;
         return value;
     }
 
+    /**
+     * Read a 32-bit signed integer and move pointer forward
+     * @return {number}
+     */
     readInt32() {
         var value = this._data.getInt32(this.offset, this.littleEndian);
         this.offset += 4;
         return value;
     }
 
+    /**
+     * Read a 32-bit unsigned integer and move pointer forward
+     * @return {number}
+     */
     readUint32() {
         var value = this._data.getUint32(this.offset, this.littleEndian);
         this.offset += 4;
         return value;
     }
 
+    /**
+     * Read a 32-bit floating number and move pointer forward
+     * @return {number}
+     */
     readFloat32() {
         var value = this._data.getFloat32(this.offset, this.littleEndian);
         this.offset += 4;
         return value;
     }
 
+    /**
+     * Read a 64-bit floating number and move pointer forward
+     * @return {number}
+     */
     readFloat64() {
         var value = this._data.getFloat64(this.offset, this.littleEndian);
         this.offset += 8;
         return value;
     }
 
+    /**
+     * Read 1-byte ascii character and move pointer forward
+     * @return {string}
+     */
     readChar() {
         return String.fromCharCode(this.readInt8());
     }
 
+    /**
+     * Read n 1-byte ascii characters and move pointer forward
+     * @param {number} n
+     * @return {string}
+     */
     readChars(n) {
         if (n === undefined) n = 1;
         charArray.length = n;
@@ -3672,85 +4158,220 @@ class IOBuffer {
         return charArray.join('');
     }
 
-    writeBoolean(bool) {
-        this.writeUint8(bool ? 0xff : 0x00);
+    /**
+     * Read the next n bytes, return a UTF-8 decoded string and move pointer forward
+     * @param {number} n
+     * @return {string}
+     */
+    readUtf8(n) {
+        if (n === undefined) n = 1;
+        var bString = this.readChars(n);
+        return utf8.decode(bString);
     }
 
+    /**
+     * Write 0xff if the passed value is truthy, 0x00 otherwise
+     * @param {any} value
+     * @return {IOBuffer}
+     */
+    writeBoolean(value) {
+        this.writeUint8(value ? 0xff : 0x00);
+        return this;
+    }
+
+    /**
+     * Write value as an 8-bit signed integer
+     * @param {number} value
+     * @return {IOBuffer}
+     */
     writeInt8(value) {
         this.ensureAvailable(1);
         this._data.setInt8(this.offset++, value);
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * Write value as a 8-bit unsigned integer
+     * @param {number} value
+     * @return {IOBuffer}
+     */
     writeUint8(value) {
         this.ensureAvailable(1);
         this._data.setUint8(this.offset++, value);
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * An alias for {@link IOBuffer#writeUint8}
+     * @param {number} value
+     * @return {IOBuffer}
+     */
     writeByte(value) {
-        this.writeUint8(value);
+        return this.writeUint8(value);
     }
 
+    /**
+     * Write bytes
+     * @param {Array|Uint8Array} bytes
+     * @return {IOBuffer}
+     */
     writeBytes(bytes) {
         this.ensureAvailable(bytes.length);
         for (var i = 0; i < bytes.length; i++) {
             this._data.setUint8(this.offset++, bytes[i]);
         }
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * Write value as an 16-bit signed integer
+     * @param {number} value
+     * @return {IOBuffer}
+     */
     writeInt16(value) {
         this.ensureAvailable(2);
         this._data.setInt16(this.offset, value, this.littleEndian);
         this.offset += 2;
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * Write value as a 16-bit unsigned integer
+     * @param {number} value
+     * @return {IOBuffer}
+     */
     writeUint16(value) {
         this.ensureAvailable(2);
         this._data.setUint16(this.offset, value, this.littleEndian);
         this.offset += 2;
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * Write a 32-bit signed integer at the current pointer offset
+     * @param {number} value
+     * @return {IOBuffer}
+     */
     writeInt32(value) {
         this.ensureAvailable(4);
         this._data.setInt32(this.offset, value, this.littleEndian);
         this.offset += 4;
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * Write a 32-bit unsigned integer at the current pointer offset
+     * @param {number} value - The value to set
+     * @return {IOBuffer}
+     */
     writeUint32(value) {
         this.ensureAvailable(4);
         this._data.setUint32(this.offset, value, this.littleEndian);
         this.offset += 4;
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * Write a 32-bit floating number at the current pointer offset
+     * @param {number} value - The value to set
+     * @return {IOBuffer}
+     */
     writeFloat32(value) {
         this.ensureAvailable(4);
         this._data.setFloat32(this.offset, value, this.littleEndian);
         this.offset += 4;
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * Write a 64-bit floating number at the current pointer offset
+     * @param {number} value
+     * @return {IOBuffer}
+     */
     writeFloat64(value) {
         this.ensureAvailable(8);
         this._data.setFloat64(this.offset, value, this.littleEndian);
         this.offset += 8;
+        this._updateLastWrittenByte();
+        return this;
     }
 
+    /**
+     * Write the charCode of the passed string's first character to the current pointer offset
+     * @param {string} str - The character to set
+     * @return {IOBuffer}
+     */
     writeChar(str) {
-        this.writeUint8(str.charCodeAt(0));
+        return this.writeUint8(str.charCodeAt(0));
     }
 
+    /**
+     * Write the charCodes of the passed string's characters to the current pointer offset
+     * @param {string} str
+     * @return {IOBuffer}
+     */
     writeChars(str) {
         for (var i = 0; i < str.length; i++) {
             this.writeUint8(str.charCodeAt(i));
         }
+        return this;
     }
 
+    /**
+     * UTF-8 encode and write the passed string to the current pointer offset
+     * @param {string} str
+     * @return {IOBuffer}
+     */
+    writeUtf8(str) {
+        var bString = utf8.encode(str);
+        return this.writeChars(bString);
+    }
+
+    /**
+     * Export a Uint8Array view of the internal buffer.
+     * The view starts at the byte offset and its length
+     * is calculated to stop at the last written byte or the original length.
+     * @return {Uint8Array}
+     */
     toArray() {
-        return new Uint8Array(this.buffer, 0, this.offset);
+        return new Uint8Array(this.buffer, this.byteOffset, this._lastWrittenByte);
+    }
+
+    /**
+     * Same as {@link IOBuffer#toArray} but returns a Buffer if possible. Otherwise returns a Uint8Array.
+     * @return {Buffer|Uint8Array}
+     */
+    getBuffer() {
+        if (typeof Buffer !== 'undefined') {
+            return Buffer.from(this.toArray());
+        } else {
+            return this.toArray();
+        }
+    }
+
+    /**
+     * Update the last written byte offset
+     * @private
+     */
+    _updateLastWrittenByte() {
+        if (this.offset > this._lastWrittenByte) {
+            this._lastWrittenByte = this.offset;
+        }
     }
 }
 
 module.exports = IOBuffer;
 
-},{}],15:[function(require,module,exports){
+}).call(this,require("buffer").Buffer)
+},{"buffer":6,"utf8":180}],17:[function(require,module,exports){
 'use strict';
 
 var toString = Object.prototype.toString;
@@ -3761,7 +4382,7 @@ function isAnyArray(object) {
 
 module.exports = isAnyArray;
 
-},{}],16:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
 'use strict';
 
 function getConverter() {
@@ -3770,10 +4391,9 @@ function getConverter() {
   var GC_MS_FIELDS = ['TIC', '.RIC', 'SCANNUMBER'];
 
   function convertToFloatArray(stringArray) {
-    var l = stringArray.length;
-    var floatArray = new Array(l);
-    for (var i = 0; i < l; i++) {
-      floatArray[i] = parseFloat(stringArray[i]);
+    var floatArray = [];
+    for (var i = 0; i < stringArray.length; i++) {
+      floatArray.push(parseFloat(stringArray[i]));
     }
     return floatArray;
   }
@@ -3788,7 +4408,8 @@ function getConverter() {
     keepSpectra: false,
     noContour: false,
     nbContourLevels: 7,
-    noiseMultiplier: 5
+    noiseMultiplier: 5,
+    profiling: false
   };
 
   function convert(jcamp, options) {
@@ -3800,10 +4421,10 @@ function getConverter() {
 
     var ntuples = {};
     var ldr, dataLabel, dataValue, ldrs;
-    var i, ii, j, position, endLine, infos;
+    var position, endLine, infos;
 
     var result = {};
-    result.profiling = [];
+    result.profiling = options.profiling ? [] : false;
     result.logs = [];
     var spectra = [];
     result.spectra = spectra;
@@ -3832,7 +4453,7 @@ function getConverter() {
 
     if (ldrs[0]) ldrs[0] = ldrs[0].replace(/^[\r\n ]*##/, '');
 
-    for (i = 0, ii = ldrs.length; i < ii; i++) {
+    for (var i = 0; i < ldrs.length; i++) {
       ldr = ldrs[i];
       // This is a new LDR
       position = ldr.indexOf('=');
@@ -3915,6 +4536,7 @@ function getConverter() {
           prepareSpectrum(result, spectrum);
           // well apparently we should still consider it is a PEAK TABLE if there are no '++' after
           if (dataValue.match(/.*\+\+.*/)) {
+            // ex: (X++(Y..Y))
             if (!spectrum.deltaX) {
               spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
             }
@@ -3930,6 +4552,17 @@ function getConverter() {
         if (wantXY) {
           prepareSpectrum(result, spectrum);
           parsePeakTable(spectrum, dataValue, result);
+          spectra.push(spectrum);
+          spectrum = new Spectrum();
+        }
+        continue;
+      }
+      if (dataLabel === 'PEAKASSIGNMENTS') {
+        if (wantXY) {
+          if (dataValue.match(/.*(XYA).*/)) {
+            // ex: (XYA)
+            parseXYA(spectrum, dataValue);
+          }
           spectra.push(spectrum);
           spectrum = new Spectrum();
         }
@@ -3965,6 +4598,14 @@ function getConverter() {
         spectrum.xFactor = parseFloat(dataValue);
       } else if (dataLabel === 'YFACTOR') {
         spectrum.yFactor = parseFloat(dataValue);
+      } else if (dataLabel === 'MAXX') {
+        spectrum.maxX = parseFloat(dataValue);
+      } else if (dataLabel === 'MINX') {
+        spectrum.minX = parseFloat(dataValue);
+      } else if (dataLabel === 'MAXY') {
+        spectrum.maxY = parseFloat(dataValue);
+      } else if (dataLabel === 'MINY') {
+        spectrum.minY = parseFloat(dataValue);
       } else if (dataLabel === 'DELTAX') {
         spectrum.deltaX = parseFloat(dataValue);
       } else if (dataLabel === '.OBSERVEFREQUENCY' || dataLabel === '$SFO1') {
@@ -3982,8 +4623,8 @@ function getConverter() {
       } else if (dataLabel === '$OFFSET') {
         // OFFSET for Bruker spectra
         result.shiftOffsetNum = 0;
-        if (!result.shiftOffsetVal) {
-          result.shiftOffsetVal = parseFloat(dataValue);
+        if (!spectrum.shiftOffsetVal) {
+          spectrum.shiftOffsetVal = parseFloat(dataValue);
         }
       } else if (dataLabel === '$REFERENCEPOINT') {
         // OFFSET for Varian spectra
@@ -3991,7 +4632,7 @@ function getConverter() {
         //         } else if (dataLabel=='.SHIFTREFERENCE') {   // OFFSET FOR Bruker Spectra
         //                 var parts = dataValue.split(/ *, */);
         //                 result.shiftOffsetNum = parseInt(parts[2].trim());
-        //                 result.shiftOffsetVal = parseFloat(parts[3].trim());
+        //                 spectrum.shiftOffsetVal = parseFloat(parts[3].trim());
       } else if (dataLabel === 'VARNAME') {
         ntuples.varname = dataValue.split(ntuplesSeparator);
       } else if (dataLabel === 'SYMBOL') {
@@ -4034,6 +4675,8 @@ function getConverter() {
         spectrum.pageValue = parseFloat(dataValue);
       } else if (isMSField(dataLabel)) {
         spectrum[convertMSFieldToLabel(dataLabel)] = dataValue;
+      } else if (dataLabel === 'SAMPLEDESCRIPTION') {
+        spectrum.sampleDescription = dataValue;
       }
       if (dataLabel.match(options.keepRecordsRegExp)) {
         result.info[dataLabel] = dataValue.trim();
@@ -4050,10 +4693,10 @@ function getConverter() {
     if (Object.keys(ntuples).length > 0) {
       var newNtuples = [];
       var keys = Object.keys(ntuples);
-      for (i = 0; i < keys.length; i++) {
-        var key = keys[i];
+      for (var _i = 0; _i < keys.length; _i++) {
+        var key = keys[_i];
         var values = ntuples[key];
-        for (j = 0; j < values.length; j++) {
+        for (var j = 0; j < values.length; j++) {
           if (!newNtuples[j]) newNtuples[j] = {};
           newNtuples[j][key] = values[j];
         }
@@ -4081,11 +4724,11 @@ function getConverter() {
     if (options.xy && wantXY) {
       // the spectraData should not be a oneD array but an object with x and y
       if (spectra.length > 0) {
-        for (i = 0; i < spectra.length; i++) {
-          spectrum = spectra[i];
+        for (var _i2 = 0; _i2 < spectra.length; _i2++) {
+          spectrum = spectra[_i2];
           if (spectrum.data.length > 0) {
-            for (j = 0; j < spectrum.data.length; j++) {
-              var data = spectrum.data[j];
+            for (var _j = 0; _j < spectrum.data.length; _j++) {
+              var data = spectrum.data[_j];
               var newData = {
                 x: new Array(data.length / 2),
                 y: new Array(data.length / 2)
@@ -4094,7 +4737,7 @@ function getConverter() {
                 newData.x[k / 2] = data[k];
                 newData.y[k / 2] = data[k + 1];
               }
-              spectrum.data[j] = newData;
+              spectrum.data[_j] = newData;
             }
           }
         }
@@ -4147,9 +4790,8 @@ function getConverter() {
       }
     };
 
-    var i;
     var existingGCMSFields = [];
-    for (i = 0; i < GC_MS_FIELDS.length; i++) {
+    for (var i = 0; i < GC_MS_FIELDS.length; i++) {
       var label = convertMSFieldToLabel(GC_MS_FIELDS[i]);
       if (spectra[0][label]) {
         existingGCMSFields.push(label);
@@ -4160,14 +4802,14 @@ function getConverter() {
       }
     }
 
-    for (i = 0; i < length; i++) {
-      var spectrum = spectra[i];
-      chromatogram.times[i] = spectrum.pageValue;
+    for (var _i3 = 0; _i3 < length; _i3++) {
+      var spectrum = spectra[_i3];
+      chromatogram.times[_i3] = spectrum.pageValue;
       for (var j = 0; j < existingGCMSFields.length; j++) {
-        chromatogram.series[existingGCMSFields[j]].data[i] = parseFloat(spectrum[existingGCMSFields[j]]);
+        chromatogram.series[existingGCMSFields[j]].data[_i3] = parseFloat(spectrum[existingGCMSFields[j]]);
       }
       if (spectrum.data) {
-        chromatogram.series.ms.data[i] = [spectrum.data[0].x, spectrum.data[0].y];
+        chromatogram.series.ms.data[_i3] = [spectrum.data[0].x, spectrum.data[0].y];
       }
     }
     result.chromatogram = chromatogram;
@@ -4198,8 +4840,8 @@ function getConverter() {
         spectrum.deltaX = spectrum.deltaX / spectrum.observeFrequency;
       }
     }
-    if (result.shiftOffsetVal) {
-      var shift = spectrum.firstX - result.shiftOffsetVal;
+    if (spectrum.shiftOffsetVal) {
+      var shift = spectrum.firstX - spectrum.shiftOffsetVal;
       spectrum.firstX = spectrum.firstX - shift;
       spectrum.lastX = spectrum.lastX - shift;
     }
@@ -4409,7 +5051,8 @@ function getConverter() {
     //
     var endLine = false;
     var ascii;
-    for (var i = 0; i < value.length; i++) {
+    var i = 0;
+    for (; i < value.length; i++) {
       ascii = value.charCodeAt(i);
       if (ascii === 13 || ascii === 10) {
         endLine = true;
@@ -4555,22 +5198,39 @@ function getConverter() {
     }
   }
 
+  function parseXYA(spectrum, value) {
+    var removeSymbolRegExp = /(\(+|\)+|<+|>+|\s+)/g;
+
+    spectrum.isXYAdata = true;
+    var values;
+    var currentData = [];
+    spectrum.data = [currentData];
+
+    var lines = value.split(/,? *,?[;\r\n]+ */);
+
+    for (var i = 1; i < lines.length; i++) {
+      values = lines[i].trim().replace(removeSymbolRegExp, '').split(',');
+      currentData.push(parseFloat(values[0]));
+      currentData.push(parseFloat(values[1]));
+    }
+  }
+
   function parsePeakTable(spectrum, value, result) {
     var removeCommentRegExp = /\$\$.*/;
     var peakTableSplitRegExp = /[,\t ]+/;
 
     spectrum.isPeaktable = true;
-    var i, ii, j, jj, values;
+    var values;
     var currentData = [];
     spectrum.data = [currentData];
 
     // counts for around 20% of the time
     var lines = value.split(/,? *,?[;\r\n]+ */);
 
-    for (i = 1, ii = lines.length; i < ii; i++) {
+    for (var i = 1; i < lines.length; i++) {
       values = lines[i].trim().replace(removeCommentRegExp, '').split(peakTableSplitRegExp);
       if (values.length % 2 === 0) {
-        for (j = 0, jj = values.length; j < jj; j = j + 2) {
+        for (var j = 0; j < values.length; j = j + 2) {
           // takes around 40% of the time to add and parse the 2 values nearly exclusively because of parseFloat
           currentData.push(parseFloat(values[j]) * spectrum.xFactor);
           currentData.push(parseFloat(values[j + 1]) * spectrum.yFactor);
@@ -4707,7 +5367,7 @@ module.exports = {
   createTree: createTree
 };
 
-},{}],17:[function(require,module,exports){
+},{}],19:[function(require,module,exports){
 'use strict';
 
 var DataReader = require('./dataReader');
@@ -4761,7 +5421,7 @@ ArrayReader.prototype.readData = function (size) {
 };
 module.exports = ArrayReader;
 
-},{"./dataReader":22}],18:[function(require,module,exports){
+},{"./dataReader":24}],20:[function(require,module,exports){
 'use strict';
 // private property
 
@@ -4829,7 +5489,7 @@ exports.decode = function (input, utf8) {
     return output;
 };
 
-},{}],19:[function(require,module,exports){
+},{}],21:[function(require,module,exports){
 'use strict';
 
 function CompressedObject() {
@@ -4860,7 +5520,7 @@ CompressedObject.prototype = {
 };
 module.exports = CompressedObject;
 
-},{}],20:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
 'use strict';
 
 exports.STORE = {
@@ -4876,7 +5536,7 @@ exports.STORE = {
 };
 exports.DEFLATE = require('./flate');
 
-},{"./flate":25}],21:[function(require,module,exports){
+},{"./flate":27}],23:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -4915,7 +5575,7 @@ module.exports = function crc32(input, crc) {
 };
 // vim: set shiftwidth=4 softtabstop=4:
 
-},{"./utils":38}],22:[function(require,module,exports){
+},{"./utils":40}],24:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -5025,7 +5685,7 @@ DataReader.prototype = {
 };
 module.exports = DataReader;
 
-},{"./utils":38}],23:[function(require,module,exports){
+},{"./utils":40}],25:[function(require,module,exports){
 'use strict';
 
 exports.base64 = false;
@@ -5039,7 +5699,7 @@ exports.comment = null;
 exports.unixPermissions = null;
 exports.dosPermissions = null;
 
-},{}],24:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -5145,7 +5805,7 @@ exports.isRegExp = function (object) {
   return utils.isRegExp(object);
 };
 
-},{"./utils":38}],25:[function(require,module,exports){
+},{"./utils":40}],27:[function(require,module,exports){
 'use strict';
 
 var USE_TYPEDARRAY = typeof Uint8Array !== 'undefined' && typeof Uint16Array !== 'undefined' && typeof Uint32Array !== 'undefined';
@@ -5164,7 +5824,7 @@ exports.uncompress = function (input) {
     return pako.inflateRaw(input);
 };
 
-},{"pako":122}],26:[function(require,module,exports){
+},{"pako":137}],28:[function(require,module,exports){
 'use strict';
 
 var base64 = require('./base64');
@@ -5245,7 +5905,7 @@ JSZip.base64 = {
 JSZip.compressions = require('./compressions');
 module.exports = JSZip;
 
-},{"./base64":18,"./compressions":20,"./defaults":23,"./deprecatedPublicUtils":24,"./load":27,"./object":30,"./support":34}],27:[function(require,module,exports){
+},{"./base64":20,"./compressions":22,"./defaults":25,"./deprecatedPublicUtils":26,"./load":29,"./object":32,"./support":36}],29:[function(require,module,exports){
 'use strict';
 
 var base64 = require('./base64');
@@ -5287,7 +5947,7 @@ module.exports = function (data, options) {
     return this;
 };
 
-},{"./base64":18,"./utf8":37,"./utils":38,"./zipEntries":39}],28:[function(require,module,exports){
+},{"./base64":20,"./utf8":39,"./utils":40,"./zipEntries":41}],30:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -5299,7 +5959,7 @@ module.exports.test = function (b) {
 };
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":4}],29:[function(require,module,exports){
+},{"buffer":6}],31:[function(require,module,exports){
 'use strict';
 
 var Uint8ArrayReader = require('./uint8ArrayReader');
@@ -5323,7 +5983,7 @@ NodeBufferReader.prototype.readData = function (size) {
 };
 module.exports = NodeBufferReader;
 
-},{"./uint8ArrayReader":35}],30:[function(require,module,exports){
+},{"./uint8ArrayReader":37}],32:[function(require,module,exports){
 'use strict';
 
 var support = require('./support');
@@ -6183,7 +6843,7 @@ var out = {
 };
 module.exports = out;
 
-},{"./base64":18,"./compressedObject":19,"./compressions":20,"./crc32":21,"./defaults":23,"./nodeBuffer":28,"./signature":31,"./stringWriter":33,"./support":34,"./uint8ArrayWriter":36,"./utf8":37,"./utils":38}],31:[function(require,module,exports){
+},{"./base64":20,"./compressedObject":21,"./compressions":22,"./crc32":23,"./defaults":25,"./nodeBuffer":30,"./signature":33,"./stringWriter":35,"./support":36,"./uint8ArrayWriter":38,"./utf8":39,"./utils":40}],33:[function(require,module,exports){
 'use strict';
 
 exports.LOCAL_FILE_HEADER = "PK\x03\x04";
@@ -6193,7 +6853,7 @@ exports.ZIP64_CENTRAL_DIRECTORY_LOCATOR = "PK\x06\x07";
 exports.ZIP64_CENTRAL_DIRECTORY_END = "PK\x06\x06";
 exports.DATA_DESCRIPTOR = "PK\x07\x08";
 
-},{}],32:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 'use strict';
 
 var DataReader = require('./dataReader');
@@ -6233,7 +6893,7 @@ StringReader.prototype.readData = function (size) {
 };
 module.exports = StringReader;
 
-},{"./dataReader":22,"./utils":38}],33:[function(require,module,exports){
+},{"./dataReader":24,"./utils":40}],35:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -6265,7 +6925,7 @@ StringWriter.prototype = {
 
 module.exports = StringWriter;
 
-},{"./utils":38}],34:[function(require,module,exports){
+},{"./utils":40}],36:[function(require,module,exports){
 (function (Buffer){
 'use strict';
 
@@ -6301,7 +6961,7 @@ if (typeof ArrayBuffer === "undefined") {
 }
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":4}],35:[function(require,module,exports){
+},{"buffer":6}],37:[function(require,module,exports){
 'use strict';
 
 var ArrayReader = require('./arrayReader');
@@ -6330,7 +6990,7 @@ Uint8ArrayReader.prototype.readData = function (size) {
 };
 module.exports = Uint8ArrayReader;
 
-},{"./arrayReader":17}],36:[function(require,module,exports){
+},{"./arrayReader":19}],38:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -6368,7 +7028,7 @@ Uint8ArrayWriter.prototype = {
 
 module.exports = Uint8ArrayWriter;
 
-},{"./utils":38}],37:[function(require,module,exports){
+},{"./utils":40}],39:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -6597,7 +7257,7 @@ exports.utf8decode = function utf8decode(buf) {
 };
 // vim: set shiftwidth=4 softtabstop=4:
 
-},{"./nodeBuffer":28,"./support":34,"./utils":38}],38:[function(require,module,exports){
+},{"./nodeBuffer":30,"./support":36,"./utils":40}],40:[function(require,module,exports){
 'use strict';
 
 var support = require('./support');
@@ -6940,7 +7600,7 @@ exports.extend = function () {
     return result;
 };
 
-},{"./compressions":20,"./nodeBuffer":28,"./support":34}],39:[function(require,module,exports){
+},{"./compressions":22,"./nodeBuffer":30,"./support":36}],41:[function(require,module,exports){
 'use strict';
 
 var StringReader = require('./stringReader');
@@ -7219,7 +7879,7 @@ ZipEntries.prototype = {
 // }}} end of ZipEntries
 module.exports = ZipEntries;
 
-},{"./arrayReader":17,"./nodeBufferReader":29,"./object":30,"./signature":31,"./stringReader":32,"./support":34,"./uint8ArrayReader":35,"./utils":38,"./zipEntry":40}],40:[function(require,module,exports){
+},{"./arrayReader":19,"./nodeBufferReader":31,"./object":32,"./signature":33,"./stringReader":34,"./support":36,"./uint8ArrayReader":37,"./utils":40,"./zipEntry":42}],42:[function(require,module,exports){
 'use strict';
 
 var StringReader = require('./stringReader');
@@ -7542,7 +8202,7 @@ ZipEntry.prototype = {
 };
 module.exports = ZipEntry;
 
-},{"./compressedObject":19,"./object":30,"./stringReader":32,"./support":34,"./utils":38}],41:[function(require,module,exports){
+},{"./compressedObject":21,"./object":32,"./stringReader":34,"./support":36,"./utils":40}],43:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -7892,10 +8552,10 @@ var round = createRound('round');
 module.exports = round;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],42:[function(require,module,exports){
+},{}],44:[function(require,module,exports){
 (function(){function d(c){for(var d=0,e=c.length-1,f=void 0,g=void 0,h=void 0,i=b(d,e);;){if(e<=d)return c[i];if(e==d+1)return c[d]>c[e]&&a(c,d,e),c[i];for(f=b(d,e),c[f]>c[e]&&a(c,f,e),c[d]>c[e]&&a(c,d,e),c[f]>c[d]&&a(c,f,d),a(c,f,d+1),g=d+1,h=e;;){do g++;while(c[d]>c[g]);do h--;while(c[h]>c[d]);if(h<g)break;a(c,g,h)}a(c,d,h),h<=i&&(d=g),h>=i&&(e=h-1)}}var a=function(a,b,c){var d;return d=[a[c],a[b]],a[b]=d[0],a[c]=d[1],d},b=function(a,b){return~~((a+b)/2)};'undefined'!=typeof module&&module.exports?module.exports=d:window.median=d})();
 
-},{}],43:[function(require,module,exports){
+},{}],45:[function(require,module,exports){
 'use strict';
 
 function _interopDefault(ex) {
@@ -7927,7 +8587,7 @@ function max(input) {
 
 module.exports = max;
 
-},{"is-any-array":15}],44:[function(require,module,exports){
+},{"is-any-array":17}],46:[function(require,module,exports){
 'use strict';
 
 function _interopDefault(ex) {
@@ -7956,7 +8616,7 @@ function median(input) {
 
 module.exports = median;
 
-},{"is-any-array":15,"median-quickselect":42}],45:[function(require,module,exports){
+},{"is-any-array":17,"median-quickselect":44}],47:[function(require,module,exports){
 'use strict';
 
 function _interopDefault(ex) {
@@ -7988,7 +8648,7 @@ function min(input) {
 
 module.exports = min;
 
-},{"is-any-array":15}],46:[function(require,module,exports){
+},{"is-any-array":17}],48:[function(require,module,exports){
 'use strict';
 
 function _interopDefault(ex) {
@@ -8043,7 +8703,7 @@ function rescale(input, options = {}) {
 
 module.exports = rescale;
 
-},{"is-any-array":15,"ml-array-max":43,"ml-array-min":45}],47:[function(require,module,exports){
+},{"is-any-array":17,"ml-array-max":45,"ml-array-min":47}],49:[function(require,module,exports){
 'use strict';
 
 var Stat = require('ml-stat').array;
@@ -8267,7 +8927,7 @@ module.exports = {
     scale: scale
 };
 
-},{"ml-stat":110}],48:[function(require,module,exports){
+},{"ml-stat":112}],50:[function(require,module,exports){
 'use strict';
 
 /**
@@ -8531,7 +9191,7 @@ function integral(x0, x1, slope, intercept) {
 exports.getEquallySpacedData = getEquallySpacedData;
 exports.integral = integral;
 
-},{}],49:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 'use strict';
 
 module.exports = exports = require('./ArrayUtils');
@@ -8539,7 +9199,7 @@ module.exports = exports = require('./ArrayUtils');
 exports.getEquallySpacedData = require('./getEquallySpaced').getEquallySpacedData;
 exports.SNV = require('./snv').SNV;
 
-},{"./ArrayUtils":47,"./getEquallySpaced":48,"./snv":50}],50:[function(require,module,exports){
+},{"./ArrayUtils":49,"./getEquallySpaced":50,"./snv":52}],52:[function(require,module,exports){
 'use strict';
 
 exports.SNV = SNV;
@@ -8561,7 +9221,7 @@ function SNV(data) {
     return result;
 }
 
-},{"ml-stat":110}],51:[function(require,module,exports){
+},{"ml-stat":112}],53:[function(require,module,exports){
 "use strict";
 
 /**
@@ -9090,7 +9750,7 @@ var LM = {
 
 module.exports = LM;
 
-},{"./algebra":52,"ml-matrix":90}],52:[function(require,module,exports){
+},{"./algebra":54,"ml-matrix":92}],54:[function(require,module,exports){
 /**
  * Created by acastillo on 8/24/15.
  */
@@ -9324,14 +9984,14 @@ module.exports = {
     eye: eye
 };
 
-},{"ml-matrix":90}],53:[function(require,module,exports){
+},{"ml-matrix":92}],55:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./LM');
 module.exports.Matrix = require('ml-matrix');
 module.exports.Matrix.algebra = require('./algebra');
 
-},{"./LM":51,"./algebra":52,"ml-matrix":90}],54:[function(require,module,exports){
+},{"./LM":53,"./algebra":54,"ml-matrix":92}],56:[function(require,module,exports){
 'use strict';
 
 /**
@@ -9415,7 +10075,7 @@ function DisjointSetNode(value) {
     this.rank = 0;
 }
 
-},{}],55:[function(require,module,exports){
+},{}],57:[function(require,module,exports){
 'use strict';
 
 function squaredEuclidean(p, q) {
@@ -9433,7 +10093,7 @@ function euclidean(p, q) {
 module.exports = euclidean;
 euclidean.squared = squaredEuclidean;
 
-},{}],56:[function(require,module,exports){
+},{}],58:[function(require,module,exports){
 'use strict';
 
 /**
@@ -9467,7 +10127,7 @@ function distanceMatrix(data, distanceFn) {
 
 module.exports = distanceMatrix;
 
-},{}],57:[function(require,module,exports){
+},{}],59:[function(require,module,exports){
 'use strict';
 
 var FFT = require('./fftlib');
@@ -9774,7 +10434,7 @@ var FFTUtils = {
 
 module.exports = FFTUtils;
 
-},{"./fftlib":58}],58:[function(require,module,exports){
+},{"./fftlib":60}],60:[function(require,module,exports){
 'use strict';
 
 /**
@@ -10019,16 +10679,15 @@ var FFT = function () {
   return FFT;
 }.call(undefined);
 
-},{}],59:[function(require,module,exports){
+},{}],61:[function(require,module,exports){
 'use strict';
 
 exports.FFTUtils = require("./FFTUtils");
 exports.FFT = require('./fftlib');
 
-},{"./FFTUtils":57,"./fftlib":58}],60:[function(require,module,exports){
+},{"./FFTUtils":59,"./fftlib":60}],62:[function(require,module,exports){
 'use strict';
 
-var extend = require('extend');
 var SG = require('ml-savitzky-golay-generalized');
 
 var defaultOptions = {
@@ -10037,7 +10696,7 @@ var defaultOptions = {
     polynomial: 3
   },
   minMaxRatio: 0.00025,
-  broadRatio: 0.00,
+  broadRatio: 0.0,
   maxCriteria: true,
   smoothY: true,
   realTopDetection: false,
@@ -10068,7 +10727,7 @@ var defaultOptions = {
  * @return {Array<object>}
  */
 function gsd(x, yIn, options) {
-  options = extend({}, defaultOptions, options);
+  options = Object.assign({}, defaultOptions, options);
   var sgOptions = options.sgOptions;
   var y = [].concat(yIn);
 
@@ -10116,16 +10775,40 @@ function gsd(x, yIn, options) {
       ddY = void 0;
   if ((maxDx - minDx) / maxDx < 0.05) {
     if (options.smoothY) {
-      Y = SG(y, x[1] - x[0], { windowSize: sgOptions.windowSize, polynomial: sgOptions.polynomial, derivative: 0 });
+      Y = SG(y, x[1] - x[0], {
+        windowSize: sgOptions.windowSize,
+        polynomial: sgOptions.polynomial,
+        derivative: 0
+      });
     }
-    dY = SG(y, x[1] - x[0], { windowSize: sgOptions.windowSize, polynomial: sgOptions.polynomial, derivative: 1 });
-    ddY = SG(y, x[1] - x[0], { windowSize: sgOptions.windowSize, polynomial: sgOptions.polynomial, derivative: 2 });
+    dY = SG(y, x[1] - x[0], {
+      windowSize: sgOptions.windowSize,
+      polynomial: sgOptions.polynomial,
+      derivative: 1
+    });
+    ddY = SG(y, x[1] - x[0], {
+      windowSize: sgOptions.windowSize,
+      polynomial: sgOptions.polynomial,
+      derivative: 2
+    });
   } else {
     if (options.smoothY) {
-      Y = SG(y, x, { windowSize: sgOptions.windowSize, polynomial: sgOptions.polynomial, derivative: 0 });
+      Y = SG(y, x, {
+        windowSize: sgOptions.windowSize,
+        polynomial: sgOptions.polynomial,
+        derivative: 0
+      });
     }
-    dY = SG(y, x, { windowSize: sgOptions.windowSize, polynomial: sgOptions.polynomial, derivative: 1 });
-    ddY = SG(y, x, { windowSize: sgOptions.windowSize, polynomial: sgOptions.polynomial, derivative: 2 });
+    dY = SG(y, x, {
+      windowSize: sgOptions.windowSize,
+      polynomial: sgOptions.polynomial,
+      derivative: 1
+    });
+    ddY = SG(y, x, {
+      windowSize: sgOptions.windowSize,
+      polynomial: sgOptions.polynomial,
+      derivative: 2
+    });
   }
 
   var X = x;
@@ -10288,7 +10971,7 @@ function getNoiseLevel(y) {
 function realTopDetection(peakList, x, y) {
   var alpha, beta, gamma, p, currentPoint;
   for (var j = 0; j < peakList.length; j++) {
-    currentPoint = peakList[j].i; // peakList[j][2];
+    currentPoint = peakList[j].index; // peakList[j][2];
     // The detected peak could be moved 1 or 2 unit to left or right.
     if (y[currentPoint - 1] >= y[currentPoint - 2] && y[currentPoint - 1] >= y[currentPoint]) {
       currentPoint--;
@@ -10311,7 +10994,7 @@ function realTopDetection(peakList, x, y) {
       beta = 20 * Math.log10(y[currentPoint]);
       gamma = 20 * Math.log10(y[currentPoint + 1]);
       p = 0.5 * (alpha - gamma) / (alpha - 2 * beta + gamma);
-      // console.log("p: "+p);
+      // console.log(alpha, beta, gamma, `p: ${p}`);
       // console.log(x[currentPoint]+" "+tmp+" "+currentPoint);
       peakList[j].x = x[currentPoint] + (x[currentPoint] - x[currentPoint - 1]) * p;
       peakList[j].y = y[currentPoint] - 0.25 * (y[currentPoint - 1] - y[currentPoint + 1]) * p;
@@ -10321,7 +11004,7 @@ function realTopDetection(peakList, x, y) {
 
 module.exports = gsd;
 
-},{"extend":5,"ml-savitzky-golay-generalized":106}],61:[function(require,module,exports){
+},{"ml-savitzky-golay-generalized":108}],63:[function(require,module,exports){
 'use strict';
 
 module.exports.gsd = require('./gsd');
@@ -10332,7 +11015,7 @@ module.exports.post = {
   broadenPeaks: require('./post/broadenPeaks')
 };
 
-},{"./gsd":60,"./post/broadenPeaks":62,"./post/joinBroadPeaks":63,"./post/optimizePeaks":64}],62:[function(require,module,exports){
+},{"./gsd":62,"./post/broadenPeaks":64,"./post/joinBroadPeaks":65,"./post/optimizePeaks":66}],64:[function(require,module,exports){
 'use strict';
 
 /**
@@ -10374,7 +11057,7 @@ module.exports = function broadenPeaks(peakList, options = {}) {
   return peakList;
 };
 
-},{}],63:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
 'use strict';
 
 var Opt = require('ml-optimize-lorentzian');
@@ -10448,7 +11131,7 @@ module.exports = function joinBroadPeaks(peakList, options = {}) {
   return peakList;
 };
 
-},{"ml-optimize-lorentzian":102}],64:[function(require,module,exports){
+},{"ml-optimize-lorentzian":104}],66:[function(require,module,exports){
 /**
  * Created by acastillo on 9/6/15.
  */
@@ -10617,7 +11300,7 @@ function groupPeaks(peakList, nL) {
   return groups;
 }
 
-},{"ml-optimize-lorentzian":102}],65:[function(require,module,exports){
+},{"ml-optimize-lorentzian":104}],67:[function(require,module,exports){
 'use strict';
 
 var newArray = require('new-array');
@@ -10921,7 +11604,7 @@ function chooseShrinkCapacity(size, minLoad, maxLoad) {
     return nextPrime(Math.max(size + 1, 4 * size / (minLoad + 3 * maxLoad) | 0));
 }
 
-},{"./primeFinder":66,"new-array":112}],66:[function(require,module,exports){
+},{"./primeFinder":68,"new-array":127}],68:[function(require,module,exports){
 'use strict';
 
 var binarySearch = require('binary-search');
@@ -10985,7 +11668,7 @@ function nextPrime(value) {
 exports.nextPrime = nextPrime;
 exports.largestPrime = largestPrime;
 
-},{"binary-search":2,"num-sort":120}],67:[function(require,module,exports){
+},{"binary-search":3,"num-sort":135}],69:[function(require,module,exports){
 'use strict';
 
 var Heap = require('heap');
@@ -11068,7 +11751,7 @@ Cluster.prototype.traverse = function (cb) {
 
 module.exports = Cluster;
 
-},{"heap":10}],68:[function(require,module,exports){
+},{"heap":12}],70:[function(require,module,exports){
 'use strict';
 
 var Cluster = require('./Cluster');
@@ -11085,7 +11768,7 @@ util.inherits(ClusterLeaf, Cluster);
 
 module.exports = ClusterLeaf;
 
-},{"./Cluster":67,"util":166}],69:[function(require,module,exports){
+},{"./Cluster":69,"util":182}],71:[function(require,module,exports){
 'use strict';
 
 var euclidean = require('ml-distance-euclidean');
@@ -11328,7 +12011,7 @@ function agnes(data, options) {
 
 module.exports = agnes;
 
-},{"./Cluster":67,"./ClusterLeaf":68,"ml-distance-euclidean":55,"ml-distance-matrix":56}],70:[function(require,module,exports){
+},{"./Cluster":69,"./ClusterLeaf":70,"ml-distance-euclidean":57,"ml-distance-matrix":58}],72:[function(require,module,exports){
 'use strict';
 
 var euclidean = require('ml-distance-euclidean');
@@ -11632,7 +12315,7 @@ function diana(data, options) {
 
 module.exports = diana;
 
-},{"./Cluster":67,"./ClusterLeaf":68,"ml-distance-euclidean":55}],71:[function(require,module,exports){
+},{"./Cluster":69,"./ClusterLeaf":70,"ml-distance-euclidean":57}],73:[function(require,module,exports){
 'use strict';
 
 exports.agnes = require('./agnes');
@@ -11641,7 +12324,7 @@ exports.diana = require('./diana');
 //exports.cure = require('./cure');
 //exports.chameleon = require('./chameleon');
 
-},{"./agnes":69,"./diana":70}],72:[function(require,module,exports){
+},{"./agnes":71,"./diana":72}],74:[function(require,module,exports){
 'use strict';
 
 var FFT = require('./fftlib');
@@ -11949,11 +12632,11 @@ var FFTUtils = {
 
 module.exports = FFTUtils;
 
-},{"./fftlib":73}],73:[function(require,module,exports){
-arguments[4][58][0].apply(exports,arguments)
-},{"dup":58}],74:[function(require,module,exports){
-arguments[4][59][0].apply(exports,arguments)
-},{"./FFTUtils":72,"./fftlib":73,"dup":59}],75:[function(require,module,exports){
+},{"./fftlib":75}],75:[function(require,module,exports){
+arguments[4][60][0].apply(exports,arguments)
+},{"dup":60}],76:[function(require,module,exports){
+arguments[4][61][0].apply(exports,arguments)
+},{"./FFTUtils":74,"./fftlib":75,"dup":61}],77:[function(require,module,exports){
 "use strict";
 'use strict;';
 /**
@@ -12111,7 +12794,7 @@ module.exports = {
     matrix2Array: matrix2Array
 };
 
-},{"ml-fft":74}],76:[function(require,module,exports){
+},{"ml-fft":76}],78:[function(require,module,exports){
 'use strict';
 
 var DisjointSet = require('ml-disjoint-set');
@@ -12198,7 +12881,7 @@ function ccLabeling(mask, width, height, options) {
 
 module.exports = ccLabeling;
 
-},{"ml-disjoint-set":54}],77:[function(require,module,exports){
+},{"ml-disjoint-set":56}],79:[function(require,module,exports){
 'use strict';
 /**
  * Created by acastillo on 7/7/16.
@@ -12366,7 +13049,7 @@ module.exports = {
     findPeaks2DMax: findPeaks2DMax
 };
 
-},{"./ccLabeling":76,"ml-matrix-convolution":75,"ml-stat":110}],78:[function(require,module,exports){
+},{"./ccLabeling":78,"ml-matrix-convolution":77,"ml-stat":112}],80:[function(require,module,exports){
 'use strict';
 
 var Stat = require('ml-stat').array;
@@ -12588,7 +13271,7 @@ module.exports = {
     scale: scale
 };
 
-},{"ml-stat":110}],79:[function(require,module,exports){
+},{"ml-stat":112}],81:[function(require,module,exports){
 'use strict';
 
 /**
@@ -12840,7 +13523,7 @@ function integral(x0, x1, slope, intercept) {
 exports.getEquallySpacedData = getEquallySpacedData;
 exports.integral = integral;
 
-},{}],80:[function(require,module,exports){
+},{}],82:[function(require,module,exports){
 'use strict';
 
 module.exports = exports = require('./ArrayUtils');
@@ -12848,9 +13531,9 @@ module.exports = exports = require('./ArrayUtils');
 exports.getEquallySpacedData = require('./getEquallySpaced').getEquallySpacedData;
 exports.SNV = require('./snv').SNV;
 
-},{"./ArrayUtils":78,"./getEquallySpaced":79,"./snv":81}],81:[function(require,module,exports){
-arguments[4][50][0].apply(exports,arguments)
-},{"dup":50,"ml-stat":110}],82:[function(require,module,exports){
+},{"./ArrayUtils":80,"./getEquallySpaced":81,"./snv":83}],83:[function(require,module,exports){
+arguments[4][52][0].apply(exports,arguments)
+},{"dup":52,"ml-stat":112}],84:[function(require,module,exports){
 'use strict';
 
 module.exports = abstractMatrix;
@@ -14649,7 +15332,7 @@ function abstractMatrix(superCtor) {
     return Matrix;
 }
 
-},{"./dc/lu":85,"./dc/svd":87,"./util":93,"./views/column":95,"./views/flipColumn":96,"./views/flipRow":97,"./views/row":98,"./views/selection":99,"./views/sub":100,"./views/transpose":101,"ml-array-utils":80}],83:[function(require,module,exports){
+},{"./dc/lu":87,"./dc/svd":89,"./util":95,"./views/column":97,"./views/flipColumn":98,"./views/flipRow":99,"./views/row":100,"./views/selection":101,"./views/sub":102,"./views/transpose":103,"ml-array-utils":82}],85:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -14745,7 +15428,7 @@ CholeskyDecomposition.prototype = {
 
 module.exports = CholeskyDecomposition;
 
-},{"../matrix":91}],84:[function(require,module,exports){
+},{"../matrix":93}],86:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -15541,7 +16224,7 @@ function cdiv(xr, xi, yr, yi) {
 
 module.exports = EigenvalueDecomposition;
 
-},{"../matrix":91,"./util":88}],85:[function(require,module,exports){
+},{"../matrix":93,"./util":90}],87:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -15726,7 +16409,7 @@ LuDecomposition.prototype = {
 
 module.exports = LuDecomposition;
 
-},{"../matrix":91}],86:[function(require,module,exports){
+},{"../matrix":93}],88:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -15887,7 +16570,7 @@ QrDecomposition.prototype = {
 
 module.exports = QrDecomposition;
 
-},{"../matrix":91,"./util":88}],87:[function(require,module,exports){
+},{"../matrix":93,"./util":90}],89:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -16411,7 +17094,7 @@ SingularValueDecomposition.prototype = {
 
 module.exports = SingularValueDecomposition;
 
-},{"../matrix":91,"./util":88}],88:[function(require,module,exports){
+},{"../matrix":93,"./util":90}],90:[function(require,module,exports){
 'use strict';
 
 exports.hypotenuse = function hypotenuse(a, b) {
@@ -16450,7 +17133,7 @@ exports.getFilled2DArray = function (rows, columns, value) {
     return array;
 };
 
-},{}],89:[function(require,module,exports){
+},{}],91:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix').Matrix;
@@ -16514,13 +17197,13 @@ module.exports = {
     solve: solve
 };
 
-},{"./dc/cholesky":83,"./dc/evd":84,"./dc/lu":85,"./dc/qr":86,"./dc/svd":87,"./matrix":91}],90:[function(require,module,exports){
+},{"./dc/cholesky":85,"./dc/evd":86,"./dc/lu":87,"./dc/qr":88,"./dc/svd":89,"./matrix":93}],92:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./matrix').Matrix;
 module.exports.Decompositions = module.exports.DC = require('./decompositions');
 
-},{"./decompositions":89,"./matrix":91}],91:[function(require,module,exports){
+},{"./decompositions":91,"./matrix":93}],93:[function(require,module,exports){
 'use strict';
 
 require('./symbol-species');
@@ -16665,14 +17348,14 @@ class Matrix extends abstractMatrix(Array) {
 exports.Matrix = Matrix;
 Matrix.abstractMatrix = abstractMatrix;
 
-},{"./abstractMatrix":82,"./symbol-species":92,"./util":93}],92:[function(require,module,exports){
+},{"./abstractMatrix":84,"./symbol-species":94,"./util":95}],94:[function(require,module,exports){
 'use strict';
 
 if (!Symbol.species) {
     Symbol.species = Symbol.for('@@species');
 }
 
-},{}],93:[function(require,module,exports){
+},{}],95:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix');
@@ -16815,7 +17498,7 @@ exports.sumAll = function sumAll(matrix) {
     return v;
 };
 
-},{"./matrix":91}],94:[function(require,module,exports){
+},{"./matrix":93}],96:[function(require,module,exports){
 'use strict';
 
 var abstractMatrix = require('../abstractMatrix');
@@ -16836,7 +17519,7 @@ class BaseView extends abstractMatrix() {
 
 module.exports = BaseView;
 
-},{"../abstractMatrix":82,"../matrix":91}],95:[function(require,module,exports){
+},{"../abstractMatrix":84,"../matrix":93}],97:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -16859,7 +17542,7 @@ class MatrixColumnView extends BaseView {
 
 module.exports = MatrixColumnView;
 
-},{"./base":94}],96:[function(require,module,exports){
+},{"./base":96}],98:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -16881,7 +17564,7 @@ class MatrixFlipColumnView extends BaseView {
 
 module.exports = MatrixFlipColumnView;
 
-},{"./base":94}],97:[function(require,module,exports){
+},{"./base":96}],99:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -16903,7 +17586,7 @@ class MatrixFlipRowView extends BaseView {
 
 module.exports = MatrixFlipRowView;
 
-},{"./base":94}],98:[function(require,module,exports){
+},{"./base":96}],100:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -16926,7 +17609,7 @@ class MatrixRowView extends BaseView {
 
 module.exports = MatrixRowView;
 
-},{"./base":94}],99:[function(require,module,exports){
+},{"./base":96}],101:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -16952,7 +17635,7 @@ class MatrixSelectionView extends BaseView {
 
 module.exports = MatrixSelectionView;
 
-},{"../util":93,"./base":94}],100:[function(require,module,exports){
+},{"../util":95,"./base":96}],102:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -16978,7 +17661,7 @@ class MatrixSubView extends BaseView {
 
 module.exports = MatrixSubView;
 
-},{"../util":93,"./base":94}],101:[function(require,module,exports){
+},{"../util":95,"./base":96}],103:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -17000,7 +17683,7 @@ class MatrixTransposeView extends BaseView {
 
 module.exports = MatrixTransposeView;
 
-},{"./base":94}],102:[function(require,module,exports){
+},{"./base":96}],104:[function(require,module,exports){
 'use strict';
 
 var LM = require('ml-curve-fitting');
@@ -17461,7 +18144,7 @@ module.exports.singleLorentzian = singleLorentzian;
 module.exports.optimizeGaussianTrain = optimizeGaussianTrain;
 module.exports.optimizeLorentzianTrain = optimizeLorentzianTrain;
 
-},{"ml-curve-fitting":53,"ml-matrix":90}],103:[function(require,module,exports){
+},{"ml-curve-fitting":55,"ml-matrix":92}],105:[function(require,module,exports){
 'use strict';
 
 function compareNumbers(a, b) {
@@ -17917,13 +18600,13 @@ exports.cumulativeSum = function cumulativeSum(array) {
     }return result;
 };
 
-},{}],104:[function(require,module,exports){
+},{}],106:[function(require,module,exports){
 'use strict';
 
 exports.array = require('./array');
 exports.matrix = require('./matrix');
 
-},{"./array":103,"./matrix":105}],105:[function(require,module,exports){
+},{"./array":105,"./matrix":107}],107:[function(require,module,exports){
 'use strict';
 
 var arrayStat = require('./array');
@@ -18480,7 +19163,7 @@ module.exports = {
     weightedScatter: weightedScatter
 };
 
-},{"./array":103}],106:[function(require,module,exports){
+},{"./array":105}],108:[function(require,module,exports){
 'use strict';
 
 //Code translate from Pascal source in http://pubs.acs.org/doi/pdf/10.1021/ac00205a007
@@ -18639,7 +19322,7 @@ function guessWindowSize(data, h){
 */
 module.exports = SavitzkyGolay;
 
-},{"extend":5,"ml-stat":104}],107:[function(require,module,exports){
+},{"extend":7,"ml-stat":106}],109:[function(require,module,exports){
 /**
  * Created by acastillo on 8/8/16.
  */
@@ -18744,7 +19427,7 @@ function fullClusterGeneratorVector(conn) {
     return clusterList;
 }
 
-},{}],108:[function(require,module,exports){
+},{}],110:[function(require,module,exports){
 'use strict';
 
 var HashTable = require('ml-hash-table');
@@ -19024,7 +19707,7 @@ function fillTemplateFunction(template, values) {
     return template;
 }
 
-},{"ml-hash-table":65}],109:[function(require,module,exports){
+},{"ml-hash-table":67}],111:[function(require,module,exports){
 'use strict';
 
 function compareNumbers(a, b) {
@@ -19510,9 +20193,9 @@ exports.cumulativeSum = function cumulativeSum(array) {
     }return result;
 };
 
-},{}],110:[function(require,module,exports){
-arguments[4][104][0].apply(exports,arguments)
-},{"./array":109,"./matrix":111,"dup":104}],111:[function(require,module,exports){
+},{}],112:[function(require,module,exports){
+arguments[4][106][0].apply(exports,arguments)
+},{"./array":111,"./matrix":113,"dup":106}],113:[function(require,module,exports){
 'use strict';
 
 var arrayStat = require('./array');
@@ -20162,7 +20845,1373 @@ exports.weightedScatter = function weightedScatter(matrix, weights, means, facto
     return cov;
 };
 
-},{"./array":109}],112:[function(require,module,exports){
+},{"./array":111}],114:[function(require,module,exports){
+'use strict';
+
+/* reader.toString() provides the following information
+    GLOBAL ATTRIBUTES
+      dataset_completeness           = C1+C2
+      ms_template_revision           = 1.0.1
+      netcdf_revision                = 2.3.2
+      languages                      = English
+      administrative_comments        = 1% CH2Cl2
+      dataset_origin                 = Santa Clara, CA
+      netcdf_file_date_time_stamp    = 20161012052159+0200
+      experiment_title               = P071 Essence super BP
+      experiment_date_time_stamp     = 20070923040800+0200
+      operator_name                  = SC
+      external_file_ref_0            = FIRE_RTL.M
+      experiment_type                = Centroided Mass Spectrum
+      number_of_times_processed      = 1
+      number_of_times_calibrated     = 0
+      sample_state                   = Other State
+      test_separation_type           = No Chromatography
+      test_ms_inlet                  = Capillary Direct
+      test_ionization_mode           = Electron Impact
+      test_ionization_polarity       = Positive Polarity
+      test_detector_type             = Electron Multiplier
+      test_resolution_type           = Constant Resolution
+      test_scan_function             = Mass Scan
+      test_scan_direction            = Up
+      test_scan_law                  = Linear
+      raw_data_mass_format           = Float
+      raw_data_time_format           = Short
+      raw_data_intensity_format      = Float
+
+    VARIABLES:
+      error_log                      = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 64)
+      a_d_sampling_rate              = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 6401)
+      a_d_coaddition_factor          = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 6402)
+      scan_acquisition_time          = [5.25,5.84,6.428999999999999,7.019,7.609,8.199,8.7 (length: 6401)
+      scan_duration                  = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 6401)
+      inter_scan_time                = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 6401)
+      resolution                     = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 6401)
+      actual_scan_number             = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19 (length: 6401)
+      total_intensity                = [3134,3157,3085,3134,3093,3113,3061,3057,3030,3166 (length: 6401)
+      mass_range_min                 = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 6401)
+      mass_range_max                 = [206.89999389648438,206.89999389648438,207,207.100 (length: 6401)
+      time_range_min                 = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 6401)
+      time_range_max                 = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 6401)
+      scan_index                     = [0,11,22,33,44,55,66,76,88,99,111,122,134,145,156, (length: 6401)
+      point_count                    = [11,11,11,11,11,11,10,12,11,12,11,12,11,11,11,11,1 (length: 6401)
+      flag_count                     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 6401)
+      mass_values                    = [16,17,18.100000381469727,28,32,35,36,38,40,44.099 (length: 157201)
+      time_values                    = [9.969209968386869e+36,9.969209968386869e+36,9.969 (length: 157201)
+      intensity_values               = [37,293,1243,737,420,45,196,72,22,35,34,28,299,123 (length: 157201)
+      instrument_name                = ["G","a","s"," ","C","h","r","o","m","a","t","o"," (length: 32)
+      instrument_id                  = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_mfr                 = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_model               = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_serial_no           = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_sw_version          = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_fw_version          = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_os_version          = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_app_version         = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_comments            = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+*/
+
+function agilentGCMS(reader) {
+  var time = reader.getDataVariable('scan_acquisition_time');
+  var tic = reader.getDataVariable('total_intensity');
+
+  // variables to get the mass-intensity values
+  var pointCount = reader.getDataVariable('point_count');
+  var massValues = reader.getDataVariable('mass_values');
+  var intensityValues = reader.getDataVariable('intensity_values');
+
+  var ms = new Array(pointCount.length);
+  var index = 0;
+  for (var i = 0; i < ms.length; i++) {
+    var size = pointCount[i];
+    ms[i] = [new Array(size), new Array(size)];
+
+    for (var j = 0; j < size; j++) {
+      ms[i][0][j] = massValues[index];
+      ms[i][1][j] = intensityValues[index++];
+    }
+  }
+
+  return {
+    times: time,
+    series: [{
+      name: 'tic',
+      dimension: 1,
+      data: tic
+    }, {
+      name: 'ms',
+      dimension: 2,
+      data: ms
+    }]
+  };
+}
+
+module.exports = agilentGCMS;
+
+},{}],115:[function(require,module,exports){
+'use strict';
+
+/* reader.toString() provides the following information
+    GLOBAL ATTRIBUTES
+      dataset_completeness           = C1+C2
+      aia_template_revision          = 1.0
+      netcdf_revision                = 2.3
+      languages                      = English only
+      injection_date_time_stamp      = 20181030174305+0000
+      HP_injection_time              = 30-Oct-18, 17:43:05
+      experiment_title               = SequenceLine: 1  Inj: 1
+      operator_name                  = SYSTEM
+      separation_experiment_type     = liquid chromatography
+      source_file_reference          = C:\CHEM32\1\DATA\MINGMING\MW-1-MEO-I IC-90 2018-10-30 17-42-13\MW-2-6-6 IC 90.D
+      sample_name                    = MW-2-6-6 IC 90
+      sample_id                      =
+      detector_unit                  = mAU
+      detection_method_name          = POS 3 IC 90-10 31 MIN.M
+      detector_name                  = DAD1 A, Sig=254,4 Ref=360,100
+      retention_unit                 = seconds
+
+   VARIABLES:
+      detector_maximum_value         = [130.9263458251953] (length: 1)
+      detector_minimum_value         = [-0.1758841574192047] (length: 1)
+      actual_run_time_length         = [1860] (length: 1)
+      actual_delay_time              = [0.012000000104308128] (length: 1)
+      actual_sampling_interval       = [0.4000000059604645] (length: 1)
+      ordinate_values                = [-0.07588416337966919,-0.07525086402893066,-0.0740 (length: 4651)
+      peak_retention_time            = [196.0651397705078,332.5663757324219,527.549865722 (length: 8)
+      peak_start_time                = [186.81199645996094,239.21200561523438,502.4119873 (length: 8)
+      peak_end_time                  = [220.81201171875,471.5176696777344,572.47869873046 (length: 8)
+      peak_width                     = [4.974428176879883,62.90694808959961,11.9328641891 (length: 8)
+      peak_area                      = [556.7650146484375,419.825439453125,66.56610107421 (length: 8)
+      peak_area_percent              = [7.0321502685546875,5.302552223205566,0.8407546877 (length: 8)
+      peak_height                    = [100.07515716552734,5.1860527992248535,4.827196121 (length: 8)
+      peak_height_percent            = [29.76352310180664,1.5423927307128906,1.4356645345 (length: 8)
+      peak_asymmetry                 = [1.4555920362472534,0.8351489901542664,1.707817316 (length: 8)
+      baseline_start_time            = [186.81199645996094,239.21200561523438,502.4119873 (length: 8)
+      baseline_start_value           = [1.9561424255371094,0.9857341647148132,1.127734780 (length: 8)
+      baseline_stop_time             = [220.81201171875,471.5176696777344,572.47869873046 (length: 8)
+      baseline_stop_value            = [1.1907591819763184,1.10896897315979,1.18347382545 (length: 8)
+      peak_start_detection_code      = ["B","","B","","B","","B","","V","","B","","B","", (length: 16)
+      peak_stop_detection_code       = ["B","","B","","B","","V","","B","","B","","B","", (length: 16)
+      migration_time                 = [196.0651397705078,332.5663757324219,527.549865722 (length: 8)
+      peak_area_square_root          = [23.595869064331055,20.489643096923828,8.158804893 (length: 8)
+      manually_reintegrated_peaks    = [0,0,0,0,0,0,0,0] (length: 8)
+*/
+
+function agilentHPLC(reader) {
+  var intensities = reader.getDataVariable('ordinate_values');
+  var numberPoints = intensities.length;
+  var detector = reader.getAttribute('detector_name');
+  var channel = void 0;
+  if (detector.match(/dad/i)) {
+    channel = `uv${Number(detector.replace(/.*Sig=([0-9]+).*/, '$1'))}`;
+  } else if (detector.match(/tic/i)) {
+    channel = 'tic';
+  } else {
+    channel = 'unknown';
+  }
+  var delayTime = reader.getDataVariable('actual_delay_time')[0];
+  var runtimeLength = reader.getDataVariable('actual_run_time_length')[0];
+  var samplingInterval = void 0;
+  if (reader.dataVariableExists('actual_sampling_interval')) {
+    samplingInterval = reader.getDataVariable('actual_sampling_interval')[0];
+
+    if (Math.abs(delayTime + samplingInterval * numberPoints - runtimeLength) > 3) {
+      throw new Error('The expected last time does not correspond to the runtimeLength');
+    }
+  } else {
+    samplingInterval = (runtimeLength - delayTime) / numberPoints;
+  }
+
+  var times = [];
+  var time = delayTime;
+  for (var i = 0; i < numberPoints; i++) {
+    times.push(time);
+    time += samplingInterval;
+  }
+
+  return {
+    times,
+    series: [{
+      name: channel,
+      dimension: 1,
+      data: intensities
+    }]
+  };
+}
+
+module.exports = agilentHPLC;
+
+},{}],116:[function(require,module,exports){
+'use strict';
+
+function aiaTemplate(reader) {
+  var time = [];
+  var tic = reader.getDataVariable('ordinate_values');
+
+  // variables to get the time
+  var delayTime = Number(reader.getDataVariable('actual_delay_time'));
+  var interval = Number(reader.getDataVariable('actual_sampling_interval'));
+
+  var currentTime = delayTime;
+  for (var i = 0; i < tic.length; i++) {
+    time.push(currentTime);
+    currentTime += interval;
+  }
+
+  return {
+    times: time,
+    series: [{
+      name: 'tic',
+      dimension: 1,
+      data: tic
+    }]
+  };
+}
+
+module.exports = aiaTemplate;
+
+},{}],117:[function(require,module,exports){
+'use strict';
+
+/* reader.toString() provides the following information
+    GLOBAL ATTRIBUTES
+      dataset_completeness           = C1+C2
+      ms_template_revision           = 1.0.1
+      netcdf_revision                = 2.3.2
+      languages                      = English
+      netcdf_file_date_time_stamp    = 20170428032023+0000
+      experiment_title               = MS51762A16
+    11829FC03_3__60_40
+      experiment_date_time_stamp     = 20160930202145-0001
+      operator_name                  = Begemann/Eikenberg/Roettger
+      pre_experiment_program_name    = otofControl 3.4.16.0
+      post_experiment_program_name   = Bruker Compass DataAnalysis 4.2
+      source_file_reference          = X:\2016\MS5\1700\MS51762A16.d
+      source_file_format             = Bruker Daltonics Data File
+      experiment_type                = Centroided Mass Spectrum
+      sample_state                   = Other State
+      test_separation_type           = No Chromatography
+      test_ms_inlet                  = Direct Inlet Probe
+      test_ionization_mode           = Electrospray Ionization
+      test_ionization_polarity       = Positive Polarity
+      test_detector_type             = Electron Multiplier
+      test_resolution_type           = Proportional Resolution
+      test_scan_function             = Mass Scan
+      test_scan_direction            = Up
+      test_scan_law                  = Linear
+      raw_data_mass_format           = Double
+      raw_data_time_format           = Float
+      raw_data_intensity_format      = Float
+      units                          = Seconds
+      scale_factor                   = 1
+
+    VARIABLES:
+      error_log                      = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 64)
+      a_d_sampling_rate              = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 4513)
+      a_d_coaddition_factor          = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 4514)
+      scan_acquisition_time          = [0.329,0.73,1.132,1.534,1.936,2.337,2.739,3.14,3.5 (length: 4513)
+      scan_duration                  = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 4513)
+      inter_scan_time                = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 4513)
+      resolution                     = [106.6623112889557,110.7855343519544,104.407495112 (length: 4513)
+      actual_scan_number             = [0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34, (length: 4513)
+      total_intensity                = [5297.4945068359375,6172.123912811279,5934.7557412 (length: 4513)
+      mass_range_min                 = [49.99999997418507,49.99999997418507,49.9999999741 (length: 4513)
+      mass_range_max                 = [1599.9999564432276,1599.9999564432276,1599.999956 (length: 4513)
+      time_range_min                 = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 4513)
+      time_range_max                 = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 4513)
+      scan_index                     = [0,60,128,195,265,324,399,472,542,596,671,738,803, (length: 4513)
+      point_count                    = [60,68,67,70,59,75,73,70,54,75,67,65,64,73,56,69,6 (length: 4513)
+      flag_count                     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 4513)
+      mass_values                    = [51.53516375878996,95.32974890044508,106.334477231 (length: 1176507)
+      intensity_values               = [76.99999237060547,80,90,78.99799346923828,80.9352 (length: 1176507)
+      instrument_name                = ["m","i","c","r","O","T","O","F",""," "," "," ","  (length: 32)
+      instrument_id                  = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_mfr                 = ["B","r","u","k","e","r"," ","D","a","l","t","o"," (length: 32)
+      instrument_model               = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_serial_no           = ["2","1","3","7","5","0",".","1","0","3","5","9"," (length: 32)
+      instrument_sw_version          = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_fw_version          = [""," "," "," "," "," "," "," "," "," "," "," ","  (length: 32)
+      instrument_os_version          = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_app_version         = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_comments            = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+*/
+
+function finniganGCMS(reader) {
+  var time = reader.getDataVariable('scan_acquisition_time');
+  var tic = reader.getDataVariable('total_intensity');
+
+  // variables to get the mass-intensity values
+  var scanIndex = reader.getDataVariable('scan_index');
+  var massValues = reader.getDataVariable('mass_values');
+  var intensityValues = reader.getDataVariable('intensity_values');
+  scanIndex.push(massValues.length);
+
+  var ms = new Array(time.length);
+  var index = 0;
+  for (var i = 0; i < ms.length; i++) {
+    var size = scanIndex[i + 1] - scanIndex[i];
+    ms[i] = [new Array(size), new Array(size)];
+
+    for (var j = 0; j < size; j++) {
+      ms[i][0][j] = massValues[index];
+      ms[i][1][j] = intensityValues[index++];
+    }
+  }
+
+  return {
+    times: time,
+    series: [{
+      name: 'tic',
+      dimension: 1,
+      data: tic
+    }, {
+      name: 'ms',
+      dimension: 2,
+      data: ms
+    }]
+  };
+}
+
+module.exports = finniganGCMS;
+
+},{}],118:[function(require,module,exports){
+'use strict';
+
+/* reader.toString() provides the following information
+    GLOBAL ATTRIBUTES
+      dataset_completeness           = C1+C2
+      ms_template_revision           = 1.0.1
+      administrative_comments        =
+      dataset_owner                  =
+      experiment_title               =
+      experiment_date_time_stamp     = 20150902041002+0100
+      netcdf_file_date_time_stamp    = 20151026063419+0000
+      experiment_type                = Centroided Mass Spectrum
+      netcdf_revision                = 2.3.2
+      operator_name                  = DSQ
+      source_file_reference          = G:\FCO\FCO_CIO\K2\MP2013\T1 IL database 2013\9. IL Data Entry\12_HU_HIFS\IL database\RAW files\Lukoil-Disel-150901.RAW
+      source_file_date_time_stamp    = 20150902041002+0100
+      source_file_format             = Finnigan
+      languages                      = English
+      external_file_ref_0            =
+      instrument_number              = 1
+      sample_prep_comments           =
+      sample_comments                = Lukoil Disel 0,5 % CS2 1 % inkt
+      test_separation_type           =
+      test_ms_inlet                  =
+      test_ionization_mode           =
+      test_ionization_polarity       = Positive Polarity
+      test_detector_type             = Conversion Dynode Electron Multiplier
+      test_scan_function             = Mass Scan
+      test_scan_direction            =
+      test_scan_law                  = Linear
+      number_of_scans                = 11832
+      raw_data_mass_format           = Double
+      raw_data_intensity_format      = Long
+      actual_run_time                = 3519.6410000000005
+      actual_delay_time              = 82.328
+      global_mass_min                = 0
+      global_mass_max                = 450
+      calibrated_mass_min            = 0
+      calibrated_mass_max            = 0
+      mass_axis_label                = M/Z
+      intensity_axis_label           = Abundance
+
+    VARIABLES:
+      error_log                      = ["","","","","","","","","","","","","","","",""," (length: 64)
+      instrument_name                = ["L","C","Q","","","","","","","","","","","",""," (length: 32)
+      instrument_id                  = ["","","","","","","","","","","","","","","",""," (length: 32)
+      instrument_mfr                 = ["F","i","n","n","i","g","a","n","-","M","A","T"," (length: 32)
+      instrument_model               = ["","","","","","","","","","","","","","","",""," (length: 32)
+      instrument_sw_version          = ["3",".","1","","","","","","","","","","","",""," (length: 32)
+      instrument_os_version          = ["W","i","n","d","o","w","s"," ","V","i","s","t"," (length: 32)
+      scan_index                     = [0,34,74,113,145,177,211,239,267,299,341,374,400,4 (length: 11832)
+      point_count                    = [34,40,39,32,32,34,28,28,32,42,33,26,29,34,31,28,2 (length: 11832)
+      flag_count                     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 11832)
+      a_d_sampling_rate              = [1000,1000,1000,1000,1000,1000,1000,1000,1000,1000 (length: 11832)
+      scan_acquisition_time          = [82.328,82.625,82.76599999999999,83.063,83.188,83. (length: 11832)
+      scan_duration                  = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 11832)
+      mass_range_min                 = [35,16,35,16,35,16,35,16,35,16,35,16,35,16,35,16,3 (length: 11832)
+      mass_range_max                 = [450,150,450,150,450,150,450,150,450,150,450,150,4 (length: 11832)
+      scan_type                      = [65537,65537,65537,65537,65537,65537,65537,65537,6 (length: 11832)
+      resolution                     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 11832)
+      total_intensity                = [375220,1054339,228245,576718,58280,288629,29815,1 (length: 11832)
+      mass_values                    = [36.3023681640625,36.98402404785156,38.08326721191 (length: 1366002)
+      intensity_values               = [335,287,331,266,2423,448,9009,833,261,661,4003,21 (length: 1366002)
+
+*/
+
+function finniganGCMS(reader) {
+  var time = reader.getDataVariable('scan_acquisition_time');
+  var tic = reader.getDataVariable('total_intensity');
+
+  // variables to get the mass-intensity values
+  var scanIndex = reader.getDataVariable('scan_index');
+  var massValues = reader.getDataVariable('mass_values');
+  var intensityValues = reader.getDataVariable('intensity_values');
+  scanIndex.push(massValues.length);
+
+  var ms = new Array(time.length);
+  var index = 0;
+  for (var i = 0; i < ms.length; i++) {
+    var size = scanIndex[i + 1] - scanIndex[i];
+    ms[i] = [new Array(size), new Array(size)];
+
+    for (var j = 0; j < size; j++) {
+      ms[i][0][j] = massValues[index];
+      ms[i][1][j] = intensityValues[index++];
+    }
+  }
+
+  return {
+    times: time,
+    series: [{
+      name: 'tic',
+      dimension: 1,
+      data: tic
+    }, {
+      name: 'ms',
+      dimension: 2,
+      data: ms
+    }]
+  };
+}
+
+module.exports = finniganGCMS;
+
+},{}],119:[function(require,module,exports){
+'use strict';
+
+var NetCDFReader = require('netcdfjs');
+
+var agilentGCMS = require('./agilentGCMS');
+var brukerGCMS = require('./brukerGCMS');
+var agilentHPLC = require('./agilentHPLC');
+var finniganGCMS = require('./finniganGCMS');
+var shimadzuGCMS = require('./shimadzuGCMS');
+var aiaTemplate = require('./aiaTemplate');
+
+/**
+ * Reads a NetCDF file and returns a formatted JSON with the data from it
+ * @param {ArrayBuffer} data - ArrayBuffer or any Typed Array (including Node.js' Buffer from v4) with the data
+ * @param {object} [options={}]
+ * @param {boolean} [options.meta] - add meta information
+ * @param {boolean} [options.variables] -add variables information
+ * @return {{times, series}} - JSON with the time, TIC and mass spectra values
+ */
+function netcdfGcms(data, options = {}) {
+  var reader = new NetCDFReader(data);
+  var globalAttributes = reader.globalAttributes;
+
+  var instrument_mfr = reader.getDataVariableAsString('instrument_mfr');
+  var dataset_origin = reader.attributeExists('dataset_origin');
+  var mass_values = reader.dataVariableExists('mass_values');
+  var detector_name = reader.getAttribute('detector_name');
+  var aia_template_revision = reader.attributeExists('aia_template_revision');
+  var source_file_format = reader.getAttribute('source_file_format');
+
+  var ans = void 0;
+
+  if (mass_values && dataset_origin) {
+    ans = agilentGCMS(reader);
+  } else if (mass_values && instrument_mfr && instrument_mfr.match(/finnigan/i)) {
+    ans = finniganGCMS(reader);
+  } else if (mass_values && instrument_mfr && instrument_mfr.match(/bruker/i)) {
+    ans = brukerGCMS(reader);
+  } else if (mass_values && source_file_format && source_file_format.match(/shimadzu/i)) {
+    ans = shimadzuGCMS(reader);
+  } else if (detector_name && detector_name.match(/(dad|tic)/i)) {
+    // diode array agilent HPLC
+    ans = agilentHPLC(reader);
+  } else if (aia_template_revision) {
+    ans = aiaTemplate(reader);
+  } else {
+    throw new TypeError('Unknown file format');
+  }
+
+  if (options.meta) {
+    ans.meta = addMeta(globalAttributes);
+  }
+
+  if (options.variables) {
+    ans.variables = addVariables(reader);
+  }
+
+  return ans;
+}
+
+/**
+ * Reads a NetCDF file with Agilent GCMS format and returns a formatted JSON with the data from it
+ * @param {ArrayBuffer} data - ArrayBuffer or any Typed Array (including Node.js' Buffer from v4) with the data
+ * @return {{times, series}} - JSON with the time, TIC and mass spectra values
+ */
+function fromAgilentGCMS(data) {
+  return agilentGCMS(new NetCDFReader(data));
+}
+
+/**
+ * Reads a NetCDF file with Agilent HPLC format and returns a formatted JSON with the data from it
+ * @param {ArrayBuffer} data - ArrayBuffer or any Typed Array (including Node.js' Buffer from v4) with the data
+ * @return {{times, series}} - JSON with the time, TIC and mass spectra values
+ */
+function fromAgilentHPLC(data) {
+  return agilentHPLC(new NetCDFReader(data));
+}
+
+/**
+ * Reads a NetCDF file with Finnigan format and returns a formatted JSON with the data from it
+ * @param {ArrayBuffer} data - ArrayBuffer or any Typed Array (including Node.js' Buffer from v4) with the data
+ * @return {{times, series}} - JSON with the time, TIC and mass spectra values
+ */
+function fromFinniganGCMS(data) {
+  return finniganGCMS(new NetCDFReader(data));
+}
+
+function fromAiaTemplate(data) {
+  return aiaTemplate(new NetCDFReader(data));
+}
+
+function addMeta(globalAttributes) {
+  var ans = {};
+  for (var item of globalAttributes) {
+    ans[item.name] = item.value;
+  }
+  return ans;
+}
+
+function addVariables(reader) {
+  for (var variable of reader.variables) {
+    variable.value = reader.getDataVariable(variable);
+  }
+  return reader.variables;
+}
+
+module.exports = netcdfGcms;
+module.exports.fromAgilentGCMS = fromAgilentGCMS;
+module.exports.fromAgilentHPLC = fromAgilentHPLC;
+module.exports.fromFinniganGCMS = fromFinniganGCMS;
+module.exports.fromAiaTemplate = fromAiaTemplate;
+
+},{"./agilentGCMS":114,"./agilentHPLC":115,"./aiaTemplate":116,"./brukerGCMS":117,"./finniganGCMS":118,"./shimadzuGCMS":120,"netcdfjs":123}],120:[function(require,module,exports){
+'use strict';
+
+/* reader.toString() provides the following information
+    GLOBAL ATTRIBUTES
+      dataset_completeness           = C1+C2
+      ms_template_revision           = 1.0.1
+      netcdf_revision                = 2.3.2
+      languages                      = English
+      administrative_comments        =
+      netcdf_file_date_time_stamp    = 20180913165502+0000
+      experiment_title               =
+      experiment_date_time_stamp     = 20180910165319+0000
+      operator_name                  = Admin
+      source_file_reference          = D:\GCMSsolution\Data\Chromatograms\Cato\bormann_CB000_Test2.qgd
+      source_file_format             = Shimadzu GCMSsolution
+      source_file_date_time_stamp    = 20180910165319+0000
+      experiment_type                = Centroided Mass Spectrum
+      sample_internal_id             =
+      sample_comments                =
+      sample_state                   = Other State
+      test_separation_type           = Gas-Solid Chromatography
+      test_ms_inlet                  = Other Probe
+      test_ionization_mode           = Electron Impact
+      test_ionization_polarity       = Positive Polarity
+      test_electron_energy           = 70
+      test_detector_type             = Electron Multiplier
+      test_resolution_type           = Constant Resolution
+      test_scan_function             = Mass Scan
+      test_scan_direction            = Up
+      test_scan_law                  = Quadratic
+      test_scan_time                 = 0
+      raw_data_mass_format           = Double
+      raw_data_time_format           = Long
+      raw_data_intensity_format      = Long
+      units                          = Seconds
+      scale_factor                   = 1
+      long_name                      = Seconds
+      starting_scan_number           = 0
+      actual_run_time_length         = 1289
+      actual_delay_time              = 0
+      raw_data_uniform_sampling_flag = 1
+
+    VARIABLES:
+      error_log                      = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 64)
+      a_d_sampling_rate              = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 3820)
+      a_d_coaddition_factor          = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 3820)
+      scan_acquisition_time          = [144,144.3,144.6,144.9,145.2,145.5,145.8,146.1,146 (length: 3820)
+      scan_duration                  = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 3820)
+      inter_scan_time                = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 3820)
+      resolution                     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 3820)
+      actual_scan_number             = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,2 (length: 3820)
+      total_intensity                = [63566,61702,61873,59738,58321,59001,59364,59871,6 (length: 3820)
+      mass_range_min                 = [35,35,35,35,35,35,35,35,35,35,35,35,35,35,35,35,3 (length: 3820)
+      mass_range_max                 = [500,500,500,500,500,500,500,500,500,500,500,500,5 (length: 3820)
+      time_range_min                 = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 3820)
+      time_range_max                 = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 3820)
+      scan_index                     = [0,466,932,1398,1863,2329,2795,3260,3726,4192,4658 (length: 3820)
+      point_count                    = [466,466,466,465,466,466,465,466,466,466,466,466,4 (length: 3820)
+      flag_count                     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 3820)
+      mass_values                    = [35,36,37.1,38.1,39.1,40.15,41.1,42.1,43.15,44.1,4 (length: 1779397)
+      intensity_values               = [26,111,412,785,3098,485,5772,7391,11213,711,687,1 (length: 1779397)
+      instrument_name                = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_id                  = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+      instrument_mfr                 = ["S","h","i","m","a","d","z","u"," ","C","o","r"," (length: 32)
+      instrument_model               = ["G","C","M","S","","","","","","","","","","","", (length: 32)
+      instrument_serial_no           = ["","","","","","","","","","","","","","","",""," (length: 32)
+      instrument_sw_version          = ["4",".","2","0","","","","","","","","","","","", (length: 32)
+      instrument_fw_version          = ["G","C","M","S","-","Q","P","2","0","1","0","1"," (length: 32)
+      instrument_os_version          = ["W","i","n","d","o","w","s","","","","","","","", (length: 32)
+      instrument_app_version         = ["G","C","M","S","s","o","l","u","t","i","o","n"," (length: 32)
+      instrument_comments            = [" "," "," "," "," "," "," "," "," "," "," "," "," (length: 32)
+*/
+
+function shimadzuGCMS(reader) {
+  var time = reader.getDataVariable('scan_acquisition_time');
+  var tic = reader.getDataVariable('total_intensity');
+
+  // variables to get the mass-intensity values
+  var scanIndex = reader.getDataVariable('scan_index');
+  var massValues = reader.getDataVariable('mass_values');
+  var intensityValues = reader.getDataVariable('intensity_values');
+  scanIndex.push(massValues.length);
+
+  var ms = new Array(time.length);
+  var index = 0;
+  for (var i = 0; i < ms.length; i++) {
+    var size = scanIndex[i + 1] - scanIndex[i];
+    ms[i] = [new Array(size), new Array(size)];
+
+    for (var j = 0; j < size; j++) {
+      ms[i][0][j] = massValues[index];
+      ms[i][1][j] = intensityValues[index++];
+    }
+  }
+
+  return {
+    times: time,
+    series: [{
+      name: 'tic',
+      dimension: 1,
+      data: tic
+    }, {
+      name: 'ms',
+      dimension: 2,
+      data: ms
+    }]
+  };
+}
+
+module.exports = shimadzuGCMS;
+
+},{}],121:[function(require,module,exports){
+'use strict';
+
+var types = require('./types');
+
+// const STREAMING = 4294967295;
+
+/**
+ * Read data for the given non-record variable
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ * @param {object} variable - Variable metadata
+ * @return {Array} - Data of the element
+ */
+function nonRecord(buffer, variable) {
+  // variable type
+  var type = types.str2num(variable.type);
+
+  // size of the data
+  var size = variable.size / types.num2bytes(type);
+
+  // iterates over the data
+  var data = new Array(size);
+  for (var i = 0; i < size; i++) {
+    data[i] = types.readType(buffer, type, 1);
+  }
+
+  return data;
+}
+
+/**
+ * Read data for the given record variable
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ * @param {object} variable - Variable metadata
+ * @param {object} recordDimension - Record dimension metadata
+ * @return {Array} - Data of the element
+ */
+function record(buffer, variable, recordDimension) {
+  // variable type
+  var type = types.str2num(variable.type);
+  var width = variable.size ? variable.size / types.num2bytes(type) : 1;
+
+  // size of the data
+  // TODO streaming data
+  var size = recordDimension.length;
+
+  // iterates over the data
+  var data = new Array(size);
+  var step = recordDimension.recordStep;
+
+  for (var i = 0; i < size; i++) {
+    var currentOffset = buffer.offset;
+    data[i] = types.readType(buffer, type, width);
+    buffer.seek(currentOffset + step);
+  }
+
+  return data;
+}
+
+module.exports.nonRecord = nonRecord;
+module.exports.record = record;
+
+},{"./types":125}],122:[function(require,module,exports){
+'use strict';
+
+var utils = require('./utils');
+var types = require('./types');
+
+// Grammar constants
+var ZERO = 0;
+var NC_DIMENSION = 10;
+var NC_VARIABLE = 11;
+var NC_ATTRIBUTE = 12;
+
+/**
+ * Read the header of the file
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ * @param {number} version - Version of the file
+ * @return {object} - Object with the fields:
+ *  * `recordDimension`: Number with the length of record dimension
+ *  * `dimensions`: List of dimensions
+ *  * `globalAttributes`: List of global attributes
+ *  * `variables`: List of variables
+ */
+function header(buffer, version) {
+  // Length of record dimension
+  // sum of the varSize's of all the record variables.
+  var header = { recordDimension: { length: buffer.readUint32() } };
+
+  // Version
+  header.version = version;
+
+  // List of dimensions
+  var dimList = dimensionsList(buffer);
+  header.recordDimension.id = dimList.recordId; // id of the unlimited dimension
+  header.recordDimension.name = dimList.recordName; // name of the unlimited dimension
+  header.dimensions = dimList.dimensions;
+
+  // List of global attributes
+  header.globalAttributes = attributesList(buffer);
+
+  // List of variables
+  var variables = variablesList(buffer, dimList.recordId, version);
+  header.variables = variables.variables;
+  header.recordDimension.recordStep = variables.recordStep;
+
+  return header;
+}
+
+var NC_UNLIMITED = 0;
+
+/**
+ * List of dimensions
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ * @return {object} - Ojbect containing the following properties:
+ *  * `dimensions` that is an array of dimension object:
+  *  * `name`: String with the name of the dimension
+  *  * `size`: Number with the size of the dimension dimensions: dimensions
+ *  * `recordId`: the id of the dimension that has unlimited size or undefined,
+ *  * `recordName`: name of the dimension that has unlimited size
+ */
+function dimensionsList(buffer) {
+  var recordId, recordName;
+  var dimList = buffer.readUint32();
+  if (dimList === ZERO) {
+    utils.notNetcdf(buffer.readUint32() !== ZERO, 'wrong empty tag for list of dimensions');
+    return [];
+  } else {
+    utils.notNetcdf(dimList !== NC_DIMENSION, 'wrong tag for list of dimensions');
+
+    // Length of dimensions
+    var dimensionSize = buffer.readUint32();
+    var dimensions = new Array(dimensionSize);
+    for (var dim = 0; dim < dimensionSize; dim++) {
+      // Read name
+      var name = utils.readName(buffer);
+
+      // Read dimension size
+      var size = buffer.readUint32();
+      if (size === NC_UNLIMITED) {
+        // in netcdf 3 one field can be of size unlimmited
+        recordId = dim;
+        recordName = name;
+      }
+
+      dimensions[dim] = {
+        name: name,
+        size: size
+      };
+    }
+  }
+  return {
+    dimensions: dimensions,
+    recordId: recordId,
+    recordName: recordName
+  };
+}
+
+/**
+ * List of attributes
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ * @return {Array<object>} - List of attributes with:
+ *  * `name`: String with the name of the attribute
+ *  * `type`: String with the type of the attribute
+ *  * `value`: A number or string with the value of the attribute
+ */
+function attributesList(buffer) {
+  var gAttList = buffer.readUint32();
+  if (gAttList === ZERO) {
+    utils.notNetcdf(buffer.readUint32() !== ZERO, 'wrong empty tag for list of attributes');
+    return [];
+  } else {
+    utils.notNetcdf(gAttList !== NC_ATTRIBUTE, 'wrong tag for list of attributes');
+
+    // Length of attributes
+    var attributeSize = buffer.readUint32();
+    var attributes = new Array(attributeSize);
+    for (var gAtt = 0; gAtt < attributeSize; gAtt++) {
+      // Read name
+      var name = utils.readName(buffer);
+
+      // Read type
+      var type = buffer.readUint32();
+      utils.notNetcdf(type < 1 || type > 6, `non valid type ${type}`);
+
+      // Read attribute
+      var size = buffer.readUint32();
+      var value = types.readType(buffer, type, size);
+
+      // Apply padding
+      utils.padding(buffer);
+
+      attributes[gAtt] = {
+        name: name,
+        type: types.num2str(type),
+        value: value
+      };
+    }
+  }
+  return attributes;
+}
+
+/**
+ * List of variables
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ * @param {number} recordId - Id of the unlimited dimension (also called record dimension)
+ *                            This value may be undefined if there is no unlimited dimension
+ * @param {number} version - Version of the file
+ * @return {object} - Number of recordStep and list of variables with:
+ *  * `name`: String with the name of the variable
+ *  * `dimensions`: Array with the dimension IDs of the variable
+ *  * `attributes`: Array with the attributes of the variable
+ *  * `type`: String with the type of the variable
+ *  * `size`: Number with the size of the variable
+ *  * `offset`: Number with the offset where of the variable begins
+ *  * `record`: True if is a record variable, false otherwise (unlimited size)
+ */
+
+function variablesList(buffer, recordId, version) {
+  var varList = buffer.readUint32();
+  var recordStep = 0;
+  if (varList === ZERO) {
+    utils.notNetcdf(buffer.readUint32() !== ZERO, 'wrong empty tag for list of variables');
+    return [];
+  } else {
+    utils.notNetcdf(varList !== NC_VARIABLE, 'wrong tag for list of variables');
+
+    // Length of variables
+    var variableSize = buffer.readUint32();
+    var variables = new Array(variableSize);
+    for (var v = 0; v < variableSize; v++) {
+      // Read name
+      var name = utils.readName(buffer);
+
+      // Read dimensionality of the variable
+      var dimensionality = buffer.readUint32();
+
+      // Index into the list of dimensions
+      var dimensionsIds = new Array(dimensionality);
+      for (var dim = 0; dim < dimensionality; dim++) {
+        dimensionsIds[dim] = buffer.readUint32();
+      }
+
+      // Read variables size
+      var attributes = attributesList(buffer);
+
+      // Read type
+      var type = buffer.readUint32();
+      utils.notNetcdf(type < 1 && type > 6, `non valid type ${type}`);
+
+      // Read variable size
+      // The 32-bit varSize field is not large enough to contain the size of variables that require
+      // more than 2^32 - 4 bytes, so 2^32 - 1 is used in the varSize field for such variables.
+      var varSize = buffer.readUint32();
+
+      // Read offset
+      var offset = buffer.readUint32();
+      if (version === 2) {
+        utils.notNetcdf(offset > 0, 'offsets larger than 4GB not supported');
+        offset = buffer.readUint32();
+      }
+
+      var record = false;
+      // Count amount of record variables
+      if (typeof recordId !== 'undefined' && dimensionsIds[0] === recordId) {
+        recordStep += varSize;
+        record = true;
+      }
+      variables[v] = {
+        name: name,
+        dimensions: dimensionsIds,
+        attributes,
+        type: types.num2str(type),
+        size: varSize,
+        offset,
+        record
+      };
+    }
+  }
+
+  return {
+    variables: variables,
+    recordStep: recordStep
+  };
+}
+
+module.exports = header;
+
+},{"./types":125,"./utils":126}],123:[function(require,module,exports){
+'use strict';
+
+var IOBuffer = require('iobuffer');
+
+var utils = require('./utils');
+var data = require('./data');
+var readHeader = require('./header');
+var toString = require('./toString');
+
+/**
+ * Reads a NetCDF v3.x file
+ * https://www.unidata.ucar.edu/software/netcdf/docs/file_format_specifications.html
+ * @param {ArrayBuffer} data - ArrayBuffer or any Typed Array (including Node.js' Buffer from v4) with the data
+ * @constructor
+ */
+class NetCDFReader {
+  constructor(data) {
+    var buffer = new IOBuffer(data);
+    buffer.setBigEndian();
+
+    // Validate that it's a NetCDF file
+    utils.notNetcdf(buffer.readChars(3) !== 'CDF', 'should start with CDF');
+
+    // Check the NetCDF format
+    var version = buffer.readByte();
+    utils.notNetcdf(version > 2, 'unknown version');
+
+    // Read the header
+    this.header = readHeader(buffer, version);
+    this.buffer = buffer;
+  }
+
+  /**
+   * @return {string} - Version for the NetCDF format
+   */
+  get version() {
+    if (this.header.version === 1) {
+      return 'classic format';
+    } else {
+      return '64-bit offset format';
+    }
+  }
+
+  /**
+   * @return {object} - Metadata for the record dimension
+   *  * `length`: Number of elements in the record dimension
+   *  * `id`: Id number in the list of dimensions for the record dimension
+   *  * `name`: String with the name of the record dimension
+   *  * `recordStep`: Number with the record variables step size
+   */
+  get recordDimension() {
+    return this.header.recordDimension;
+  }
+
+  /**
+   * @return {Array<object>} - List of dimensions with:
+   *  * `name`: String with the name of the dimension
+   *  * `size`: Number with the size of the dimension
+   */
+  get dimensions() {
+    return this.header.dimensions;
+  }
+
+  /**
+   * @return {Array<object>} - List of global attributes with:
+   *  * `name`: String with the name of the attribute
+   *  * `type`: String with the type of the attribute
+   *  * `value`: A number or string with the value of the attribute
+   */
+  get globalAttributes() {
+    return this.header.globalAttributes;
+  }
+
+  /**
+   * Returns the value of an attribute
+   * @param {string} attributeName
+   * @return {string} Value of the attributeName or undefined
+   */
+  getAttribute(attributeName) {
+    var attribute = this.globalAttributes.find(val => val.name === attributeName);
+    if (attribute) return attribute.value.trim();
+    return undefined;
+  }
+
+  /**
+   * Returns the value of a variable as a string
+   * @param {string} variableName
+   * @return {string} Value of the variable as a string or undefined
+   */
+  getDataVariableAsString(variableName) {
+    try {
+      return this.getDataVariable(variableName).join('').trim();
+    } catch (e) {
+      return undefined;
+    }
+  }
+
+  /**
+   * @return {Array<object>} - List of variables with:
+   *  * `name`: String with the name of the variable
+   *  * `dimensions`: Array with the dimension IDs of the variable
+   *  * `attributes`: Array with the attributes of the variable
+   *  * `type`: String with the type of the variable
+   *  * `size`: Number with the size of the variable
+   *  * `offset`: Number with the offset where of the variable begins
+   *  * `record`: True if is a record variable, false otherwise
+   */
+  get variables() {
+    return this.header.variables;
+  }
+
+  toString() {
+    return toString.call(this);
+  }
+
+  /**
+   * Retrieves the data for a given variable
+   * @param {string|object} variableName - Name of the variable to search or variable object
+   * @return {Array} - List with the variable values
+   */
+  getDataVariable(variableName) {
+    var variable;
+    if (typeof variableName === 'string') {
+      // search the variable
+      variable = this.header.variables.find(function (val) {
+        return val.name === variableName;
+      });
+    } else {
+      variable = variableName;
+    }
+
+    // throws if variable not found
+    utils.notNetcdf(variable === undefined, `variable not found: ${variableName}`);
+
+    // go to the offset position
+    this.buffer.seek(variable.offset);
+
+    if (variable.record) {
+      // record variable case
+      return data.record(this.buffer, variable, this.header.recordDimension);
+    } else {
+      // non-record variable case
+      return data.nonRecord(this.buffer, variable);
+    }
+  }
+
+  /**
+   * Check if a dataVariable exists
+   * @param {string} variableName - Name of the variable to find
+   * @return {boolean}
+   */
+  dataVariableExists(variableName) {
+    var variable = this.header.variables.find(function (val) {
+      return val.name === variableName;
+    });
+    return variable !== undefined;
+  }
+
+  /**
+   * Check if an attribute exists
+   * @param {string} attributeName - Name of the attribute to find
+   * @return {boolean}
+   */
+  attributeExists(attributeName) {
+    var attribute = this.globalAttributes.find(val => val.name === attributeName);
+    return attribute !== undefined;
+  }
+}
+
+module.exports = NetCDFReader;
+
+},{"./data":121,"./header":122,"./toString":124,"./utils":126,"iobuffer":16}],124:[function(require,module,exports){
+'use strict';
+
+function toString() {
+  var result = [];
+
+  result.push('DIMENSIONS');
+  for (var dimension of this.dimensions) {
+    result.push(`  ${dimension.name.padEnd(30)} = size: ${dimension.size}`);
+  }
+
+  result.push('');
+  result.push('GLOBAL ATTRIBUTES');
+  for (var attribute of this.globalAttributes) {
+    result.push(`  ${attribute.name.padEnd(30)} = ${attribute.value}`);
+  }
+
+  var variables = JSON.parse(JSON.stringify(this.variables));
+  result.push('');
+  result.push('VARIABLES:');
+  for (var variable of variables) {
+    variable.value = this.getDataVariable(variable);
+    var stringify = JSON.stringify(variable.value);
+    if (stringify.length > 50) stringify = stringify.substring(0, 50);
+    if (!isNaN(variable.value.length)) {
+      stringify += ` (length: ${variable.value.length})`;
+    }
+    result.push(`  ${variable.name.padEnd(30)} = ${stringify}`);
+  }
+  return result.join('\n');
+}
+
+module.exports = toString;
+
+},{}],125:[function(require,module,exports){
+'use strict';
+
+var notNetcdf = require('./utils').notNetcdf;
+
+var types = {
+  BYTE: 1,
+  CHAR: 2,
+  SHORT: 3,
+  INT: 4,
+  FLOAT: 5,
+  DOUBLE: 6
+};
+
+/**
+ * Parse a number into their respective type
+ * @ignore
+ * @param {number} type - integer that represents the type
+ * @return {string} - parsed value of the type
+ */
+function num2str(type) {
+  switch (Number(type)) {
+    case types.BYTE:
+      return 'byte';
+    case types.CHAR:
+      return 'char';
+    case types.SHORT:
+      return 'short';
+    case types.INT:
+      return 'int';
+    case types.FLOAT:
+      return 'float';
+    case types.DOUBLE:
+      return 'double';
+    /* istanbul ignore next */
+    default:
+      return 'undefined';
+  }
+}
+
+/**
+ * Parse a number type identifier to his size in bytes
+ * @ignore
+ * @param {number} type - integer that represents the type
+ * @return {number} -size of the type
+ */
+function num2bytes(type) {
+  switch (Number(type)) {
+    case types.BYTE:
+      return 1;
+    case types.CHAR:
+      return 1;
+    case types.SHORT:
+      return 2;
+    case types.INT:
+      return 4;
+    case types.FLOAT:
+      return 4;
+    case types.DOUBLE:
+      return 8;
+    /* istanbul ignore next */
+    default:
+      return -1;
+  }
+}
+
+/**
+ * Reverse search of num2str
+ * @ignore
+ * @param {string} type - string that represents the type
+ * @return {number} - parsed value of the type
+ */
+function str2num(type) {
+  switch (String(type)) {
+    case 'byte':
+      return types.BYTE;
+    case 'char':
+      return types.CHAR;
+    case 'short':
+      return types.SHORT;
+    case 'int':
+      return types.INT;
+    case 'float':
+      return types.FLOAT;
+    case 'double':
+      return types.DOUBLE;
+    /* istanbul ignore next */
+    default:
+      return -1;
+  }
+}
+
+/**
+ * Auxiliary function to read numeric data
+ * @ignore
+ * @param {number} size - Size of the element to read
+ * @param {function} bufferReader - Function to read next value
+ * @return {Array<number>|number}
+ */
+function readNumber(size, bufferReader) {
+  if (size !== 1) {
+    var numbers = new Array(size);
+    for (var i = 0; i < size; i++) {
+      numbers[i] = bufferReader();
+    }
+    return numbers;
+  } else {
+    return bufferReader();
+  }
+}
+
+/**
+ * Given a type and a size reads the next element
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ * @param {number} type - Type of the data to read
+ * @param {number} size - Size of the element to read
+ * @return {string|Array<number>|number}
+ */
+function readType(buffer, type, size) {
+  switch (type) {
+    case types.BYTE:
+      return buffer.readBytes(size);
+    case types.CHAR:
+      return trimNull(buffer.readChars(size));
+    case types.SHORT:
+      return readNumber(size, buffer.readInt16.bind(buffer));
+    case types.INT:
+      return readNumber(size, buffer.readInt32.bind(buffer));
+    case types.FLOAT:
+      return readNumber(size, buffer.readFloat32.bind(buffer));
+    case types.DOUBLE:
+      return readNumber(size, buffer.readFloat64.bind(buffer));
+    /* istanbul ignore next */
+    default:
+      notNetcdf(true, `non valid type ${type}`);
+      return undefined;
+  }
+}
+
+/**
+ * Removes null terminate value
+ * @ignore
+ * @param {string} value - String to trim
+ * @return {string} - Trimmed string
+ */
+function trimNull(value) {
+  if (value.charCodeAt(value.length - 1) === 0) {
+    return value.substring(0, value.length - 1);
+  }
+  return value;
+}
+
+module.exports = types;
+module.exports.num2str = num2str;
+module.exports.num2bytes = num2bytes;
+module.exports.str2num = str2num;
+module.exports.readType = readType;
+
+},{"./utils":126}],126:[function(require,module,exports){
+'use strict';
+
+/**
+ * Throws a non-valid NetCDF exception if the statement it's true
+ * @ignore
+ * @param {boolean} statement - Throws if true
+ * @param {string} reason - Reason to throw
+ */
+
+function notNetcdf(statement, reason) {
+  if (statement) {
+    throw new TypeError(`Not a valid NetCDF v3.x file: ${reason}`);
+  }
+}
+
+/**
+ * Moves 1, 2, or 3 bytes to next 4-byte boundary
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ */
+function padding(buffer) {
+  if (buffer.offset % 4 !== 0) {
+    buffer.skip(4 - buffer.offset % 4);
+  }
+}
+
+/**
+ * Reads the name
+ * @ignore
+ * @param {IOBuffer} buffer - Buffer for the file data
+ * @return {string} - Name
+ */
+function readName(buffer) {
+  // Read name
+  var nameLength = buffer.readUint32();
+  var name = buffer.readChars(nameLength);
+
+  // validate name
+  // TODO
+
+  // Apply padding
+  padding(buffer);
+  return name;
+}
+
+module.exports.notNetcdf = notNetcdf;
+module.exports.padding = padding;
+module.exports.readName = readName;
+
+},{}],127:[function(require,module,exports){
 "use strict";
 
 module.exports = newArray;
@@ -20176,7 +22225,7 @@ function newArray(n, value) {
   return array;
 }
 
-},{}],113:[function(require,module,exports){
+},{}],128:[function(require,module,exports){
 'use strict';
 
 /**
@@ -20238,7 +22287,7 @@ module.exports = function getSpectrumType(pulse) {
     return '';
 };
 
-},{}],114:[function(require,module,exports){
+},{}],129:[function(require,module,exports){
 'use strict';
 
 var jcampconverter = require('jcampconverter');
@@ -20392,7 +22441,7 @@ function maybeAdd(obj, name, value) {
   }
 }
 
-},{"./getSpectrumType":113,"jcampconverter":16,"spectra-data":153}],115:[function(require,module,exports){
+},{"./getSpectrumType":128,"jcampconverter":18,"spectra-data":168}],130:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -20697,7 +22746,7 @@ class SpinSystem {
 }
 exports.default = SpinSystem;
 
-},{"ml-hclust":71,"ml-matrix":90,"ml-simple-clustering":107,"new-array":112}],116:[function(require,module,exports){
+},{"ml-hclust":73,"ml-matrix":92,"ml-simple-clustering":109,"new-array":127}],131:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -20735,7 +22784,7 @@ function _interopRequireDefault(obj) {
   return obj && obj.__esModule ? obj : { default: obj };
 }
 
-},{"./SpinSystem":115,"./simulate1D":118,"./simulate2D":119}],117:[function(require,module,exports){
+},{"./SpinSystem":130,"./simulate1D":133,"./simulate2D":134}],132:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -20786,7 +22835,7 @@ function getPauli(mult) {
   if (mult === 2) return pauli2;else return createPauli(mult);
 }
 
-},{"ml-sparse-matrix":108}],118:[function(require,module,exports){
+},{"ml-sparse-matrix":110}],133:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -21119,7 +23168,7 @@ function _getX(from, to, nbPoints) {
   return x;
 }
 
-},{"./pauli":117,"binary-search":2,"ml-matrix":90,"ml-sparse-matrix":108,"num-sort":120}],119:[function(require,module,exports){
+},{"./pauli":132,"binary-search":3,"ml-matrix":92,"ml-sparse-matrix":110,"num-sort":135}],134:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -21225,7 +23274,7 @@ function addPeak(matrix, peak) {
   }
 }
 
-},{"ml-matrix":90}],120:[function(require,module,exports){
+},{"ml-matrix":92}],135:[function(require,module,exports){
 'use strict';
 
 var numberIsNan = require('number-is-nan');
@@ -21248,14 +23297,14 @@ exports.desc = function (a, b) {
 	return b - a;
 };
 
-},{"number-is-nan":121}],121:[function(require,module,exports){
+},{"number-is-nan":136}],136:[function(require,module,exports){
 'use strict';
 
 module.exports = Number.isNaN || function (x) {
 	return x !== x;
 };
 
-},{}],122:[function(require,module,exports){
+},{}],137:[function(require,module,exports){
 // Top level file is just a mixin of submodules & constants
 'use strict';
 
@@ -21271,7 +23320,7 @@ assign(pako, deflate, inflate, constants);
 
 module.exports = pako;
 
-},{"./lib/deflate":123,"./lib/inflate":124,"./lib/utils/common":125,"./lib/zlib/constants":128}],123:[function(require,module,exports){
+},{"./lib/deflate":138,"./lib/inflate":139,"./lib/utils/common":140,"./lib/zlib/constants":143}],138:[function(require,module,exports){
 'use strict';
 
 var zlib_deflate = require('./zlib/deflate');
@@ -21659,7 +23708,7 @@ exports.deflate = deflate;
 exports.deflateRaw = deflateRaw;
 exports.gzip = gzip;
 
-},{"./utils/common":125,"./utils/strings":126,"./zlib/deflate":130,"./zlib/messages":135,"./zlib/zstream":137}],124:[function(require,module,exports){
+},{"./utils/common":140,"./utils/strings":141,"./zlib/deflate":145,"./zlib/messages":150,"./zlib/zstream":152}],139:[function(require,module,exports){
 'use strict';
 
 var zlib_inflate = require('./zlib/inflate');
@@ -21802,6 +23851,23 @@ function Inflate(options) {
   this.header = new GZheader();
 
   zlib_inflate.inflateGetHeader(this.strm, this.header);
+
+  // Setup dictionary
+  if (opt.dictionary) {
+    // Convert data if needed
+    if (typeof opt.dictionary === 'string') {
+      opt.dictionary = strings.string2buf(opt.dictionary);
+    } else if (toString.call(opt.dictionary) === '[object ArrayBuffer]') {
+      opt.dictionary = new Uint8Array(opt.dictionary);
+    }
+    if (opt.raw) {
+      //In raw mode we need to set the dictionary early
+      status = zlib_inflate.inflateSetDictionary(this.strm, opt.dictionary);
+      if (status !== c.Z_OK) {
+        throw new Error(msg[status]);
+      }
+    }
+  }
 }
 
 /**
@@ -21838,7 +23904,6 @@ Inflate.prototype.push = function (data, mode) {
   var dictionary = this.options.dictionary;
   var status, _mode;
   var next_out_utf8, tail, utf8str;
-  var dict;
 
   // Flag to properly process Z_BUF_ERROR on testing inflate call
   // when we check that all output data was flushed.
@@ -21872,16 +23937,7 @@ Inflate.prototype.push = function (data, mode) {
     status = zlib_inflate.inflate(strm, c.Z_NO_FLUSH); /* no bad return value */
 
     if (status === c.Z_NEED_DICT && dictionary) {
-      // Convert data if needed
-      if (typeof dictionary === 'string') {
-        dict = strings.string2buf(dictionary);
-      } else if (toString.call(dictionary) === '[object ArrayBuffer]') {
-        dict = new Uint8Array(dictionary);
-      } else {
-        dict = dictionary;
-      }
-
-      status = zlib_inflate.inflateSetDictionary(this.strm, dict);
+      status = zlib_inflate.inflateSetDictionary(this.strm, dictionary);
     }
 
     if (status === c.Z_BUF_ERROR && allowBufError === true) {
@@ -22072,7 +24128,7 @@ exports.inflate = inflate;
 exports.inflateRaw = inflateRaw;
 exports.ungzip = inflate;
 
-},{"./utils/common":125,"./utils/strings":126,"./zlib/constants":128,"./zlib/gzheader":131,"./zlib/inflate":133,"./zlib/messages":135,"./zlib/zstream":137}],125:[function(require,module,exports){
+},{"./utils/common":140,"./utils/strings":141,"./zlib/constants":143,"./zlib/gzheader":146,"./zlib/inflate":148,"./zlib/messages":150,"./zlib/zstream":152}],140:[function(require,module,exports){
 'use strict';
 
 var TYPED_OK = typeof Uint8Array !== 'undefined' && typeof Uint16Array !== 'undefined' && typeof Int32Array !== 'undefined';
@@ -22179,7 +24235,7 @@ exports.setTyped = function (on) {
 
 exports.setTyped(TYPED_OK);
 
-},{}],126:[function(require,module,exports){
+},{}],141:[function(require,module,exports){
 // String encode/decode helpers
 'use strict';
 
@@ -22389,7 +24445,7 @@ exports.utf8border = function (buf, max) {
   return pos + _utf8len[buf[pos]] > max ? pos : max;
 };
 
-},{"./common":125}],127:[function(require,module,exports){
+},{"./common":140}],142:[function(require,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
@@ -22441,7 +24497,7 @@ function adler32(adler, buf, len, pos) {
 
 module.exports = adler32;
 
-},{}],128:[function(require,module,exports){
+},{}],143:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -22510,7 +24566,7 @@ module.exports = {
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
 
-},{}],129:[function(require,module,exports){
+},{}],144:[function(require,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -22571,7 +24627,7 @@ function crc32(crc, buf, len, pos) {
 
 module.exports = crc32;
 
-},{}],130:[function(require,module,exports){
+},{}],145:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -24397,7 +26453,7 @@ exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
 
-},{"../utils/common":125,"./adler32":127,"./crc32":129,"./messages":135,"./trees":136}],131:[function(require,module,exports){
+},{"../utils/common":140,"./adler32":142,"./crc32":144,"./messages":150,"./trees":151}],146:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -24457,7 +26513,7 @@ function GZheader() {
 
 module.exports = GZheader;
 
-},{}],132:[function(require,module,exports){
+},{}],147:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -24808,7 +26864,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],133:[function(require,module,exports){
+},{}],148:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26453,7 +28509,7 @@ exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
 
-},{"../utils/common":125,"./adler32":127,"./crc32":129,"./inffast":132,"./inftrees":134}],134:[function(require,module,exports){
+},{"../utils/common":140,"./adler32":142,"./crc32":144,"./inffast":147,"./inftrees":149}],149:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26784,7 +28840,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":125}],135:[function(require,module,exports){
+},{"../utils/common":140}],150:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26818,7 +28874,7 @@ module.exports = {
   '-6': 'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
 
-},{}],136:[function(require,module,exports){
+},{}],151:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26839,6 +28895,8 @@ module.exports = {
 // 2. Altered source versions must be plainly marked as such, and must not be
 //   misrepresented as being the original software.
 // 3. This notice may not be removed or altered from any source distribution.
+
+/* eslint-disable space-unary-ops */
 
 var utils = require('../utils/common');
 
@@ -28016,7 +30074,7 @@ exports._tr_flush_block = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
 
-},{"../utils/common":125}],137:[function(require,module,exports){
+},{"../utils/common":140}],152:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -28065,7 +30123,7 @@ function ZStream() {
 
 module.exports = ZStream;
 
-},{}],138:[function(require,module,exports){
+},{}],153:[function(require,module,exports){
 'use strict';
 
 // shim for using process in browser
@@ -28254,7 +30312,7 @@ process.umask = function () {
     return 0;
 };
 
-},{}],139:[function(require,module,exports){
+},{}],154:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -28467,7 +30525,7 @@ function pushAssignment(signal, parenthesis) {
   }
 }
 
-},{"spectra-nmr-utilities":164}],140:[function(require,module,exports){
+},{"spectra-nmr-utilities":179}],155:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -28496,7 +30554,7 @@ function _interopRequireDefault(obj) {
   return obj && obj.__esModule ? obj : { default: obj };
 }
 
-},{"./acs/acs.js":139,"./range/Ranges":141}],141:[function(require,module,exports){
+},{"./acs/acs.js":154,"./range/Ranges":156}],156:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -28798,7 +30856,7 @@ class Ranges extends Array {
 }
 exports.default = Ranges;
 
-},{"../acs/acs":139,"./peak2Vector":142,"lodash.round":41,"ml-stat":110,"spectra-nmr-utilities":164}],142:[function(require,module,exports){
+},{"../acs/acs":154,"./peak2Vector":157,"lodash.round":43,"ml-stat":112,"spectra-nmr-utilities":179}],157:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -28895,7 +30953,7 @@ function peak2Vector(peaks, options = {}) {
   return { x: x, y: y };
 }
 
-},{}],143:[function(require,module,exports){
+},{}],158:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -29389,7 +31447,7 @@ exports.default = NMR; // node packages/nmr-learning/src/index.js
 // node --experimental-modules  packages/nmr-predictor/example/predict.js
 // node   packages/nmr-predictor/example/predict.js ./node_modules/.bin/jest -o packages/nmr-predictor/
 
-},{"./SD":145,"./filters/Filters.js":146,"./peakPicking/impurities.js":157,"./peakPicking/peaks2Ranges":162,"brukerconverter":3,"nmr-simulation":116}],144:[function(require,module,exports){
+},{"./SD":160,"./filters/Filters.js":161,"./peakPicking/impurities.js":172,"./peakPicking/peaks2Ranges":177,"brukerconverter":5,"nmr-simulation":131}],159:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -29786,7 +31844,7 @@ class NMR2D extends _SD2.default {
 }
 exports.default = NMR2D;
 
-},{"./SD":145,"./filters/Filters.js":146,"./peakPicking/peakOptimizer":159,"./peakPicking/peakPicking2D":161,"brukerconverter":3,"ml-array-max":43,"ml-array-min":45,"nmr-simulation":116}],145:[function(require,module,exports){
+},{"./SD":160,"./filters/Filters.js":161,"./peakPicking/peakOptimizer":174,"./peakPicking/peakPicking2D":176,"brukerconverter":5,"ml-array-max":45,"ml-array-min":47,"nmr-simulation":131}],160:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -30900,7 +32958,7 @@ class SD {
 }
 exports.default = SD;
 
-},{"./jcampEncoder/JcampCreator":154,"./peakPicking/peakPicking":160,"jcampconverter":16,"ml-array-max":43,"ml-array-median":44,"ml-array-min":45,"ml-array-rescale":46,"ml-array-utils":49}],146:[function(require,module,exports){
+},{"./jcampEncoder/JcampCreator":169,"./peakPicking/peakPicking":175,"jcampconverter":18,"ml-array-max":45,"ml-array-median":46,"ml-array-min":47,"ml-array-rescale":48,"ml-array-utils":51}],161:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -30956,7 +33014,7 @@ function _interopRequireDefault(obj) {
   return obj && obj.__esModule ? obj : { default: obj };
 }
 
-},{"./absoluteValue":147,"./digitalFilter":148,"./fourierTransform":149,"./phaseCorrection":150,"./zeroFilling":152}],147:[function(require,module,exports){
+},{"./absoluteValue":162,"./digitalFilter":163,"./fourierTransform":164,"./phaseCorrection":165,"./zeroFilling":167}],162:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -30985,7 +33043,7 @@ function absoluteValue(spectrum) {
   return new _index.NMR(result);
 }
 
-},{"../index":153}],148:[function(require,module,exports){
+},{"../index":168}],163:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -31030,7 +33088,7 @@ function digitalFilter(spectraData, options) {
   return spectraData;
 }
 
-},{"./rotate":151}],149:[function(require,module,exports){
+},{"./rotate":166}],164:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -31128,7 +33186,7 @@ function updateSpectra(spectraData, spectraType) {
   // TODO update minmax in Y axis
 }
 
-},{"ml-fft":59}],150:[function(require,module,exports){
+},{"ml-fft":61}],165:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -31180,7 +33238,7 @@ function phaseCorrection(spectraData, phi0, phi1) {
   return spectraData;
 }
 
-},{}],151:[function(require,module,exports){
+},{}],166:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -31248,7 +33306,7 @@ function putInRange(value, nbPoints) {
   return value;
 }
 
-},{}],152:[function(require,module,exports){
+},{}],167:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -31292,7 +33350,7 @@ function zeroFilling(spectraData, zeroFillingX) {
   // @TODO implement zeroFillingY for 2D spectra
 }
 
-},{}],153:[function(require,module,exports){
+},{}],168:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -31345,7 +33403,7 @@ function _interopRequireDefault(obj) {
   return obj && obj.__esModule ? obj : { default: obj };
 }
 
-},{"./NMR":143,"./NMR2D":144,"./SD":145,"spectra-data-ranges":140}],154:[function(require,module,exports){
+},{"./NMR":158,"./NMR2D":159,"./SD":160,"spectra-data-ranges":155}],169:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -31729,7 +33787,7 @@ function simpleHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams)
   return outString;
 }
 
-},{"../../package.json":163,"./VectorEncoder":155}],155:[function(require,module,exports){
+},{"../../package.json":178,"./VectorEncoder":170}],170:[function(require,module,exports){
 'use strict';
 
 /**
@@ -32094,7 +34152,7 @@ module.exports = {
   differenceEncoding
 };
 
-},{}],156:[function(require,module,exports){
+},{}],171:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -32149,7 +34207,7 @@ function removeImpurities(peakList, options = {}) {
   return peakList;
 }
 
-},{"./impurities":157}],157:[function(require,module,exports){
+},{"./impurities":172}],172:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -34607,7 +36665,7 @@ exports.default = {
   }
 };
 
-},{}],158:[function(require,module,exports){
+},{}],173:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -35186,7 +37244,7 @@ function getArea(peak) {
   return Math.abs(peak.intensity * peak.width * 1.57); // 1.772453851);
 }
 
-},{}],159:[function(require,module,exports){
+},{}],174:[function(require,module,exports){
 "use strict";
 
 Object.defineProperty(exports, "__esModule", {
@@ -35486,7 +37544,7 @@ function alignSingleDimension(signals2D, references) {
   }
 }
 
-},{}],160:[function(require,module,exports){
+},{}],175:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -35559,7 +37617,7 @@ function extractPeaks(spectrum, options = {}) {
   return peakList.filter(p => p.y >= noiseLevel);
 }
 
-},{"ml-gsd":61}],161:[function(require,module,exports){
+},{"ml-gsd":63}],176:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -35730,7 +37788,7 @@ function createSignals2D(peaks, spectraData, tolerance) {
   return signals;
 }
 
-},{"./peakOptimizer":159,"ml-fft":59,"ml-matrix-peaks-finder":77,"ml-simple-clustering":107}],162:[function(require,module,exports){
+},{"./peakOptimizer":174,"ml-fft":61,"ml-matrix-peaks-finder":79,"ml-simple-clustering":109}],177:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -35987,7 +38045,7 @@ function computeArea(peak) {
   return Math.abs(peak.intensity * peak.width * 1.57); // todo add an option with this value: 1.772453851
 }
 
-},{"./ImpurityRemover":156,"./jAnalyzer":158,"lodash.round":41,"spectra-data-ranges":140}],163:[function(require,module,exports){
+},{"./ImpurityRemover":171,"./jAnalyzer":173,"lodash.round":43,"spectra-data-ranges":155}],178:[function(require,module,exports){
 module.exports={
   "_from": "spectra-data@^3.4.5",
   "_id": "spectra-data@3.4.5",
@@ -36075,7 +38133,7 @@ module.exports={
   "version": "3.4.5"
 }
 
-},{}],164:[function(require,module,exports){
+},{}],179:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -36237,14 +38295,260 @@ function compilePattern(signal, tolerance = 0.05) {
   return pattern;
 }
 
-},{}],165:[function(require,module,exports){
+},{}],180:[function(require,module,exports){
+(function (global){
+'use strict';
+
+/*! https://mths.be/utf8js v2.1.2 by @mathias */
+;(function (root) {
+
+	// Detect free variables `exports`
+	var freeExports = typeof exports == 'object' && exports;
+
+	// Detect free variable `module`
+	var freeModule = typeof module == 'object' && module && module.exports == freeExports && module;
+
+	// Detect free variable `global`, from Node.js or Browserified code,
+	// and use it as `root`
+	var freeGlobal = typeof global == 'object' && global;
+	if (freeGlobal.global === freeGlobal || freeGlobal.window === freeGlobal) {
+		root = freeGlobal;
+	}
+
+	/*--------------------------------------------------------------------------*/
+
+	var stringFromCharCode = String.fromCharCode;
+
+	// Taken from https://mths.be/punycode
+	function ucs2decode(string) {
+		var output = [];
+		var counter = 0;
+		var length = string.length;
+		var value;
+		var extra;
+		while (counter < length) {
+			value = string.charCodeAt(counter++);
+			if (value >= 0xD800 && value <= 0xDBFF && counter < length) {
+				// high surrogate, and there is a next character
+				extra = string.charCodeAt(counter++);
+				if ((extra & 0xFC00) == 0xDC00) {
+					// low surrogate
+					output.push(((value & 0x3FF) << 10) + (extra & 0x3FF) + 0x10000);
+				} else {
+					// unmatched surrogate; only append this code unit, in case the next
+					// code unit is the high surrogate of a surrogate pair
+					output.push(value);
+					counter--;
+				}
+			} else {
+				output.push(value);
+			}
+		}
+		return output;
+	}
+
+	// Taken from https://mths.be/punycode
+	function ucs2encode(array) {
+		var length = array.length;
+		var index = -1;
+		var value;
+		var output = '';
+		while (++index < length) {
+			value = array[index];
+			if (value > 0xFFFF) {
+				value -= 0x10000;
+				output += stringFromCharCode(value >>> 10 & 0x3FF | 0xD800);
+				value = 0xDC00 | value & 0x3FF;
+			}
+			output += stringFromCharCode(value);
+		}
+		return output;
+	}
+
+	function checkScalarValue(codePoint) {
+		if (codePoint >= 0xD800 && codePoint <= 0xDFFF) {
+			throw Error('Lone surrogate U+' + codePoint.toString(16).toUpperCase() + ' is not a scalar value');
+		}
+	}
+	/*--------------------------------------------------------------------------*/
+
+	function createByte(codePoint, shift) {
+		return stringFromCharCode(codePoint >> shift & 0x3F | 0x80);
+	}
+
+	function encodeCodePoint(codePoint) {
+		if ((codePoint & 0xFFFFFF80) == 0) {
+			// 1-byte sequence
+			return stringFromCharCode(codePoint);
+		}
+		var symbol = '';
+		if ((codePoint & 0xFFFFF800) == 0) {
+			// 2-byte sequence
+			symbol = stringFromCharCode(codePoint >> 6 & 0x1F | 0xC0);
+		} else if ((codePoint & 0xFFFF0000) == 0) {
+			// 3-byte sequence
+			checkScalarValue(codePoint);
+			symbol = stringFromCharCode(codePoint >> 12 & 0x0F | 0xE0);
+			symbol += createByte(codePoint, 6);
+		} else if ((codePoint & 0xFFE00000) == 0) {
+			// 4-byte sequence
+			symbol = stringFromCharCode(codePoint >> 18 & 0x07 | 0xF0);
+			symbol += createByte(codePoint, 12);
+			symbol += createByte(codePoint, 6);
+		}
+		symbol += stringFromCharCode(codePoint & 0x3F | 0x80);
+		return symbol;
+	}
+
+	function utf8encode(string) {
+		var codePoints = ucs2decode(string);
+		var length = codePoints.length;
+		var index = -1;
+		var codePoint;
+		var byteString = '';
+		while (++index < length) {
+			codePoint = codePoints[index];
+			byteString += encodeCodePoint(codePoint);
+		}
+		return byteString;
+	}
+
+	/*--------------------------------------------------------------------------*/
+
+	function readContinuationByte() {
+		if (byteIndex >= byteCount) {
+			throw Error('Invalid byte index');
+		}
+
+		var continuationByte = byteArray[byteIndex] & 0xFF;
+		byteIndex++;
+
+		if ((continuationByte & 0xC0) == 0x80) {
+			return continuationByte & 0x3F;
+		}
+
+		// If we end up here, it’s not a continuation byte
+		throw Error('Invalid continuation byte');
+	}
+
+	function decodeSymbol() {
+		var byte1;
+		var byte2;
+		var byte3;
+		var byte4;
+		var codePoint;
+
+		if (byteIndex > byteCount) {
+			throw Error('Invalid byte index');
+		}
+
+		if (byteIndex == byteCount) {
+			return false;
+		}
+
+		// Read first byte
+		byte1 = byteArray[byteIndex] & 0xFF;
+		byteIndex++;
+
+		// 1-byte sequence (no continuation bytes)
+		if ((byte1 & 0x80) == 0) {
+			return byte1;
+		}
+
+		// 2-byte sequence
+		if ((byte1 & 0xE0) == 0xC0) {
+			byte2 = readContinuationByte();
+			codePoint = (byte1 & 0x1F) << 6 | byte2;
+			if (codePoint >= 0x80) {
+				return codePoint;
+			} else {
+				throw Error('Invalid continuation byte');
+			}
+		}
+
+		// 3-byte sequence (may include unpaired surrogates)
+		if ((byte1 & 0xF0) == 0xE0) {
+			byte2 = readContinuationByte();
+			byte3 = readContinuationByte();
+			codePoint = (byte1 & 0x0F) << 12 | byte2 << 6 | byte3;
+			if (codePoint >= 0x0800) {
+				checkScalarValue(codePoint);
+				return codePoint;
+			} else {
+				throw Error('Invalid continuation byte');
+			}
+		}
+
+		// 4-byte sequence
+		if ((byte1 & 0xF8) == 0xF0) {
+			byte2 = readContinuationByte();
+			byte3 = readContinuationByte();
+			byte4 = readContinuationByte();
+			codePoint = (byte1 & 0x07) << 0x12 | byte2 << 0x0C | byte3 << 0x06 | byte4;
+			if (codePoint >= 0x010000 && codePoint <= 0x10FFFF) {
+				return codePoint;
+			}
+		}
+
+		throw Error('Invalid UTF-8 detected');
+	}
+
+	var byteArray;
+	var byteCount;
+	var byteIndex;
+	function utf8decode(byteString) {
+		byteArray = ucs2decode(byteString);
+		byteCount = byteArray.length;
+		byteIndex = 0;
+		var codePoints = [];
+		var tmp;
+		while ((tmp = decodeSymbol()) !== false) {
+			codePoints.push(tmp);
+		}
+		return ucs2encode(codePoints);
+	}
+
+	/*--------------------------------------------------------------------------*/
+
+	var utf8 = {
+		'version': '2.1.2',
+		'encode': utf8encode,
+		'decode': utf8decode
+	};
+
+	// Some AMD build optimizers, like r.js, check for specific condition patterns
+	// like the following:
+	if (typeof define == 'function' && typeof define.amd == 'object' && define.amd) {
+		define(function () {
+			return utf8;
+		});
+	} else if (freeExports && !freeExports.nodeType) {
+		if (freeModule) {
+			// in Node.js or RingoJS v0.8.0+
+			freeModule.exports = utf8;
+		} else {
+			// in Narwhal or RingoJS v0.7.0-
+			var object = {};
+			var hasOwnProperty = object.hasOwnProperty;
+			for (var key in utf8) {
+				hasOwnProperty.call(utf8, key) && (freeExports[key] = utf8[key]);
+			}
+		}
+	} else {
+		// in Rhino or a web browser
+		root.utf8 = utf8;
+	}
+})(undefined);
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],181:[function(require,module,exports){
 'use strict';
 
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object' && typeof arg.copy === 'function' && typeof arg.fill === 'function' && typeof arg.readUInt8 === 'function';
 };
 
-},{}],166:[function(require,module,exports){
+},{}],182:[function(require,module,exports){
 (function (process,global){
 'use strict';
 
@@ -36794,8 +39098,10 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":165,"_process":138,"inherits":13}],167:[function(require,module,exports){
+},{"./support/isBuffer":181,"_process":153,"inherits":15}],183:[function(require,module,exports){
 'use strict';
+
+var atob = require('atob');
 
 var types = require('./types');
 var defaults = require('./util/defaults');
@@ -36882,7 +39188,7 @@ function createFromJpath(doc, typeProcessor) {
 }
 
 function getFromJpath(doc, typeProcessor) {
-  if (!doc) return;
+  if (!doc) return undefined;
   var jpath = typeProcessor.jpath;
   if (!jpath) throw new Error('getFromJpath: undefined jpath argument');
   for (var i = 0; i < jpath.length; i++) {
@@ -36903,7 +39209,7 @@ function getTextContent(content) {
   }
 }
 
-},{"./types":168,"./types/common":169,"./util/defaults":188}],168:[function(require,module,exports){
+},{"./types":184,"./types/common":185,"./util/defaults":204,"atob":1}],184:[function(require,module,exports){
 'use strict';
 
 var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "elementAnalysis": require("./types/sample/elementAnalysis.js"), "genbank": require("./types/sample/genbank.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "iv": require("./types/sample/iv.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "uv": require("./types/sample/uv.js"), "xray": require("./types/sample/xray.js") } } };
@@ -36937,7 +39243,7 @@ module.exports = {
   }
 };
 
-},{"./types/common.js":169,"./types/default.js":170,"./types/nmr.js":171,"./types/reaction/general.js":172,"./types/sample/chromatogram.js":173,"./types/sample/differentialScanningCalorimetry.js":174,"./types/sample/elementAnalysis.js":175,"./types/sample/genbank.js":176,"./types/sample/general.js":177,"./types/sample/image.js":178,"./types/sample/ir.js":179,"./types/sample/iv.js":180,"./types/sample/mass.js":181,"./types/sample/nmr.js":182,"./types/sample/physical.js":183,"./types/sample/raman.js":184,"./types/sample/thermogravimetricAnalysis.js":185,"./types/sample/uv.js":186,"./types/sample/xray.js":187}],169:[function(require,module,exports){
+},{"./types/common.js":185,"./types/default.js":186,"./types/nmr.js":187,"./types/reaction/general.js":188,"./types/sample/chromatogram.js":189,"./types/sample/differentialScanningCalorimetry.js":190,"./types/sample/elementAnalysis.js":191,"./types/sample/genbank.js":192,"./types/sample/general.js":193,"./types/sample/image.js":194,"./types/sample/ir.js":195,"./types/sample/iv.js":196,"./types/sample/mass.js":197,"./types/sample/nmr.js":198,"./types/sample/physical.js":199,"./types/sample/raman.js":200,"./types/sample/thermogravimetricAnalysis.js":201,"./types/sample/uv.js":202,"./types/sample/xray.js":203}],185:[function(require,module,exports){
 'use strict';
 
 var common = module.exports = {};
@@ -36959,6 +39265,7 @@ common.getFilename = function (typeEntry) {
       return typeEntry[keys[i]].filename;
     }
   }
+  return undefined;
 };
 
 common.basenameFind = function (typeEntries, filename) {
@@ -37007,7 +39314,7 @@ common.getTargetProperty = function (filename) {
   }
 };
 
-},{}],170:[function(require,module,exports){
+},{}],186:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -37020,7 +39327,7 @@ module.exports = {
   }
 };
 
-},{}],171:[function(require,module,exports){
+},{}],187:[function(require,module,exports){
 'use strict';
 
 var nmrMetadata = require('nmr-metadata');
@@ -37029,7 +39336,7 @@ exports.getMetadata = nmrMetadata.parseJcamp;
 exports.getSpectrumType = nmrMetadata.getSpectrumType;
 exports.getNucleusFrom2DExperiment = nmrMetadata.getNucleusFrom2DExperiment;
 
-},{"nmr-metadata":114}],172:[function(require,module,exports){
+},{"nmr-metadata":129}],188:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -37050,18 +39357,33 @@ module.exports = {
   }
 };
 
-},{}],173:[function(require,module,exports){
+},{}],189:[function(require,module,exports){
 'use strict';
 
+var parseNetCDF = require('netcdf-gcms');
+
 var common = require('../common');
+
+function process(filename, content) {
+  var extension = common.getExtension(filename);
+  var metaData = {};
+  if (extension === 'cdf' || extension === 'netcdf') {
+    var parsed = parseNetCDF(content, { meta: true });
+    if (parsed.series.length === 1) {
+      metaData.detector = parsed.series[0].name;
+    }
+  }
+  return metaData;
+}
 
 module.exports = {
   jpath: ['spectra', 'chromatogram'],
   find: common.basenameFind,
-  getProperty: common.getTargetProperty
+  getProperty: common.getTargetProperty,
+  process
 };
 
-},{"../common":169}],174:[function(require,module,exports){
+},{"../common":185,"netcdf-gcms":119}],190:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37072,7 +39394,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],175:[function(require,module,exports){
+},{"../common":185}],191:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37083,7 +39405,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],176:[function(require,module,exports){
+},{"../common":185}],192:[function(require,module,exports){
 'use strict';
 
 var genbankParser = require('genbank-parser');
@@ -37099,7 +39421,7 @@ module.exports = {
     });
   },
 
-  getProperty(filename, content) {
+  getProperty(filename) {
     return common.getTargetProperty(filename);
   },
 
@@ -37115,7 +39437,7 @@ module.exports = {
   jpath: ['biology', 'nucleic']
 };
 
-},{"../common":169,"genbank-parser":6}],177:[function(require,module,exports){
+},{"../common":185,"genbank-parser":8}],193:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -37135,7 +39457,7 @@ module.exports = {
   }
 };
 
-},{}],178:[function(require,module,exports){
+},{}],194:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37146,7 +39468,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],179:[function(require,module,exports){
+},{"../common":185}],195:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37157,7 +39479,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],180:[function(require,module,exports){
+},{"../common":185}],196:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37168,7 +39490,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],181:[function(require,module,exports){
+},{"../common":185}],197:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37179,7 +39501,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],182:[function(require,module,exports){
+},{"../common":185}],198:[function(require,module,exports){
 'use strict';
 
 var isFid = /[^a-z]fid[^a-z]/i;
@@ -37222,7 +39544,7 @@ module.exports = {
 var reg2 = /(.*)\.(.*)/;
 
 function getReference(filename) {
-  if (typeof filename === 'undefined') return;
+  if (typeof filename === 'undefined') return undefined;
 
   var reference = common.getBasename(filename);
   reference = reference.replace(reg2, '$1');
@@ -37233,7 +39555,7 @@ function getReference(filename) {
   return reference;
 }
 
-},{"../common":169,"../nmr":171}],183:[function(require,module,exports){
+},{"../common":185,"../nmr":187}],199:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -37243,7 +39565,7 @@ module.exports = {
   }
 };
 
-},{}],184:[function(require,module,exports){
+},{}],200:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37254,7 +39576,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],185:[function(require,module,exports){
+},{"../common":185}],201:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37265,7 +39587,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],186:[function(require,module,exports){
+},{"../common":185}],202:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37276,7 +39598,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],187:[function(require,module,exports){
+},{"../common":185}],203:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -37287,11 +39609,13 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":169}],188:[function(require,module,exports){
+},{"../common":185}],204:[function(require,module,exports){
 /*
     Modified from https://github.com/justmoon/node-extend
     Copyright (c) 2014 Stefan Thomas
  */
+
+/* eslint prefer-rest-params: 0 */
 
 'use strict';
 
@@ -37321,7 +39645,9 @@ var isPlainObject = function isPlainObject(obj) {
   // Own properties are enumerated firstly, so to speed up,
   // if last one is own, then all properties are own.
   var key;
-  for (key in obj) {/**/}
+  for (key in obj) {
+    /**/
+  }
 
   return typeof key === 'undefined' || hasOwn.call(obj, key);
 };
@@ -37385,5 +39711,5 @@ module.exports = function defaults() {
   return target;
 };
 
-},{}]},{},[167])(167)
+},{}]},{},[183])(183)
 });
