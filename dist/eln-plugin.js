@@ -39101,17 +39101,14 @@ function hasOwnProperty(obj, prop) {
 },{"./support/isBuffer":181,"_process":153,"inherits":15}],183:[function(require,module,exports){
 'use strict';
 
-var atob = require('atob');
-
 var types = require('./types');
 var defaults = require('./util/defaults');
 var util = require('./types/common');
 
 module.exports = {
-  util: util,
+  util,
   process: function process(type, doc, content, customMetadata) {
     var filename = content.filename;
-    var fileContent = getTextContent(content);
 
     var typeProcessor = types.getType(type);
     var arr = createFromJpath(doc, typeProcessor);
@@ -39120,9 +39117,8 @@ module.exports = {
     if (property === undefined) {
       throw new Error(`Could not get property of ${filename} (type ${type}`);
     }
-    var metadata = typeProcessor.process(filename, fileContent);
+    var metadata = typeProcessor.process(filename, content);
 
-    // process
     metadata[property] = {
       filename: module.exports.getFilename(type, content.filename)
     };
@@ -39200,16 +39196,7 @@ function getFromJpath(doc, typeProcessor) {
   return doc;
 }
 
-function getTextContent(content) {
-  switch (content.encoding) {
-    case 'base64':
-      return atob(content.content);
-    default:
-      return content.content;
-  }
-}
-
-},{"./types":184,"./types/common":185,"./util/defaults":204,"atob":1}],184:[function(require,module,exports){
+},{"./types":184,"./types/common":185,"./util/defaults":204}],184:[function(require,module,exports){
 'use strict';
 
 var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "elementAnalysis": require("./types/sample/elementAnalysis.js"), "genbank": require("./types/sample/genbank.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "iv": require("./types/sample/iv.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "uv": require("./types/sample/uv.js"), "xray": require("./types/sample/xray.js") } } };
@@ -39245,6 +39232,11 @@ module.exports = {
 
 },{"./types/common.js":185,"./types/default.js":186,"./types/nmr.js":187,"./types/reaction/general.js":188,"./types/sample/chromatogram.js":189,"./types/sample/differentialScanningCalorimetry.js":190,"./types/sample/elementAnalysis.js":191,"./types/sample/genbank.js":192,"./types/sample/general.js":193,"./types/sample/image.js":194,"./types/sample/ir.js":195,"./types/sample/iv.js":196,"./types/sample/mass.js":197,"./types/sample/nmr.js":198,"./types/sample/physical.js":199,"./types/sample/raman.js":200,"./types/sample/thermogravimetricAnalysis.js":201,"./types/sample/uv.js":202,"./types/sample/xray.js":203}],185:[function(require,module,exports){
 'use strict';
+
+var atob = require('atob');
+
+var _require = require('base64-js'),
+    toByteArray = _require.toByteArray;
 
 var common = module.exports = {};
 
@@ -39314,7 +39306,25 @@ common.getTargetProperty = function (filename) {
   }
 };
 
-},{}],186:[function(require,module,exports){
+common.getTextContent = function getTextContent(content) {
+  switch (content.encoding) {
+    case 'base64':
+      return atob(content.content);
+    default:
+      return content.content;
+  }
+};
+
+common.getBufferContent = function getBufferContent(content) {
+  switch (content.encoding) {
+    case 'base64':
+      return toByteArray(content.content);
+    default:
+      return content.content;
+  }
+};
+
+},{"atob":1,"base64-js":2}],186:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39368,7 +39378,8 @@ function process(filename, content) {
   var extension = common.getExtension(filename);
   var metaData = {};
   if (extension === 'cdf' || extension === 'netcdf') {
-    var parsed = parseNetCDF(content, { meta: true });
+    var bufferContent = common.getBufferContent(content);
+    var parsed = parseNetCDF(bufferContent, { meta: true });
     if (parsed.series.length === 1) {
       metaData.detector = parsed.series[0].name;
     }
@@ -39426,8 +39437,9 @@ module.exports = {
   },
 
   process(filename, content) {
+    var textContent = common.getTextContent(content);
     var toReturn = void 0;
-    var parsed = genbankParser(content);
+    var parsed = genbankParser(textContent);
     toReturn = {
       seq: parsed.map(p => p.parsedSequence)
     };
@@ -39533,7 +39545,8 @@ module.exports = {
     var extension = common.getExtension(filename);
     var metaData = {};
     if (extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
-      metaData = nmrLib.getMetadata(content);
+      var textContent = common.getTextContent(content);
+      metaData = nmrLib.getMetadata(textContent);
     }
     return metaData;
   },
