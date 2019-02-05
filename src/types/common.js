@@ -71,6 +71,20 @@ common.getTargetProperty = function (filename) {
   }
 };
 
+common.getContent = function (content, target) {
+  switch (target) {
+    case 'text':
+    case 'xml':
+    case 'pdb':
+    case 'jcamp':
+    case 'cif':
+    case 'genbank':
+      return common.getTextContent(content);
+    default:
+      return common.getBufferContent(content);
+  }
+};
+
 common.getTextContent = function getTextContent(content) {
   switch (content.encoding) {
     case 'base64':

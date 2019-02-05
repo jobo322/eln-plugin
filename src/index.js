@@ -6,7 +6,16 @@ const util = require('./types/common');
 
 module.exports = {
   util,
-  process: function (type, doc, content, customMetadata) {
+  /**
+   *
+   * @param {*} type
+   * @param {*} doc
+   * @param {*} content
+   * @param {*} customMetadata
+   * @param {object} [options={}]
+   * @param {boolean} [options.keepContent=false]
+   */
+  process: function (type, doc, content, customMetadata, options = {}) {
     let filename = content.filename;
 
     const typeProcessor = types.getType(type);
@@ -21,6 +30,10 @@ module.exports = {
     metadata[property] = {
       filename: module.exports.getFilename(type, content.filename)
     };
+
+    if (options.keepContent) {
+      metadata[property].data = util.getContent(content, property);
+    }
 
     if (entry) {
       Object.assign(entry, metadata, customMetadata);
