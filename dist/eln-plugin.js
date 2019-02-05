@@ -39107,7 +39107,16 @@ var util = require('./types/common');
 
 module.exports = {
   util,
-  process: function process(type, doc, content, customMetadata) {
+  /**
+   *
+   * @param {*} type
+   * @param {*} doc
+   * @param {*} content
+   * @param {*} customMetadata
+   * @param {object} [options={}]
+   * @param {boolean} [options.keepContent=false]
+   */
+  process: function process(type, doc, content, customMetadata, options = {}) {
     var filename = content.filename;
 
     var typeProcessor = types.getType(type);
@@ -39122,6 +39131,10 @@ module.exports = {
     metadata[property] = {
       filename: module.exports.getFilename(type, content.filename)
     };
+
+    if (options.keepContent) {
+      metadata[property].data = util.getContent(content, property);
+    }
 
     if (entry) {
       Object.assign(entry, metadata, customMetadata);
@@ -39303,6 +39316,20 @@ common.getTargetProperty = function (filename) {
       return 'genbank';
     default:
       return 'file';
+  }
+};
+
+common.getContent = function (content, target) {
+  switch (target) {
+    case 'text':
+    case 'xml':
+    case 'pdb':
+    case 'jcamp':
+    case 'cif':
+    case 'genbank':
+      return common.getTextContent(content);
+    default:
+      return common.getBufferContent(content);
   }
 };
 
