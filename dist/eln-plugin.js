@@ -39231,10 +39231,10 @@ function getFromJpath(doc, typeProcessor) {
   return doc;
 }
 
-},{"./types":184,"./types/common":185,"./util/defaults":204}],184:[function(require,module,exports){
+},{"./types":184,"./types/common":185,"./util/defaults":205}],184:[function(require,module,exports){
 'use strict';
 
-var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "elementAnalysis": require("./types/sample/elementAnalysis.js"), "genbank": require("./types/sample/genbank.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "iv": require("./types/sample/iv.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "uv": require("./types/sample/uv.js"), "xray": require("./types/sample/xray.js") } } };
+var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "cyclicVoltammetry": require("./types/sample/cyclicVoltammetry.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "elementAnalysis": require("./types/sample/elementAnalysis.js"), "genbank": require("./types/sample/genbank.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "iv": require("./types/sample/iv.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "uv": require("./types/sample/uv.js"), "xray": require("./types/sample/xray.js") } } };
 
 module.exports = {
   getType(type, kind, custom) {
@@ -39265,7 +39265,7 @@ module.exports = {
   }
 };
 
-},{"./types/common.js":185,"./types/default.js":186,"./types/nmr.js":187,"./types/reaction/general.js":188,"./types/sample/chromatogram.js":189,"./types/sample/differentialScanningCalorimetry.js":190,"./types/sample/elementAnalysis.js":191,"./types/sample/genbank.js":192,"./types/sample/general.js":193,"./types/sample/image.js":194,"./types/sample/ir.js":195,"./types/sample/iv.js":196,"./types/sample/mass.js":197,"./types/sample/nmr.js":198,"./types/sample/physical.js":199,"./types/sample/raman.js":200,"./types/sample/thermogravimetricAnalysis.js":201,"./types/sample/uv.js":202,"./types/sample/xray.js":203}],185:[function(require,module,exports){
+},{"./types/common.js":185,"./types/default.js":186,"./types/nmr.js":187,"./types/reaction/general.js":188,"./types/sample/chromatogram.js":189,"./types/sample/cyclicVoltammetry.js":190,"./types/sample/differentialScanningCalorimetry.js":191,"./types/sample/elementAnalysis.js":192,"./types/sample/genbank.js":193,"./types/sample/general.js":194,"./types/sample/image.js":195,"./types/sample/ir.js":196,"./types/sample/iv.js":197,"./types/sample/mass.js":198,"./types/sample/nmr.js":199,"./types/sample/physical.js":200,"./types/sample/raman.js":201,"./types/sample/thermogravimetricAnalysis.js":202,"./types/sample/uv.js":203,"./types/sample/xray.js":204}],185:[function(require,module,exports){
 'use strict';
 
 var atob = require('atob');
@@ -39449,7 +39449,7 @@ module.exports = {
 var common = require('../common');
 
 module.exports = {
-  jpath: ['spectra', 'differentialScanningCalorimetry'],
+  jpath: ['spectra', 'cyclicVoltammetry'],
   find: common.basenameFind,
   getProperty: common.getTargetProperty
 };
@@ -39460,12 +39460,23 @@ module.exports = {
 var common = require('../common');
 
 module.exports = {
-  jpath: ['spectra', 'elementalAnalysis'],
+  jpath: ['spectra', 'differentialScanningCalorimetry'],
   find: common.basenameFind,
   getProperty: common.getTargetProperty
 };
 
 },{"../common":185}],192:[function(require,module,exports){
+'use strict';
+
+var common = require('../common');
+
+module.exports = {
+  jpath: ['spectra', 'elementalAnalysis'],
+  find: common.basenameFind,
+  getProperty: common.getTargetProperty
+};
+
+},{"../common":185}],193:[function(require,module,exports){
 'use strict';
 
 var genbankParser = require('genbank-parser');
@@ -39498,7 +39509,7 @@ module.exports = {
   jpath: ['biology', 'nucleic']
 };
 
-},{"../common":185,"genbank-parser":8}],193:[function(require,module,exports){
+},{"../common":185,"genbank-parser":8}],194:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39518,7 +39529,7 @@ module.exports = {
   }
 };
 
-},{}],194:[function(require,module,exports){
+},{}],195:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39529,7 +39540,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],195:[function(require,module,exports){
+},{"../common":185}],196:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39540,7 +39551,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],196:[function(require,module,exports){
+},{"../common":185}],197:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39551,7 +39562,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],197:[function(require,module,exports){
+},{"../common":185}],198:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39562,7 +39573,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],198:[function(require,module,exports){
+},{"../common":185}],199:[function(require,module,exports){
 'use strict';
 
 var isFid = /[^a-z]fid[^a-z]/i;
@@ -39617,7 +39628,7 @@ function getReference(filename) {
   return reference;
 }
 
-},{"../common":185,"../nmr":187}],199:[function(require,module,exports){
+},{"../common":185,"../nmr":187}],200:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39627,7 +39638,7 @@ module.exports = {
   }
 };
 
-},{}],200:[function(require,module,exports){
+},{}],201:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39638,7 +39649,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],201:[function(require,module,exports){
+},{"../common":185}],202:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39649,7 +39660,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],202:[function(require,module,exports){
+},{"../common":185}],203:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39660,7 +39671,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],203:[function(require,module,exports){
+},{"../common":185}],204:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39671,7 +39682,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],204:[function(require,module,exports){
+},{"../common":185}],205:[function(require,module,exports){
 /*
     Modified from https://github.com/justmoon/node-extend
     Copyright (c) 2014 Stefan Thomas
