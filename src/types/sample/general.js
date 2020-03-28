@@ -11,6 +11,7 @@ module.exports = {
       molfile: '',
       mw: 0,
       keyword: [],
+      meta: {},
       sequence: '',
       kind: ''
     };
