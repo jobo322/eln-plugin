@@ -1,6 +1,6 @@
 {
   "name": "eln-plugin",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "description": "Extract metainfo from chemical file formats into a well defined json structure",
   "main": "src/index.js",
   "scripts": {
@@ -41,6 +41,6 @@
     "bulk-require": "^1.0.1",
     "genbank-parser": "^0.2.0",
     "netcdf-gcms": "^1.4.0",
-    "nmr-metadata": "^2.2.0"
+    "nmr-metadata": "^2.4.0"
   }
 }

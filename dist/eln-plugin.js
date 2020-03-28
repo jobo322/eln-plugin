@@ -48,7 +48,7 @@
 })(window);
 
 }).call(this,require("buffer").Buffer)
-},{"buffer":6}],2:[function(require,module,exports){
+},{"buffer":7}],2:[function(require,module,exports){
 'use strict';
 
 exports.byteLength = byteLength;
@@ -189,693 +189,571 @@ module.exports = function (haystack, needle, comparator, low, high) {
   }
 
   while (low <= high) {
-    /* Note that "(low + high) >>> 1" may overflow, and results in a typecast
-     * to double (which gives the wrong results). */
-    mid = low + (high - low >> 1);
+    // The naive `low + high >>> 1` could fail for array lengths > 2**31
+    // because `>>>` converts its operands to int32. `low + (high - low >>> 1)`
+    // works for array lengths <= 2**32-1 which is also Javascript's max array
+    // length.
+    mid = low + (high - low >>> 1);
     cmp = +comparator(haystack[mid], needle, mid, haystack);
 
-    /* Too low. */
+    // Too low.
     if (cmp < 0.0) low = mid + 1;
 
-    /* Too high. */
+    // Too high.
     else if (cmp > 0.0) high = mid - 1;
 
-      /* Key found. */
+      // Key found.
       else return mid;
   }
 
-  /* Key not found. */
+  // Key not found.
   return ~low;
 };
 
 },{}],4:[function(require,module,exports){
-'use strict';
-
-var defaultByteLength = 1024 * 8;
-var charArray = [];
-
-class IOBuffer {
-    constructor(data, options) {
-        options = options || {};
-        if (data === undefined) {
-            data = defaultByteLength;
-        }
-        if (typeof data === 'number') {
-            data = new ArrayBuffer(data);
-        }
-        var length = data.byteLength;
-        var offset = options.offset ? options.offset >>> 0 : 0;
-        if (data.buffer) {
-            length = data.byteLength - offset;
-            if (data.byteLength !== data.buffer.byteLength) {
-                // Node.js buffer from pool
-                data = data.buffer.slice(data.byteOffset + offset, data.byteOffset + data.byteLength);
-            } else if (offset) {
-                data = data.buffer.slice(offset);
-            } else {
-                data = data.buffer;
-            }
-        }
-        this.buffer = data;
-        this.length = length;
-        this.byteLength = length;
-        this.byteOffset = 0;
-        this.offset = 0;
-        this.littleEndian = true;
-        this._data = new DataView(this.buffer);
-        this._increment = length || defaultByteLength;
-        this._mark = 0;
-    }
-
-    available(byteLength) {
-        if (byteLength === undefined) byteLength = 1;
-        return this.offset + byteLength <= this.length;
-    }
-
-    isLittleEndian() {
-        return this.littleEndian;
-    }
-
-    setLittleEndian() {
-        this.littleEndian = true;
-    }
-
-    isBigEndian() {
-        return !this.littleEndian;
-    }
-
-    setBigEndian() {
-        this.littleEndian = false;
-    }
-
-    skip(n) {
-        if (n === undefined) n = 1;
-        this.offset += n;
-    }
-
-    seek(offset) {
-        this.offset = offset;
-    }
-
-    mark() {
-        this._mark = this.offset;
-    }
-
-    reset() {
-        this.offset = this._mark;
-    }
-
-    rewind() {
-        this.offset = 0;
-    }
-
-    ensureAvailable(byteLength) {
-        if (byteLength === undefined) byteLength = 1;
-        if (!this.available(byteLength)) {
-            var newIncrement = this._increment + this._increment;
-            this._increment = newIncrement;
-            var newLength = this.length + newIncrement;
-            var newArray = new Uint8Array(newLength);
-            newArray.set(new Uint8Array(this.buffer));
-            this.buffer = newArray.buffer;
-            this.length = newLength;
-            this._data = new DataView(this.buffer);
-        }
-    }
-
-    readBoolean() {
-        return this.readUint8() !== 0;
-    }
-
-    readInt8() {
-        return this._data.getInt8(this.offset++);
-    }
-
-    readUint8() {
-        return this._data.getUint8(this.offset++);
-    }
-
-    readByte() {
-        return this.readUint8();
-    }
-
-    readBytes(n) {
-        if (n === undefined) n = 1;
-        var bytes = new Uint8Array(n);
-        for (var i = 0; i < n; i++) {
-            bytes[i] = this.readByte();
-        }
-        return bytes;
-    }
-
-    readInt16() {
-        var value = this._data.getInt16(this.offset, this.littleEndian);
-        this.offset += 2;
-        return value;
-    }
-
-    readUint16() {
-        var value = this._data.getUint16(this.offset, this.littleEndian);
-        this.offset += 2;
-        return value;
-    }
-
-    readInt32() {
-        var value = this._data.getInt32(this.offset, this.littleEndian);
-        this.offset += 4;
-        return value;
-    }
-
-    readUint32() {
-        var value = this._data.getUint32(this.offset, this.littleEndian);
-        this.offset += 4;
-        return value;
-    }
-
-    readFloat32() {
-        var value = this._data.getFloat32(this.offset, this.littleEndian);
-        this.offset += 4;
-        return value;
-    }
-
-    readFloat64() {
-        var value = this._data.getFloat64(this.offset, this.littleEndian);
-        this.offset += 8;
-        return value;
-    }
-
-    readChar() {
-        return String.fromCharCode(this.readInt8());
-    }
-
-    readChars(n) {
-        if (n === undefined) n = 1;
-        charArray.length = n;
-        for (var i = 0; i < n; i++) {
-            charArray[i] = this.readChar();
-        }
-        return charArray.join('');
-    }
-
-    writeBoolean(bool) {
-        this.writeUint8(bool ? 0xff : 0x00);
-    }
-
-    writeInt8(value) {
-        this.ensureAvailable(1);
-        this._data.setInt8(this.offset++, value);
-    }
-
-    writeUint8(value) {
-        this.ensureAvailable(1);
-        this._data.setUint8(this.offset++, value);
-    }
-
-    writeByte(value) {
-        this.writeUint8(value);
-    }
-
-    writeBytes(bytes) {
-        this.ensureAvailable(bytes.length);
-        for (var i = 0; i < bytes.length; i++) {
-            this._data.setUint8(this.offset++, bytes[i]);
-        }
-    }
-
-    writeInt16(value) {
-        this.ensureAvailable(2);
-        this._data.setInt16(this.offset, value, this.littleEndian);
-        this.offset += 2;
-    }
-
-    writeUint16(value) {
-        this.ensureAvailable(2);
-        this._data.setUint16(this.offset, value, this.littleEndian);
-        this.offset += 2;
-    }
-
-    writeInt32(value) {
-        this.ensureAvailable(4);
-        this._data.setInt32(this.offset, value, this.littleEndian);
-        this.offset += 4;
-    }
-
-    writeUint32(value) {
-        this.ensureAvailable(4);
-        this._data.setUint32(this.offset, value, this.littleEndian);
-        this.offset += 4;
-    }
-
-    writeFloat32(value) {
-        this.ensureAvailable(4);
-        this._data.setFloat32(this.offset, value, this.littleEndian);
-        this.offset += 4;
-    }
-
-    writeFloat64(value) {
-        this.ensureAvailable(8);
-        this._data.setFloat64(this.offset, value, this.littleEndian);
-        this.offset += 8;
-    }
-
-    writeChar(str) {
-        this.writeUint8(str.charCodeAt(0));
-    }
-
-    writeChars(str) {
-        for (var i = 0; i < str.length; i++) {
-            this.writeUint8(str.charCodeAt(i));
-        }
-    }
-
-    toArray() {
-        return new Uint8Array(this.buffer, 0, this.offset);
-    }
-}
-
-module.exports = IOBuffer;
-
-},{}],5:[function(require,module,exports){
 "use strict";
 
-var Converter = require("jcampconverter");
-var IOBuffer = require('iobuffer');
-var JSZip = require("jszip");
+},{}],5:[function(require,module,exports){
+'use strict';
 
-// constants
-var BINARY = 1;
-var TEXT = 2;
+function getConverter() {
+  // the following RegExp can only be used for XYdata, some peakTables have values with a "E-5" ...
+  var ntuplesSeparator = /[, \t]+/;
+  var GC_MS_FIELDS = ['TIC', '.RIC', 'SCANNUMBER'];
 
-function readZIP(zipFile, options) {
-    options = options || {};
+  function convertToFloatArray(stringArray) {
+    var floatArray = [];
+    for (var i = 0; i < stringArray.length; i++) {
+      floatArray.push(parseFloat(stringArray[i]));
+    }
+    return floatArray;
+  }
 
-    var zip = new JSZip();
-    zip.load(zipFile, options);
+  class Spectrum {}
 
-    var files = {
-        'ser': BINARY,
-        'fid': BINARY,
-        'acqus': TEXT,
-        'acqu2s': TEXT,
-        'procs': TEXT,
-        'proc2s': TEXT,
-        '1r': BINARY,
-        '1i': BINARY,
-        '2rr': BINARY
-    };
-    var folders = zip.filter(function (relativePath, file) {
-        if (relativePath.indexOf("ser") >= 0 || relativePath.indexOf("fid") >= 0 || relativePath.indexOf("1r") >= 0 || relativePath.indexOf("2rr") >= 0) {
-            return true;
-        }
+  var defaultOptions = {
+    keepRecordsRegExp: /^$/,
+    xy: false,
+    withoutXY: false,
+    chromatogram: false,
+    keepSpectra: false,
+    noContour: false,
+    nbContourLevels: 7,
+    noiseMultiplier: 5,
+    profiling: false
+  };
 
-        return false;
-    });
+  function convert(jcamp, options) {
+    options = Object.assign({}, defaultOptions, options);
 
-    var spectra = new Array(folders.length);
+    var wantXY = !options.withoutXY;
 
-    for (var i = 0; i < folders.length; ++i) {
-        var len = folders[i].name.length;
-        var name = folders[i].name;
-        name = name.substr(0, name.lastIndexOf("/") + 1);
-        var currFolder = zip.folder(name);
-        var currFiles = currFolder.filter(function (relativePath, file) {
-            return files[relativePath] ? true : false;
-        });
-        var brukerFiles = {};
-        if (name.indexOf("pdata") >= 0) {
-            brukerFiles['acqus'] = zip.file(name.replace(/pdata\/[0-9]\//, "acqus")).asText();
-        }
-        for (var j = 0; j < currFiles.length; ++j) {
-            var idx = currFiles[j].name.lastIndexOf('/');
-            var name = currFiles[j].name.substr(idx + 1);
-            if (files[name] === BINARY) {
-                brukerFiles[name] = new IOBuffer(currFiles[j].asArrayBuffer());
-            } else {
-                brukerFiles[name] = currFiles[j].asText();
+    var start = Date.now();
+
+    var ntuples = {};
+    var ldr, dataLabel, dataValue, ldrs;
+    var position, endLine, infos;
+
+    var result = {};
+    result.profiling = options.profiling ? [] : false;
+    result.logs = [];
+    var spectra = [];
+    result.spectra = spectra;
+    result.info = {};
+    var spectrum = new Spectrum();
+
+    if (!(typeof jcamp === 'string')) {
+      throw new TypeError('the JCAMP should be a string');
+    }
+
+    if (result.profiling) {
+      result.profiling.push({
+        action: 'Before split to LDRS',
+        time: Date.now() - start
+      });
+    }
+
+    ldrs = jcamp.split(/[\r\n]+##/);
+
+    if (result.profiling) {
+      result.profiling.push({
+        action: 'Split to LDRS',
+        time: Date.now() - start
+      });
+    }
+
+    if (ldrs[0]) ldrs[0] = ldrs[0].replace(/^[\r\n ]*##/, '');
+
+    for (var i = 0; i < ldrs.length; i++) {
+      ldr = ldrs[i];
+      // This is a new LDR
+      position = ldr.indexOf('=');
+      if (position > 0) {
+        dataLabel = ldr.substring(0, position);
+        dataValue = ldr.substring(position + 1).trim();
+      } else {
+        dataLabel = ldr;
+        dataValue = '';
+      }
+      dataLabel = dataLabel.replace(/[_ -]/g, '').toUpperCase();
+
+      if (dataLabel === 'DATATABLE') {
+        endLine = dataValue.indexOf('\n');
+        if (endLine === -1) endLine = dataValue.indexOf('\r');
+        if (endLine > 0) {
+          var xIndex = -1;
+          var yIndex = -1;
+          // ##DATA TABLE= (X++(I..I)), XYDATA
+          // We need to find the variables
+
+          infos = dataValue.substring(0, endLine).split(/[ ,;\t]+/);
+          if (infos[0].indexOf('++') > 0) {
+            var firstVariable = infos[0].replace(/.*\(([a-zA-Z0-9]+)\+\+.*/, '$1');
+            var secondVariable = infos[0].replace(/.*\.\.([a-zA-Z0-9]+).*/, '$1');
+            xIndex = ntuples.symbol.indexOf(firstVariable);
+            yIndex = ntuples.symbol.indexOf(secondVariable);
+          }
+
+          if (xIndex === -1) xIndex = 0;
+          if (yIndex === -1) yIndex = 0;
+
+          if (ntuples.first) {
+            if (ntuples.first.length > xIndex) {
+              spectrum.firstX = ntuples.first[xIndex];
             }
-        }
-        //console.log(folders[i].name);
-        spectra[i] = { "filename": folders[i].name, value: convert(brukerFiles, options) };
-    }
-
-    return spectra;
-}
-
-function convert(brukerFiles, options) {
-    options = options || {};
-    var start = new Date();
-    var result;
-    if (brukerFiles['ser'] || brukerFiles['2rr']) {
-        result = convert2D(brukerFiles, options);
-    } else if (brukerFiles['1r'] || brukerFiles['1i'] || brukerFiles['fid']) {
-        result = convert1D(brukerFiles, options);
-    } else {
-        throw new RangeError('The current files are invalid');
-    }
-
-    if (result.twoD && !options.noContours) {
-        //console.log("Countours");
-        add2D(result);
-        if (result.profiling) result.profiling.push({
-            action: 'Finished countour plot calculation',
-            time: new Date() - start
-        });
-        if (!options.keepSpectra) {
-            delete result.spectra;
-        }
-    }
-
-    var spectra = result.spectra;
-    if (options.xy) {
-        // the spectraData should not be a oneD array but an object with x and y
-        if (spectra.length > 0) {
-            for (var i = 0; i < spectra.length; i++) {
-                var spectrum = spectra[i];
-                if (spectrum.data.length > 0) {
-                    for (var j = 0; j < spectrum.data.length; j++) {
-                        var data = spectrum.data[j];
-                        var newData = { x: new Array(data.length / 2), y: new Array(data.length / 2) };
-                        for (var k = 0; k < data.length; k = k + 2) {
-                            newData.x[k / 2] = data[k];
-                            newData.y[k / 2] = data[k + 1];
-                        }
-                        spectrum.data[j] = newData;
-                    }
-                }
+            if (ntuples.first.length > yIndex) {
+              spectrum.firstY = ntuples.first[yIndex];
             }
-        }
-    }
-
-    return result;
-}
-
-function convert1D(files, options) {
-    var result = parseData(files["procs"], options);
-    var temp = parseData(files['acqus'], options);
-
-    var keys = Object.keys(temp.info);
-    for (var i = 0; i < keys.length; i++) {
-        var currKey = keys[i];
-        if (result.info[currKey] === undefined) {
-            result.info[currKey] = temp.info[currKey];
-        }
-    }
-
-    if (files['1r'] || files['1i']) {
-        if (files['1r']) {
-            setXYSpectrumData(files['1r'], result, '1r', true);
-        }
-        if (files['1i']) {
-            setXYSpectrumData(files['1i'], result, '1i', false);
-        }
-    } else if (files['fid']) {
-        setFIDSpectrumData(files['fid'], result);
-    }
-
-    return result;
-}
-
-function convert2D(files, options) {
-    var SF, SW_p, SW, offset;
-    if (files['2rr']) {
-        var result = parseData(files['procs'], options);
-        var temp = parseData(files['acqus'], options);
-
-        var keys = Object.keys(temp.info);
-        for (var i = 0; i < keys.length; i++) {
-            var currKey = keys[i];
-            if (result.info[currKey] === undefined) {
-                result.info[currKey] = temp.info[currKey];
+          }
+          if (ntuples.last) {
+            if (ntuples.last.length > xIndex) {
+              spectrum.lastX = ntuples.last[xIndex];
             }
-        }
-
-        temp = parseData(files['proc2s'], options);
-        result.info.nbSubSpectra = temp.info['$SI'] = parseInt(temp.info['$SI']);
-        SF = temp.info['$SF'] = parseFloat(temp.info['$SF']);
-        SW_p = temp.info['$SWP'] = parseFloat(temp.info['$SWP']);
-        offset = temp.info['$OFFSET'] = parseFloat(temp.info['$OFFSET']);
-    } else if (files['ser']) {
-        result = parseData(files['acqus'], options);
-        temp = parseData(files['acqu2s'], options);
-        result.info.nbSubSpectra = temp.info['$SI'] = parseInt(temp.info['$TD']);
-        result.info['$SI'] = parseInt(result.info['$TD']);
-        //SW_p = temp.info['$SWH'] = parseFloat(temp.info['$SWH']);
-
-        SW_p = temp.info["$SW"];
-
-        result.info["$SWP"] = result.info["$SWH"];
-        result.info["$SF"] = parseFloat(temp.info['$SFO1']);
-        result.info['$OFFSET'] = 0;
-        SF = temp.info['$SFO1'] = parseFloat(temp.info['$SFO1']);
-        SF = 1;
-        offset = 0;
-        result.info['$AXNUC'] = result.info['$NUC1'];
-        temp.info['$AXNUC'] = temp.info['$NUC1'];
-    }
-
-    result.info.firstY = offset;
-    result.info.lastY = offset - SW_p / SF;
-    result.info['$BF2'] = SF;
-    result.info['$SFO1'] = SF;
-
-    var nbSubSpectra = result.info.nbSubSpectra;
-    var pageValue = result.info.firstY;
-    var deltaY = (result.info.lastY - result.info.firstY) / (nbSubSpectra - 1);
-
-    if (files['2rr']) {
-        setXYSpectrumData(files['2rr'], result, '2rr', true);
-    } else if (files['ser']) {
-        setFIDSpectrumData(files['ser'], result, 'ser', true);
-    }
-
-    for (var i = 0; i < nbSubSpectra; i++) {
-        pageValue += deltaY;
-        result.spectra[i].pageValue = pageValue;
-    }
-
-    var dataType = files['ser'] ? 'TYPE_2DNMR_FID' : 'TYPE_2DNMR_SPECTRUM';
-
-    result.info['2D_Y_NUCLEUS'] = temp.info['$AXNUC'];
-    result.info['2D_X_NUCLEUS'] = result.info['$AXNUC'];
-    result.info['2D_Y_FRECUENCY'] = SF;
-    result.info['2D_Y_OFFSET'] = offset;
-    result.info['2D_X_FRECUENCY'] = result.info['$SF'];
-    result.info['2D_X_OFFSET'] = result.info['$OFFSET'];
-
-    result.twoD = true;
-
-    return result;
-}
-
-function setXYSpectrumData(file, spectra, store, real) {
-    var td = spectra.info['$SI'] = parseInt(spectra.info['$SI']);
-
-    var SW_p = parseFloat(spectra.info["$SWP"]);
-    var SF = parseFloat(spectra.info["$SF"]);
-    var BF = SF;
-    //var BF = parseFloat(spectra.info["$BF1"]);
-    var offset = spectra.shiftOffsetVal; //parseFloat(spectra.info["$OFFSET"]);
-
-    spectra.info["observeFrequency"] = SF;
-    spectra.info["$BF1"] = BF;
-    spectra.info["$SFO1"] = SF;
-    spectra.info.brukerReference = BF;
-
-    var endian = parseInt(spectra.info["$BYTORDP"]);
-    endian = endian ? 0 : 1;
-
-    // number of spectras
-    var nbSubSpectra = spectra.info.nbSubSpectra ? spectra.info.nbSubSpectra : 1;
-
-    if (endian) file.setLittleEndian();else file.setBigEndian();
-
-    for (var i = 0; i < nbSubSpectra; i++) {
-        var toSave = {
-            dataType: "NMR Spectrum",
-            dataTable: "(X++(R..R))",
-            nbPoints: td,
-            firstX: offset,
-            lastX: offset - SW_p / SF,
-            xUnit: "PPM",
-            yUnit: "Arbitrary",
-            data: [new Array(td * 2)], //[{x:new Array(td),y:new Array(td)}],
-            isXYdata: true,
-            observeFrequency: SF,
-            title: spectra.info['TITLE'],
-            deltaX: -(SW_p / SF) / (td - 1)
-
-        };
-
-        var x = offset;
-        var deltaX = toSave.deltaX;
-        if (real) {
-            for (var k = 0; k < td; ++k) {
-                toSave.data[0][2 * k] = x;
-                toSave.data[0][2 * k + 1] = file.readInt32();
-                if (toSave.data[0][2 * k + 1] === null || isNaN(toSave.data[0][2 * k + 1])) {
-                    toSave.data[0][2 * k + 1] = 0;
-                }
-                x += deltaX;
+            if (ntuples.last.length > yIndex) {
+              spectrum.lastY = ntuples.last[yIndex];
             }
+          }
+          if (ntuples.vardim && ntuples.vardim.length > xIndex) {
+            spectrum.nbPoints = ntuples.vardim[xIndex];
+          }
+          if (ntuples.factor) {
+            if (ntuples.factor.length > xIndex) {
+              spectrum.xFactor = ntuples.factor[xIndex];
+            }
+            if (ntuples.factor.length > yIndex) {
+              spectrum.yFactor = ntuples.factor[yIndex];
+            }
+          }
+          if (ntuples.units) {
+            if (ntuples.units.length > xIndex) {
+              spectrum.xUnit = ntuples.units[xIndex];
+            }
+            if (ntuples.units.length > yIndex) {
+              spectrum.yUnit = ntuples.units[yIndex];
+            }
+          }
+          spectrum.datatable = infos[0];
+          if (infos[1] && infos[1].indexOf('PEAKS') > -1) {
+            dataLabel = 'PEAKTABLE';
+          } else if (infos[1] && (infos[1].indexOf('XYDATA') || infos[0].indexOf('++') > 0)) {
+            dataLabel = 'XYDATA';
+            spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
+          }
+        }
+      }
+
+      if (dataLabel === 'XYDATA') {
+        if (wantXY) {
+          prepareSpectrum(result, spectrum);
+          // well apparently we should still consider it is a PEAK TABLE if there are no '++' after
+          if (dataValue.match(/.*\+\+.*/)) {
+            // ex: (X++(Y..Y))
+            if (!spectrum.deltaX) {
+              spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
+            }
+            fastParseXYData(spectrum, dataValue, result);
+          } else {
+            parsePeakTable(spectrum, dataValue, result);
+          }
+          spectra.push(spectrum);
+          spectrum = new Spectrum();
+        }
+        continue;
+      } else if (dataLabel === 'PEAKTABLE') {
+        if (wantXY) {
+          prepareSpectrum(result, spectrum);
+          parsePeakTable(spectrum, dataValue, result);
+          spectra.push(spectrum);
+          spectrum = new Spectrum();
+        }
+        continue;
+      }
+      if (dataLabel === 'PEAKASSIGNMENTS') {
+        if (wantXY) {
+          if (dataValue.match(/.*(XYA).*/)) {
+            // ex: (XYA)
+            parseXYA(spectrum, dataValue);
+          }
+          spectra.push(spectrum);
+          spectrum = new Spectrum();
+        }
+        continue;
+      }
+
+      if (dataLabel === 'TITLE') {
+        spectrum.title = dataValue;
+      } else if (dataLabel === 'DATATYPE') {
+        spectrum.dataType = dataValue;
+        if (dataValue.indexOf('nD') > -1) {
+          result.twoD = true;
+        }
+      } else if (dataLabel === 'NTUPLES') {
+        if (dataValue.indexOf('nD') > -1) {
+          result.twoD = true;
+        }
+      } else if (dataLabel === 'XUNITS') {
+        spectrum.xUnit = dataValue;
+      } else if (dataLabel === 'YUNITS') {
+        spectrum.yUnit = dataValue;
+      } else if (dataLabel === 'FIRSTX') {
+        spectrum.firstX = parseFloat(dataValue);
+      } else if (dataLabel === 'LASTX') {
+        spectrum.lastX = parseFloat(dataValue);
+      } else if (dataLabel === 'FIRSTY') {
+        spectrum.firstY = parseFloat(dataValue);
+      } else if (dataLabel === 'LASTY') {
+        spectrum.lastY = parseFloat(dataValue);
+      } else if (dataLabel === 'NPOINTS') {
+        spectrum.nbPoints = parseFloat(dataValue);
+      } else if (dataLabel === 'XFACTOR') {
+        spectrum.xFactor = parseFloat(dataValue);
+      } else if (dataLabel === 'YFACTOR') {
+        spectrum.yFactor = parseFloat(dataValue);
+      } else if (dataLabel === 'MAXX') {
+        spectrum.maxX = parseFloat(dataValue);
+      } else if (dataLabel === 'MINX') {
+        spectrum.minX = parseFloat(dataValue);
+      } else if (dataLabel === 'MAXY') {
+        spectrum.maxY = parseFloat(dataValue);
+      } else if (dataLabel === 'MINY') {
+        spectrum.minY = parseFloat(dataValue);
+      } else if (dataLabel === 'DELTAX') {
+        spectrum.deltaX = parseFloat(dataValue);
+      } else if (dataLabel === '.OBSERVEFREQUENCY' || dataLabel === '$SFO1') {
+        if (!spectrum.observeFrequency) {
+          spectrum.observeFrequency = parseFloat(dataValue);
+        }
+      } else if (dataLabel === '.OBSERVENUCLEUS') {
+        if (!spectrum.xType) {
+          result.xType = dataValue.replace(/[^a-zA-Z0-9]/g, '');
+        }
+      } else if (dataLabel === '$SFO2') {
+        if (!result.indirectFrequency) {
+          result.indirectFrequency = parseFloat(dataValue);
+        }
+      } else if (dataLabel === '$OFFSET') {
+        // OFFSET for Bruker spectra
+        result.shiftOffsetNum = 0;
+        if (!spectrum.shiftOffsetVal) {
+          spectrum.shiftOffsetVal = parseFloat(dataValue);
+        }
+      } else if (dataLabel === '$REFERENCEPOINT') {
+        // OFFSET for Varian spectra
+        // if we activate this part it does not work for ACD specmanager
+        //         } else if (dataLabel=='.SHIFTREFERENCE') {   // OFFSET FOR Bruker Spectra
+        //                 var parts = dataValue.split(/ *, */);
+        //                 result.shiftOffsetNum = parseInt(parts[2].trim());
+        //                 spectrum.shiftOffsetVal = parseFloat(parts[3].trim());
+      } else if (dataLabel === 'VARNAME') {
+        ntuples.varname = dataValue.split(ntuplesSeparator);
+      } else if (dataLabel === 'SYMBOL') {
+        ntuples.symbol = dataValue.split(ntuplesSeparator);
+      } else if (dataLabel === 'VARTYPE') {
+        ntuples.vartype = dataValue.split(ntuplesSeparator);
+      } else if (dataLabel === 'VARFORM') {
+        ntuples.varform = dataValue.split(ntuplesSeparator);
+      } else if (dataLabel === 'VARDIM') {
+        ntuples.vardim = convertToFloatArray(dataValue.split(ntuplesSeparator));
+      } else if (dataLabel === 'UNITS') {
+        ntuples.units = dataValue.split(ntuplesSeparator);
+      } else if (dataLabel === 'FACTOR') {
+        ntuples.factor = convertToFloatArray(dataValue.split(ntuplesSeparator));
+      } else if (dataLabel === 'FIRST') {
+        ntuples.first = convertToFloatArray(dataValue.split(ntuplesSeparator));
+      } else if (dataLabel === 'LAST') {
+        ntuples.last = convertToFloatArray(dataValue.split(ntuplesSeparator));
+      } else if (dataLabel === 'MIN') {
+        ntuples.min = convertToFloatArray(dataValue.split(ntuplesSeparator));
+      } else if (dataLabel === 'MAX') {
+        ntuples.max = convertToFloatArray(dataValue.split(ntuplesSeparator));
+      } else if (dataLabel === '.NUCLEUS') {
+        if (result.twoD) {
+          result.yType = dataValue.split(ntuplesSeparator)[0];
+        }
+      } else if (dataLabel === 'PAGE') {
+        spectrum.page = dataValue.trim();
+        spectrum.pageValue = parseFloat(dataValue.replace(/^.*=/, ''));
+        spectrum.pageSymbol = spectrum.page.replace(/[=].*/, '');
+        var pageSymbolIndex = ntuples.symbol.indexOf(spectrum.pageSymbol);
+        var unit = '';
+        if (ntuples.units && ntuples.units[pageSymbolIndex]) {
+          unit = ntuples.units[pageSymbolIndex];
+        }
+        if (result.indirectFrequency && unit !== 'PPM') {
+          spectrum.pageValue /= result.indirectFrequency;
+        }
+      } else if (dataLabel === 'RETENTIONTIME') {
+        spectrum.pageValue = parseFloat(dataValue);
+      } else if (isMSField(dataLabel)) {
+        spectrum[convertMSFieldToLabel(dataLabel)] = dataValue;
+      } else if (dataLabel === 'SAMPLEDESCRIPTION') {
+        spectrum.sampleDescription = dataValue;
+      }
+      if (dataLabel.match(options.keepRecordsRegExp)) {
+        if (result.info[dataLabel]) {
+          if (!Array.isArray(result.info[dataLabel])) {
+            result.info[dataLabel] = [result.info[dataLabel]];
+          }
+          result.info[dataLabel].push(dataValue.trim());
         } else {
-            for (k = td - 1; k >= 0; --k) {
-                toSave.data[0][2 * k] = x;
-                toSave.data[0][2 * k + 1] = file.readInt32();
-                if (toSave.data[0][2 * k + 1] === null || isNaN(toSave.data[0][2 * k + 1])) {
-                    toSave.data[0][2 * k + 1] = 0;
-                }
-                x += deltaX;
-            }
+          result.info[dataLabel] = dataValue.trim();
         }
-
-        spectra.spectra.push(toSave);
+      }
     }
-}
 
-function parseData(file, options) {
-    var keepRecordsRegExp = /.*/;
-    if (options.keepRecordsRegExp) keepRecordsRegExp = options.keepRecordsRegExp;
-    return Converter.convert(file, {
-        keepRecordsRegExp: keepRecordsRegExp
-    });
-}
-
-function setFIDSpectrumData(file, spectra) {
-    var td = spectra.info['$TD'] = parseInt(spectra.info['$TD']);
-
-    var SW_h = spectra.info['$SWH'] = parseFloat(spectra.info['$SWH']);
-    var SW = spectra.info['$SW'] = parseFloat(spectra.info['$SW']);
-
-    var SF = spectra.info['$SFO1'] = parseFloat(spectra.info['$SFO1']);
-    var BF = parseFloat(spectra.info['$BF1']);
-    spectra.info['$BF1'] = BF;
-
-    //var DW = 1 / (2 * SW_h);
-    //var AQ = td * DW;
-    var AQ = SW;
-    var DW = AQ / (td - 1);
-
-    //console.log(DW+" "+SW+" "+td);
-    var endian = parseInt(spectra.info["$BYTORDP"]);
-    endian = endian ? 0 : 1;
-
-    if (endian) file.setLittleEndian();else file.setBigEndian();
-
-    var nbSubSpectra = spectra.info.nbSubSpectra ? spectra.info.nbSubSpectra : 1;
-    spectra.spectra = new Array(nbSubSpectra);
-
-    for (var j = 0; j < nbSubSpectra / 2; j++) {
-        var toSave = {
-            dataType: "NMR FID",
-            dataTable: "(X++(R..R))",
-            nbPoints: td,
-            firstX: 0,
-            lastX: AQ,
-            nucleus: spectra.info["$NUC1"] ? spectra.info["$NUC1"] : undefined,
-            xUnit: "Sec",
-            yUnit: "Arbitrary",
-            data: [new Array(2 * td)], //[{x:new Array(td),y:new Array(td)}],
-            isXYdata: true,
-            observeFrequency: SF,
-            title: spectra.info['TITLE'],
-            deltaX: DW
-        };
-        spectra.spectra[j * 2] = toSave;
-
-        toSave = {
-            dataType: "NMR FID",
-            dataTable: "(X++(I..I))",
-            nbPoints: td,
-            firstX: 0,
-            lastX: AQ,
-            nucleus: spectra.info["$NUC1"] ? spectra.info["$NUC1"] : undefined,
-            xUnit: "Sec",
-            yUnit: "Arbitrary",
-            data: [new Array(2 * td)], //[{x:new Array(td),y:new Array(td)}],
-            isXYdata: true,
-            observeFrequency: SF,
-            title: spectra.info['TITLE'],
-            deltaX: DW
-        };
-        spectra.spectra[j * 2 + 1] = toSave;
-
-        var x = 0;
-        var y;
-        for (var i = 0; file.available(8) && i < td; i++, x = i * DW) {
-            y = file.readInt32();
-            if (y === null || isNaN(y)) {
-                y = 0;
-            }
-            spectra.spectra[j * 2].data[0][2 * i + 1] = y;
-            spectra.spectra[j * 2].data[0][2 * i] = x;
-            y = file.readInt32();
-            if (y === null || isNaN(y)) {
-                y = 0;
-            }
-            spectra.spectra[j * 2 + 1].data[0][2 * i + 1] = y;
-            spectra.spectra[j * 2 + 1].data[0][2 * i] = x;
-        }
-
-        for (; i < td; i++, x = i * DW) {
-            spectra.spectra[j * 2].data[0][2 * i + 1] = 0;
-            spectra.spectra[j * 2].data[0][2 * i] = x;
-            spectra.spectra[j * 2 + 1].data[0][2 * i + 1] = 0;
-            spectra.spectra[j * 2 + 1].data[0][2 * i] = x;
-        }
+    if (result.profiling) {
+      result.profiling.push({
+        action: 'Finished parsing',
+        time: Date.now() - start
+      });
     }
-}
 
-/**
- * Those functions should disappear if add2D becomes accessible in jcampconvert
- * @param spectra
- * @returns {{z: Array, minX: *, maxX: *, minY: *, maxY: *, minZ: *, maxZ: *, noise: number}}
- */
+    if (Object.keys(ntuples).length > 0) {
+      var newNtuples = [];
+      var keys = Object.keys(ntuples);
+      for (var _i = 0; _i < keys.length; _i++) {
+        var key = keys[_i];
+        var values = ntuples[key];
+        for (var j = 0; j < values.length; j++) {
+          if (!newNtuples[j]) newNtuples[j] = {};
+          newNtuples[j][key] = values[j];
+        }
+      }
+      result.ntuples = newNtuples;
+    }
 
-function convertTo3DZ(spectra) {
-    var noise = 0;
+    if (result.twoD && wantXY) {
+      add2D(result, options);
+      if (result.profiling) {
+        result.profiling.push({
+          action: 'Finished countour plot calculation',
+          time: Date.now() - start
+        });
+      }
+      if (!options.keepSpectra) {
+        delete result.spectra;
+      }
+    }
+
+    if (options.chromatogram) {
+      options.xy = true;
+    }
+
+    if (options.xy && wantXY) {
+      // the spectraData should not be a oneD array but an object with x and y
+      if (spectra.length > 0) {
+        for (var _i2 = 0; _i2 < spectra.length; _i2++) {
+          spectrum = spectra[_i2];
+          if (spectrum.data.length > 0) {
+            for (var _j = 0; _j < spectrum.data.length; _j++) {
+              var data = spectrum.data[_j];
+              var newData = {
+                x: new Array(data.length / 2),
+                y: new Array(data.length / 2)
+              };
+              for (var k = 0; k < data.length; k = k + 2) {
+                newData.x[k / 2] = data[k];
+                newData.y[k / 2] = data[k + 1];
+              }
+              spectrum.data[_j] = newData;
+            }
+          }
+        }
+      }
+    }
+
+    // maybe it is a GC (HPLC) / MS. In this case we add a new format
+    if (options.chromatogram) {
+      if (result.spectra.length > 1) {
+        complexChromatogram(result);
+      } else {
+        simpleChromatogram(result);
+      }
+      if (result.profiling) {
+        result.profiling.push({
+          action: 'Finished chromatogram calculation',
+          time: Date.now() - start
+        });
+      }
+    }
+
+    if (result.profiling) {
+      result.profiling.push({
+        action: 'Total time',
+        time: Date.now() - start
+      });
+    }
+
+    return result;
+  }
+
+  function convertMSFieldToLabel(value) {
+    return value.toLowerCase().replace(/[^a-z0-9]/g, '');
+  }
+
+  function isMSField(dataLabel) {
+    return GC_MS_FIELDS.indexOf(dataLabel) !== -1;
+  }
+
+  function complexChromatogram(result) {
+    var spectra = result.spectra;
+    var length = spectra.length;
+    var chromatogram = {
+      times: new Array(length),
+      series: {
+        ms: {
+          dimension: 2,
+          data: new Array(length)
+        }
+      }
+    };
+
+    var existingGCMSFields = [];
+    for (var i = 0; i < GC_MS_FIELDS.length; i++) {
+      var label = convertMSFieldToLabel(GC_MS_FIELDS[i]);
+      if (spectra[0][label]) {
+        existingGCMSFields.push(label);
+        chromatogram.series[label] = {
+          dimension: 1,
+          data: new Array(length)
+        };
+      }
+    }
+
+    for (var _i3 = 0; _i3 < length; _i3++) {
+      var spectrum = spectra[_i3];
+      chromatogram.times[_i3] = spectrum.pageValue;
+      for (var j = 0; j < existingGCMSFields.length; j++) {
+        chromatogram.series[existingGCMSFields[j]].data[_i3] = parseFloat(spectrum[existingGCMSFields[j]]);
+      }
+      if (spectrum.data) {
+        chromatogram.series.ms.data[_i3] = [spectrum.data[0].x, spectrum.data[0].y];
+      }
+    }
+    result.chromatogram = chromatogram;
+  }
+
+  function simpleChromatogram(result) {
+    var data = result.spectra[0].data[0];
+    result.chromatogram = {
+      times: data.x.slice(),
+      series: {
+        intensity: {
+          dimension: 1,
+          data: data.y.slice()
+        }
+      }
+    };
+  }
+
+  function prepareSpectrum(result, spectrum) {
+    if (!spectrum.xFactor) spectrum.xFactor = 1;
+    if (!spectrum.yFactor) spectrum.yFactor = 1;
+    if (spectrum.observeFrequency) {
+      if (spectrum.xUnit && spectrum.xUnit.toUpperCase() === 'HZ') {
+        spectrum.xUnit = 'PPM';
+        spectrum.xFactor = spectrum.xFactor / spectrum.observeFrequency;
+        spectrum.firstX = spectrum.firstX / spectrum.observeFrequency;
+        spectrum.lastX = spectrum.lastX / spectrum.observeFrequency;
+        spectrum.deltaX = spectrum.deltaX / spectrum.observeFrequency;
+      }
+    }
+    if (spectrum.shiftOffsetVal) {
+      var shift = spectrum.firstX - spectrum.shiftOffsetVal;
+      spectrum.firstX = spectrum.firstX - shift;
+      spectrum.lastX = spectrum.lastX - shift;
+    }
+  }
+
+  function getMedian(data) {
+    data = data.sort(compareNumbers);
+    var l = data.length;
+    return data[Math.floor(l / 2)];
+  }
+
+  function compareNumbers(a, b) {
+    return a - b;
+  }
+
+  function convertTo3DZ(spectra) {
     var minZ = spectra[0].data[0][0];
     var maxZ = minZ;
     var ySize = spectra.length;
     var xSize = spectra[0].data[0].length / 2;
     var z = new Array(ySize);
     for (var i = 0; i < ySize; i++) {
-        z[i] = new Array(xSize);
-        for (var j = 0; j < xSize; j++) {
-            z[i][j] = spectra[i].data[0][j * 2 + 1];
-            if (z[i][j] < minZ) minZ = spectra[i].data[0][j * 2 + 1];
-            if (z[i][j] > maxZ) maxZ = spectra[i].data[0][j * 2 + 1];
-            if (i !== 0 && j !== 0) {
-                noise += Math.abs(z[i][j] - z[i][j - 1]) + Math.abs(z[i][j] - z[i - 1][j]);
-            }
-        }
+      z[i] = new Array(xSize);
+      var xVector = spectra[i].data[0];
+      for (var j = 0; j < xSize; j++) {
+        var value = xVector[j * 2 + 1];
+        z[i][j] = value;
+        if (value < minZ) minZ = value;
+        if (value > maxZ) maxZ = value;
+      }
     }
+
+    var firstX = spectra[0].data[0][0];
+    var lastX = spectra[0].data[0][spectra[0].data[0].length - 2]; // has to be -2 because it is a 1D array [x,y,x,y,...]
+    var firstY = spectra[0].pageValue;
+    var lastY = spectra[ySize - 1].pageValue;
+
+    // Because the min / max value are the only information about the matrix if we invert
+    // min and max we need to invert the array
+    if (firstX > lastX) {
+      for (var spectrum of z) {
+        spectrum.reverse();
+      }
+    }
+    if (firstY > lastY) {
+      z.reverse();
+    }
+
     return {
-        z: z,
-        minX: spectra[0].data[0][0],
-        maxX: spectra[0].data[0][spectra[0].data[0].length - 2],
-        minY: spectra[0].pageValue,
-        maxY: spectra[ySize - 1].pageValue,
-        minZ: minZ,
-        maxZ: maxZ,
-        noise: noise / ((ySize - 1) * (xSize - 1) * 2)
+      z: z,
+      minX: Math.min(firstX, lastX),
+      maxX: Math.max(firstX, lastX),
+      minY: Math.min(firstY, lastY),
+      maxY: Math.max(firstY, lastY),
+      minZ: minZ,
+      maxZ: maxZ,
+      noise: getMedian(z[0].map(Math.abs))
     };
-}
+  }
 
-function add2D(result) {
+  function add2D(result, options) {
     var zData = convertTo3DZ(result.spectra);
-    result.contourLines = generateContourLines(zData);
-    delete zData.z;
+    if (!options.noContour) {
+      result.contourLines = generateContourLines(zData, options);
+      delete zData.z;
+    }
     result.minMax = zData;
-}
+  }
 
-function generateContourLines(zData, options) {
-    //console.time('generateContourLines');
+  function generateContourLines(zData, options) {
     var noise = zData.noise;
     var z = zData.z;
-    var contourLevels = [];
-    var nbLevels = 7;
-    var povarHeight = new Float32Array(4);
-    var isOver = [];
+    var povarHeight0, povarHeight1, povarHeight2, povarHeight3;
+    var isOver0, isOver1, isOver2, isOver3;
     var nbSubSpectra = z.length;
     var nbPovars = z[0].length;
     var pAx, pAy, pBx, pBy;
@@ -889,7 +767,7 @@ function generateContourLines(zData, options) {
     var minZ = zData.minZ;
     var maxZ = zData.maxZ;
 
-    //System.out.prvarln('y0 '+y0+' yN '+yN);
+    // System.out.prvarln('y0 '+y0+' yN '+yN);
     // -------------------------
     // Povars attribution
     //
@@ -900,96 +778,1019 @@ function generateContourLines(zData, options) {
     //
     // ---------------------d------
 
+    var iter = options.nbContourLevels * 2;
+    var contourLevels = new Array(iter);
     var lineZValue;
-    for (var level = 0; level < nbLevels * 2; level++) {
-        // multiply by 2 for positif and negatif
-        var contourLevel = {};
-        contourLevels.push(contourLevel);
-        var side = level % 2;
-        if (side === 0) {
-            lineZValue = (maxZ - 5 * noise) * Math.exp(level / 2 - nbLevels) + 5 * noise;
-        } else {
-            lineZValue = -(maxZ - 5 * noise) * Math.exp(level / 2 - nbLevels) - 5 * noise;
-        }
-        var lines = [];
-        contourLevel.zValue = lineZValue;
-        contourLevel.lines = lines;
+    for (var level = 0; level < iter; level++) {
+      // multiply by 2 for positif and negatif
+      var contourLevel = {};
+      contourLevels[level] = contourLevel;
+      var side = level % 2;
+      var factor = (maxZ - options.noiseMultiplier * noise) * Math.exp((level >> 1) - options.nbContourLevels);
+      if (side === 0) {
+        lineZValue = factor + options.noiseMultiplier * noise;
+      } else {
+        lineZValue = 0 - factor - options.noiseMultiplier * noise;
+      }
+      var lines = [];
+      contourLevel.zValue = lineZValue;
+      contourLevel.lines = lines;
 
-        if (lineZValue <= minZ || lineZValue >= maxZ) continue;
+      if (lineZValue <= minZ || lineZValue >= maxZ) continue;
 
-        for (var iSubSpectra = 0; iSubSpectra < nbSubSpectra - 1; iSubSpectra++) {
-            for (var povar = 0; povar < nbPovars - 1; povar++) {
-                povarHeight[0] = z[iSubSpectra][povar];
-                povarHeight[1] = z[iSubSpectra][povar + 1];
-                povarHeight[2] = z[iSubSpectra + 1][povar];
-                povarHeight[3] = z[iSubSpectra + 1][povar + 1];
+      for (var iSubSpectra = 0; iSubSpectra < nbSubSpectra - 1; iSubSpectra++) {
+        var subSpectra = z[iSubSpectra];
+        var subSpectraAfter = z[iSubSpectra + 1];
+        for (var povar = 0; povar < nbPovars - 1; povar++) {
+          povarHeight0 = subSpectra[povar];
+          povarHeight1 = subSpectra[povar + 1];
+          povarHeight2 = subSpectraAfter[povar];
+          povarHeight3 = subSpectraAfter[povar + 1];
 
-                for (var i = 0; i < 4; i++) {
-                    isOver[i] = povarHeight[i] > lineZValue;
-                }
+          isOver0 = povarHeight0 > lineZValue;
+          isOver1 = povarHeight1 > lineZValue;
+          isOver2 = povarHeight2 > lineZValue;
+          isOver3 = povarHeight3 > lineZValue;
 
-                // Example povar0 is over the plane and povar1 and
-                // povar2 are below, we find the varersections and add
-                // the segment
-                if (isOver[0] !== isOver[1] && isOver[0] !== isOver[2]) {
-                    pAx = povar + (lineZValue - povarHeight[0]) / (povarHeight[1] - povarHeight[0]);
-                    pAy = iSubSpectra;
-                    pBx = povar;
-                    pBy = iSubSpectra + (lineZValue - povarHeight[0]) / (povarHeight[2] - povarHeight[0]);
-                    lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
-                }
-                if (isOver[3] !== isOver[1] && isOver[3] !== isOver[2]) {
-                    pAx = povar + 1;
-                    pAy = iSubSpectra + 1 - (lineZValue - povarHeight[3]) / (povarHeight[1] - povarHeight[3]);
-                    pBx = povar + 1 - (lineZValue - povarHeight[3]) / (povarHeight[2] - povarHeight[3]);
-                    pBy = iSubSpectra + 1;
-                    lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
-                }
-                // test around the diagonal
-                if (isOver[1] !== isOver[2]) {
-                    pAx = povar + 1 - (lineZValue - povarHeight[1]) / (povarHeight[2] - povarHeight[1]);
-                    pAy = iSubSpectra + (lineZValue - povarHeight[1]) / (povarHeight[2] - povarHeight[1]);
-                    if (isOver[1] !== isOver[0]) {
-                        pBx = povar + 1 - (lineZValue - povarHeight[1]) / (povarHeight[0] - povarHeight[1]);
-                        pBy = iSubSpectra;
-                        lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
-                    }
-                    if (isOver[2] !== isOver[0]) {
-                        pBx = povar;
-                        pBy = iSubSpectra + 1 - (lineZValue - povarHeight[2]) / (povarHeight[0] - povarHeight[2]);
-                        lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
-                    }
-                    if (isOver[1] !== isOver[3]) {
-                        pBx = povar + 1;
-                        pBy = iSubSpectra + (lineZValue - povarHeight[1]) / (povarHeight[3] - povarHeight[1]);
-                        lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
-                    }
-                    if (isOver[2] !== isOver[3]) {
-                        pBx = povar + (lineZValue - povarHeight[2]) / (povarHeight[3] - povarHeight[2]);
-                        pBy = iSubSpectra + 1;
-                        lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
-                    }
-                }
+          // Example povar0 is over the plane and povar1 and
+          // povar2 are below, we find the varersections and add
+          // the segment
+          if (isOver0 !== isOver1 && isOver0 !== isOver2) {
+            pAx = povar + (lineZValue - povarHeight0) / (povarHeight1 - povarHeight0);
+            pAy = iSubSpectra;
+            pBx = povar;
+            pBy = iSubSpectra + (lineZValue - povarHeight0) / (povarHeight2 - povarHeight0);
+            lines.push(pAx * dx + x0);
+            lines.push(pAy * dy + y0);
+            lines.push(pBx * dx + x0);
+            lines.push(pBy * dy + y0);
+          }
+          // remove push does not help !!!!
+          if (isOver3 !== isOver1 && isOver3 !== isOver2) {
+            pAx = povar + 1;
+            pAy = iSubSpectra + 1 - (lineZValue - povarHeight3) / (povarHeight1 - povarHeight3);
+            pBx = povar + 1 - (lineZValue - povarHeight3) / (povarHeight2 - povarHeight3);
+            pBy = iSubSpectra + 1;
+            lines.push(pAx * dx + x0);
+            lines.push(pAy * dy + y0);
+            lines.push(pBx * dx + x0);
+            lines.push(pBy * dy + y0);
+          }
+          // test around the diagonal
+          if (isOver1 !== isOver2) {
+            pAx = (povar + 1 - (lineZValue - povarHeight1) / (povarHeight2 - povarHeight1)) * dx + x0;
+            pAy = (iSubSpectra + (lineZValue - povarHeight1) / (povarHeight2 - povarHeight1)) * dy + y0;
+            if (isOver1 !== isOver0) {
+              pBx = povar + 1 - (lineZValue - povarHeight1) / (povarHeight0 - povarHeight1);
+              pBy = iSubSpectra;
+              lines.push(pAx);
+              lines.push(pAy);
+              lines.push(pBx * dx + x0);
+              lines.push(pBy * dy + y0);
             }
+            if (isOver2 !== isOver0) {
+              pBx = povar;
+              pBy = iSubSpectra + 1 - (lineZValue - povarHeight2) / (povarHeight0 - povarHeight2);
+              lines.push(pAx);
+              lines.push(pAy);
+              lines.push(pBx * dx + x0);
+              lines.push(pBy * dy + y0);
+            }
+            if (isOver1 !== isOver3) {
+              pBx = povar + 1;
+              pBy = iSubSpectra + (lineZValue - povarHeight1) / (povarHeight3 - povarHeight1);
+              lines.push(pAx);
+              lines.push(pAy);
+              lines.push(pBx * dx + x0);
+              lines.push(pBy * dy + y0);
+            }
+            if (isOver2 !== isOver3) {
+              pBx = povar + (lineZValue - povarHeight2) / (povarHeight3 - povarHeight2);
+              pBy = iSubSpectra + 1;
+              lines.push(pAx);
+              lines.push(pAy);
+              lines.push(pBx * dx + x0);
+              lines.push(pBy * dy + y0);
+            }
+          }
         }
+      }
     }
-    // console.timeEnd('generateContourLines');
+
     return {
-        minX: zData.minX,
-        maxX: zData.maxX,
-        minY: zData.minY,
-        maxY: zData.maxY,
-        segments: contourLevels
+      minX: zData.minX,
+      maxX: zData.maxX,
+      minY: zData.minY,
+      maxY: zData.maxY,
+      segments: contourLevels
     };
-    //return contourLevels;
+  }
+
+  function fastParseXYData(spectrum, value) {
+    // TODO need to deal with result
+    //  console.log(value);
+    // we check if deltaX is defined otherwise we calculate it
+
+    var yFactor = spectrum.yFactor;
+    var deltaX = spectrum.deltaX;
+
+    spectrum.isXYdata = true;
+    // TODO to be improved using 2 array {x:[], y:[]}
+    var currentData = [];
+    spectrum.data = [currentData];
+
+    var currentX = spectrum.firstX;
+    var currentY = spectrum.firstY;
+
+    // we skip the first line
+    //
+    var endLine = false;
+    var ascii;
+    var i = 0;
+    for (; i < value.length; i++) {
+      ascii = value.charCodeAt(i);
+      if (ascii === 13 || ascii === 10) {
+        endLine = true;
+      } else {
+        if (endLine) break;
+      }
+    }
+
+    // we proceed taking the i after the first line
+    var newLine = true;
+    var isDifference = false;
+    var isLastDifference = false;
+    var lastDifference = 0;
+    var isDuplicate = false;
+    var inComment = false;
+    var currentValue = 0; // can be a difference or a duplicate
+    var lastValue = 0; // must be the real last value
+    var isNegative = false;
+    var inValue = false;
+    var skipFirstValue = false;
+    var decimalPosition = 0;
+    for (; i <= value.length; i++) {
+      if (i === value.length) ascii = 13;else ascii = value.charCodeAt(i);
+      if (inComment) {
+        // we should ignore the text if we are after $$
+        if (ascii === 13 || ascii === 10) {
+          newLine = true;
+          inComment = false;
+        }
+      } else {
+        // when is it a new value ?
+        // when it is not a digit, . or comma
+        // it is a number that is either new or we continue
+        if (ascii <= 57 && ascii >= 48) {
+          // a number
+          inValue = true;
+          if (decimalPosition > 0) {
+            currentValue += (ascii - 48) / Math.pow(10, decimalPosition++);
+          } else {
+            currentValue *= 10;
+            currentValue += ascii - 48;
+          }
+        } else if (ascii === 44 || ascii === 46) {
+          // a "," or "."
+          inValue = true;
+          decimalPosition++;
+        } else {
+          if (inValue) {
+            // need to process the previous value
+            if (newLine) {
+              newLine = false; // we don't check the X value
+              // console.log("NEW LINE",isDifference, lastDifference);
+              // if new line and lastDifference, the first value is just a check !
+              // that we don't check ...
+              if (isLastDifference) skipFirstValue = true;
+            } else {
+              // need to deal with duplicate and differences
+              if (skipFirstValue) {
+                skipFirstValue = false;
+              } else {
+                if (isDifference) {
+                  lastDifference = isNegative ? 0 - currentValue : currentValue;
+                  isLastDifference = true;
+                  isDifference = false;
+                } else if (!isDuplicate) {
+                  lastValue = isNegative ? 0 - currentValue : currentValue;
+                }
+                var duplicate = isDuplicate ? currentValue - 1 : 1;
+                for (var j = 0; j < duplicate; j++) {
+                  if (isLastDifference) {
+                    currentY += lastDifference;
+                  } else {
+                    currentY = lastValue;
+                  }
+                  currentData.push(currentX);
+                  currentData.push(currentY * yFactor);
+                  currentX += deltaX;
+                }
+              }
+            }
+            isNegative = false;
+            currentValue = 0;
+            decimalPosition = 0;
+            inValue = false;
+            isDuplicate = false;
+          }
+
+          // positive SQZ digits @ A B C D E F G H I (ascii 64-73)
+          if (ascii < 74 && ascii > 63) {
+            inValue = true;
+            isLastDifference = false;
+            currentValue = ascii - 64;
+          } else if (ascii > 96 && ascii < 106) {
+            // negative SQZ digits a b c d e f g h i (ascii 97-105)
+            inValue = true;
+            isLastDifference = false;
+            currentValue = ascii - 96;
+            isNegative = true;
+          } else if (ascii === 115) {
+            // DUP digits S T U V W X Y Z s (ascii 83-90, 115)
+            inValue = true;
+            isDuplicate = true;
+            currentValue = 9;
+          } else if (ascii > 82 && ascii < 91) {
+            inValue = true;
+            isDuplicate = true;
+            currentValue = ascii - 82;
+          } else if (ascii > 73 && ascii < 83) {
+            // positive DIF digits % J K L M N O P Q R (ascii 37, 74-82)
+            inValue = true;
+            isDifference = true;
+            currentValue = ascii - 73;
+          } else if (ascii > 105 && ascii < 115) {
+            // negative DIF digits j k l m n o p q r (ascii 106-114)
+            inValue = true;
+            isDifference = true;
+            currentValue = ascii - 105;
+            isNegative = true;
+          } else if (ascii === 36 && value.charCodeAt(i + 1) === 36) {
+            // $ sign, we need to check the next one
+            inValue = true;
+            inComment = true;
+          } else if (ascii === 37) {
+            // positive DIF digits % J K L M N O P Q R (ascii 37, 74-82)
+            inValue = true;
+            isDifference = true;
+            currentValue = 0;
+            isNegative = false;
+          } else if (ascii === 45) {
+            // a "-"
+            // check if after there is a number, decimal or comma
+            var ascii2 = value.charCodeAt(i + 1);
+            if (ascii2 >= 48 && ascii2 <= 57 || ascii2 === 44 || ascii2 === 46) {
+              inValue = true;
+              if (!newLine) isLastDifference = false;
+              isNegative = true;
+            }
+          } else if (ascii === 13 || ascii === 10) {
+            newLine = true;
+            inComment = false;
+          }
+          // and now analyse the details ... space or tabulation
+          // if "+" we just don't care
+        }
+      }
+    }
+  }
+
+  function parseXYA(spectrum, value) {
+    var removeSymbolRegExp = /(\(+|\)+|<+|>+|\s+)/g;
+
+    spectrum.isXYAdata = true;
+    var values;
+    var currentData = [];
+    spectrum.data = [currentData];
+
+    var lines = value.split(/,? *,?[;\r\n]+ */);
+
+    for (var i = 1; i < lines.length; i++) {
+      values = lines[i].trim().replace(removeSymbolRegExp, '').split(',');
+      currentData.push(parseFloat(values[0]));
+      currentData.push(parseFloat(values[1]));
+    }
+  }
+
+  function parsePeakTable(spectrum, value, result) {
+    var removeCommentRegExp = /\$\$.*/;
+    var peakTableSplitRegExp = /[,\t ]+/;
+
+    spectrum.isPeaktable = true;
+    var values;
+    var currentData = [];
+    spectrum.data = [currentData];
+
+    // counts for around 20% of the time
+    var lines = value.split(/,? *,?[;\r\n]+ */);
+
+    for (var i = 1; i < lines.length; i++) {
+      values = lines[i].trim().replace(removeCommentRegExp, '').split(peakTableSplitRegExp);
+      if (values.length % 2 === 0) {
+        for (var j = 0; j < values.length; j = j + 2) {
+          // takes around 40% of the time to add and parse the 2 values nearly exclusively because of parseFloat
+          currentData.push(parseFloat(values[j]) * spectrum.xFactor);
+          currentData.push(parseFloat(values[j + 1]) * spectrum.yFactor);
+        }
+      } else {
+        result.logs.push(`Format error: ${values}`);
+      }
+    }
+  }
+
+  return convert;
+}
+
+var convert = getConverter();
+
+function JcampConverter(input, options, useWorker) {
+  if (typeof options === 'boolean') {
+    useWorker = options;
+    options = {};
+  }
+  if (useWorker) {
+    return postToWorker(input, options);
+  } else {
+    return convert(input, options);
+  }
+}
+
+var stamps = {};
+var worker;
+
+function postToWorker(input, options) {
+  if (!worker) {
+    createWorker();
+  }
+  return new Promise(function (resolve) {
+    var stamp = `${Date.now()}${Math.random()}`;
+    stamps[stamp] = resolve;
+    worker.postMessage(JSON.stringify({
+      stamp: stamp,
+      input: input,
+      options: options
+    }));
+  });
+}
+
+function createWorker() {
+  var workerURL = URL.createObjectURL(new Blob([`var getConverter =${getConverter.toString()};var convert = getConverter(); onmessage = function (event) { var data = JSON.parse(event.data); postMessage(JSON.stringify({stamp: data.stamp, output: convert(data.input, data.options)})); };`], { type: 'application/javascript' }));
+  worker = new Worker(workerURL);
+  URL.revokeObjectURL(workerURL);
+  worker.addEventListener('message', function (event) {
+    var data = JSON.parse(event.data);
+    var stamp = data.stamp;
+    if (stamps[stamp]) {
+      stamps[stamp](data.output);
+    }
+  });
+}
+
+function createTree(jcamp, options = {}) {
+  var _options$flatten = options.flatten,
+      flatten = _options$flatten === undefined ? false : _options$flatten;
+
+  if (typeof jcamp !== 'string') {
+    throw new TypeError('the JCAMP should be a string');
+  }
+
+  var lines = jcamp.split(/[\r\n]+/);
+  var flat = [];
+  var stack = [];
+  var result = [];
+  var current = void 0;
+  var ntupleLevel = 0;
+
+  var spaces = jcamp.includes('## ');
+
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    var labelLine = spaces ? line.replace(/ /g, '') : line;
+
+    if (labelLine.substring(0, 9) === '##NTUPLES') {
+      ntupleLevel++;
+    }
+
+    if (labelLine.substring(0, 7) === '##TITLE') {
+      var title = [labelLine.substring(8).trim()];
+      for (var j = i + 1; j < lines.length; j++) {
+        if (lines[j].startsWith('##')) {
+          break;
+        } else {
+          title.push(lines[j].trim());
+        }
+      }
+      stack.push({
+        title: title.join('\n'),
+        jcamp: `${line}\n`,
+        children: []
+      });
+      current = stack[stack.length - 1];
+      flat.push(current);
+    } else if (labelLine.substring(0, 5) === '##END' && ntupleLevel === 0) {
+      current.jcamp += `${line}\n`;
+      var finished = stack.pop();
+      if (stack.length !== 0) {
+        current = stack[stack.length - 1];
+        current.children.push(finished);
+      } else {
+        current = undefined;
+        result.push(finished);
+      }
+    } else if (current && current.jcamp) {
+      current.jcamp += `${line}\n`;
+      var match = labelLine.match(/^##(.*?)=(.+)/);
+      if (match) {
+        var dataLabel = match[1].replace(/[ _-]/g, '').toUpperCase();
+        if (dataLabel === 'DATATYPE') {
+          current.dataType = match[2].trim();
+        }
+      }
+    }
+
+    if (labelLine.substring(0, 5) === '##END' && ntupleLevel > 0) {
+      ntupleLevel--;
+    }
+  }
+  if (flatten) {
+    flat.forEach(entry => {
+      entry.children = undefined;
+    });
+    return flat;
+  } else {
+    return result;
+  }
 }
 
 module.exports = {
-    convertZip: readZIP,
-    converFolder: convert
+  convert: JcampConverter,
+  createTree: createTree
 };
 
-},{"iobuffer":4,"jcampconverter":18,"jszip":28}],6:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
+'use strict';
+
+var Converter = require('jcampconverter');
+
+var _require = require('iobuffer'),
+    IOBuffer = _require.IOBuffer;
+
+var JSZip = require('jszip');
+
+var BINARY = 1;
+var TEXT = 2;
+
+function readZIP(zipFile, options) {
+  options = options || {};
+  var jsZip = new JSZip();
+
+  return jsZip.loadAsync(zipFile, options).then(zip => {
+    var files = {
+      ser: BINARY,
+      fid: BINARY,
+      acqus: TEXT,
+      acqu2s: TEXT,
+      procs: TEXT,
+      proc2s: TEXT,
+      '1r': BINARY,
+      '1i': BINARY,
+      '2rr': BINARY
+    };
+    var folders = zip.filter(function (relativePath) {
+      if (relativePath.endsWith('ser') || relativePath.endsWith('fid') || relativePath.endsWith('1r') || relativePath.endsWith('2rr')) {
+        return true;
+      }
+      return false;
+    });
+    var spectra = new Array(folders.length);
+
+    for (var i = 0; i < folders.length; ++i) {
+      var promises = [];
+      var name = folders[i].name;
+      name = name.substr(0, name.lastIndexOf('/') + 1);
+      promises.push(name);
+      var currFolder = zip.folder(name);
+      var currFiles = currFolder.filter(function (relativePath) {
+        return files[relativePath] ? true : false;
+      });
+      if (name.indexOf('pdata') >= 0) {
+        promises.push('acqus');
+        promises.push(zip.file(name.replace(/pdata\/[0-9]+\//, 'acqus')).async('string'));
+      }
+      for (var j = 0; j < currFiles.length; ++j) {
+        var idx = currFiles[j].name.lastIndexOf('/');
+        var name = currFiles[j].name.substr(idx + 1);
+        promises.push(name);
+        if (files[name] === BINARY) {
+          promises.push(currFiles[j].async('arraybuffer'));
+        } else {
+          promises.push(currFiles[j].async('string'));
+        }
+      }
+      spectra[i] = Promise.all(promises).then(result => {
+        var brukerFiles = {};
+        for (var _i = 1; _i < result.length; _i += 2) {
+          var _name = result[_i];
+          brukerFiles[_name] = result[_i + 1];
+        }
+        return { filename: result[0], value: convert(brukerFiles, options) };
+      });
+    }
+    return Promise.all(spectra);
+  });
+}
+
+function convert(brukerFiles, options) {
+  options = options || {};
+  var start = new Date();
+  var result;
+  if (brukerFiles.ser || brukerFiles['2rr']) {
+    result = convert2D(brukerFiles, options);
+  } else if (brukerFiles['1r'] || brukerFiles['1i'] || brukerFiles.fid) {
+    result = convert1D(brukerFiles, options);
+  } else {
+    throw new RangeError('The current files are invalid');
+  }
+
+  if (result.twoD && !options.noContours) {
+    add2D(result);
+    if (result.profiling) {
+      result.profiling.push({
+        action: 'Finished countour plot calculation',
+        time: new Date() - start
+      });
+    }
+    if (!options.keepSpectra) {
+      delete result.spectra;
+    }
+  }
+
+  var spectra = result.spectra;
+  if (options.xy) {
+    // the spectraData should not be a oneD array but an object with x and y
+    if (spectra.length > 0) {
+      for (var i = 0; i < spectra.length; i++) {
+        var spectrum = spectra[i];
+        if (spectrum.data.length > 0) {
+          for (var j = 0; j < spectrum.data.length; j++) {
+            var data = spectrum.data[j];
+            var newData = {
+              x: new Array(data.length / 2),
+              y: new Array(data.length / 2)
+            };
+            for (var k = 0; k < data.length; k = k + 2) {
+              newData.x[k / 2] = data[k];
+              newData.y[k / 2] = data[k + 1];
+            }
+            spectrum.data[j] = newData;
+          }
+        }
+      }
+    }
+  }
+
+  return result;
+}
+
+function convert1D(files, options) {
+  var result = parseData(files.procs || '', options);
+  var temp = parseData(files.acqus || '', options);
+
+  var keys = Object.keys(temp.info);
+  for (var i = 0; i < keys.length; i++) {
+    var currKey = keys[i];
+    if (result.info[currKey] === undefined) {
+      result.info[currKey] = temp.info[currKey];
+    }
+  }
+
+  if (files['1r'] || files['1i']) {
+    if (files['1r']) {
+      setXYSpectrumData(files['1r'], result, '1r', true);
+    }
+    if (files['1i']) {
+      setXYSpectrumData(files['1i'], result, '1i', false);
+    }
+  } else if (files.fid) {
+    setFIDSpectrumData(files.fid, result);
+  }
+
+  return result;
+}
+
+function convert2D(files, options) {
+  var sf, swP, offset;
+  if (files['2rr']) {
+    var result = parseData(files.procs, options);
+    var temp = parseData(files.acqus, options);
+
+    var keys = Object.keys(temp.info);
+    for (var i = 0; i < keys.length; i++) {
+      var currKey = keys[i];
+      if (result.info[currKey] === undefined) {
+        result.info[currKey] = temp.info[currKey];
+      }
+    }
+
+    temp = parseData(files.proc2s, options);
+    result.info.nbSubSpectra = temp.info.$SI = parseInt(temp.info.$SI);
+    sf = temp.info.$SF = parseFloat(temp.info.$SF);
+    swP = temp.info.$SWP = parseFloat(temp.info.$SWP);
+    offset = temp.info.$OFFSET = parseFloat(temp.info.$OFFSET);
+  } else if (files.ser) {
+    result = parseData(files.acqus, options);
+    temp = parseData(files.acqu2s, options);
+    result.info.nbSubSpectra = temp.info.$SI = parseInt(temp.info.$TD);
+    result.info.$SI = parseInt(result.info.$TD);
+    // SW_p = temp.info['$SWH'] = parseFloat(temp.info['$SWH']);
+
+    swP = temp.info.$SW;
+
+    result.info.$SWP = result.info.$SWH;
+    result.info.$SF = parseFloat(temp.info.$SFO1);
+    result.info.$OFFSET = 0;
+    sf = temp.info.$SFO1 = parseFloat(temp.info.$SFO1);
+    sf = 1;
+    offset = 0;
+    result.info.$AXNUC = result.info.$NUC1;
+    temp.info.$AXNUC = temp.info.$NUC1;
+  }
+
+  result.info.firstY = offset;
+  result.info.lastY = offset - swP / sf;
+  result.info.$BF2 = sf;
+  result.info.$SFO1 = sf;
+
+  var nbSubSpectra = result.info.nbSubSpectra;
+  var pageValue = result.info.firstY;
+  var deltaY = (result.info.lastY - result.info.firstY) / (nbSubSpectra - 1);
+
+  if (files['2rr']) {
+    setXYSpectrumData(files['2rr'], result, '2rr', true);
+  } else if (files.ser) {
+    setFIDSpectrumData(files.ser, result, 'ser', true);
+  }
+
+  for (var _i2 = 0; _i2 < nbSubSpectra; _i2++) {
+    pageValue += deltaY;
+    result.spectra[_i2].pageValue = pageValue;
+  }
+
+  // var dataType = files.ser ? 'TYPE_2DNMR_FID' : 'TYPE_2DNMR_SPECTRUM';
+
+  result.info['2D_Y_NUCLEUS'] = temp.info.$AXNUC;
+  result.info['2D_X_NUCLEUS'] = result.info.$AXNUC;
+  result.info['2D_Y_FRECUENCY'] = sf;
+  result.info['2D_Y_OFFSET'] = offset;
+  result.info['2D_X_FRECUENCY'] = result.info.$SF;
+  result.info['2D_X_OFFSET'] = result.info.$OFFSET;
+
+  result.twoD = true;
+
+  return result;
+}
+
+function setXYSpectrumData(file, spectra, store, real) {
+  file = ensureIOBuffer(file);
+  var td = spectra.info.$SI = parseInt(spectra.info.$SI);
+
+  var swP = parseFloat(spectra.info.$SWP);
+  var sf = parseFloat(spectra.info.$SF);
+  var bf = sf;
+
+  // var BF = parseFloat(spectra.info["$BF1"]);
+  var offset = spectra.shiftOffsetVal || parseFloat(spectra.info.$OFFSET);
+
+  spectra.info.observeFrequency = sf;
+  spectra.info.$BF1 = bf;
+  spectra.info.$SFO1 = sf;
+  spectra.info.brukerReference = bf;
+
+  var endian = parseInt(spectra.info.$BYTORDP);
+  endian = endian ? 0 : 1;
+
+  // number of spectras
+  var nbSubSpectra = spectra.info.nbSubSpectra ? spectra.info.nbSubSpectra : 1;
+
+  if (endian) {
+    file.setLittleEndian();
+  } else {
+    file.setBigEndian();
+  }
+
+  for (var i = 0; i < nbSubSpectra; i++) {
+    var toSave = {
+      dataType: 'NMR Spectrum',
+      dataTable: '(X++(R..R))',
+      nbPoints: td,
+      firstX: offset,
+      lastX: offset - swP / sf,
+      xUnit: 'PPM',
+      yUnit: 'Arbitrary',
+      data: [new Array(td * 2)], // [{x:new Array(td),y:new Array(td)}],
+      isXYdata: true,
+      observeFrequency: sf,
+      title: spectra.info.TITLE,
+      deltaX: -(swP / sf) / (td - 1)
+    };
+
+    var x = offset;
+    var deltaX = toSave.deltaX;
+
+    if (real) {
+      for (var k = 0; k < td; ++k) {
+        toSave.data[0][2 * k] = x;
+        toSave.data[0][2 * k + 1] = file.readInt32();
+        if (toSave.data[0][2 * k + 1] === null || isNaN(toSave.data[0][2 * k + 1])) {
+          toSave.data[0][2 * k + 1] = 0;
+        }
+        x += deltaX;
+      }
+    } else {
+      for (k = td - 1; k >= 0; --k) {
+        toSave.data[0][2 * k] = x;
+        toSave.data[0][2 * k + 1] = file.readInt32();
+        if (toSave.data[0][2 * k + 1] === null || isNaN(toSave.data[0][2 * k + 1])) {
+          toSave.data[0][2 * k + 1] = 0;
+        }
+        x += deltaX;
+      }
+    }
+
+    spectra.spectra.push(toSave);
+  }
+}
+
+function parseData(file, options) {
+  var keepRecordsRegExp = /.*/;
+  if (options.keepRecordsRegExp) keepRecordsRegExp = options.keepRecordsRegExp;
+  return Converter.convert(file, {
+    keepRecordsRegExp: keepRecordsRegExp
+  });
+}
+
+function setFIDSpectrumData(file, spectra) {
+  file = ensureIOBuffer(file);
+  var td = spectra.info.$TD = parseInt(spectra.info.$TD);
+
+  var SW = spectra.info.$SW = parseFloat(spectra.info.$SW);
+
+  var SF = spectra.info.$SFO1 = parseFloat(spectra.info.$SFO1);
+  var BF = parseFloat(spectra.info.$BF1);
+  spectra.info.$BF1 = BF;
+
+  // var DW = 1 / (2 * SW_h);
+  // var AQ = td * DW;
+  var AQ = SW;
+  var DW = AQ / (td - 1);
+
+  var endian = parseInt(spectra.info.$BYTORDP);
+  endian = endian ? 0 : 1;
+
+  if (endian) {
+    file.setLittleEndian();
+  } else {
+    file.setBigEndian();
+  }
+
+  var nbSubSpectra = spectra.info.nbSubSpectra ? spectra.info.nbSubSpectra : 1;
+  spectra.spectra = new Array(nbSubSpectra);
+
+  for (var j = 0; j < nbSubSpectra / 2; j++) {
+    var toSave = {
+      dataType: 'NMR FID',
+      dataTable: '(X++(R..R))',
+      nbPoints: td,
+      firstX: 0,
+      lastX: AQ,
+      nucleus: spectra.info.$NUC1 ? spectra.info.$NUC1 : undefined,
+      xUnit: 'Sec',
+      yUnit: 'Arbitrary',
+      data: [new Array(2 * td)], // [{x:new Array(td),y:new Array(td)}],
+      isXYdata: true,
+      observeFrequency: SF,
+      title: spectra.info.TITLE,
+      deltaX: DW
+    };
+    spectra.spectra[j * 2] = toSave;
+
+    toSave = {
+      dataType: 'NMR FID',
+      dataTable: '(X++(I..I))',
+      nbPoints: td,
+      firstX: 0,
+      lastX: AQ,
+      nucleus: spectra.info.$NUC1 ? spectra.info.$NUC1 : undefined,
+      xUnit: 'Sec',
+      yUnit: 'Arbitrary',
+      data: [new Array(2 * td)], // [{x:new Array(td),y:new Array(td)}],
+      isXYdata: true,
+      observeFrequency: SF,
+      title: spectra.info.TITLE,
+      deltaX: DW
+    };
+    spectra.spectra[j * 2 + 1] = toSave;
+
+    var x = 0;
+    var y;
+    for (var i = 0; file.available(8) && i < td; i++, x = i * DW) {
+      y = file.readInt32();
+      if (y === null || isNaN(y)) {
+        y = 0;
+      }
+      spectra.spectra[j * 2].data[0][2 * i + 1] = y;
+      spectra.spectra[j * 2].data[0][2 * i] = x;
+      y = file.readInt32();
+      if (y === null || isNaN(y)) {
+        y = 0;
+      }
+      spectra.spectra[j * 2 + 1].data[0][2 * i + 1] = y;
+      spectra.spectra[j * 2 + 1].data[0][2 * i] = x;
+    }
+
+    for (; i < td; i++, x = i * DW) {
+      spectra.spectra[j * 2].data[0][2 * i + 1] = 0;
+      spectra.spectra[j * 2].data[0][2 * i] = x;
+      spectra.spectra[j * 2 + 1].data[0][2 * i + 1] = 0;
+      spectra.spectra[j * 2 + 1].data[0][2 * i] = x;
+    }
+  }
+}
+
+/**
+ * Those functions should disappear if add2D becomes accessible in jcampconvert
+ * @param spectra
+ * @returns {{z: Array, minX: *, maxX: *, minY: *, maxY: *, minZ: *, maxZ: *, noise: number}}
+ */
+
+function convertTo3DZ(spectra) {
+  var noise = 0;
+  var minZ = spectra[0].data[0][0];
+  var maxZ = minZ;
+  var ySize = spectra.length;
+  var xSize = spectra[0].data[0].length / 2;
+  var z = new Array(ySize);
+  for (var i = 0; i < ySize; i++) {
+    z[i] = new Array(xSize);
+    for (var j = 0; j < xSize; j++) {
+      z[i][j] = spectra[i].data[0][j * 2 + 1];
+      if (z[i][j] < minZ) minZ = spectra[i].data[0][j * 2 + 1];
+      if (z[i][j] > maxZ) maxZ = spectra[i].data[0][j * 2 + 1];
+      if (i !== 0 && j !== 0) {
+        noise += Math.abs(z[i][j] - z[i][j - 1]) + Math.abs(z[i][j] - z[i - 1][j]);
+      }
+    }
+  }
+  return {
+    z: z,
+    minX: spectra[0].data[0][0],
+    maxX: spectra[0].data[0][spectra[0].data[0].length - 2],
+    minY: spectra[0].pageValue,
+    maxY: spectra[ySize - 1].pageValue,
+    minZ: minZ,
+    maxZ: maxZ,
+    noise: noise / ((ySize - 1) * (xSize - 1) * 2)
+  };
+}
+
+function add2D(result) {
+  var zData = convertTo3DZ(result.spectra);
+  result.contourLines = generateContourLines(zData);
+  delete zData.z;
+  result.minMax = zData;
+}
+
+function generateContourLines(zData) {
+  var noise = zData.noise;
+  var z = zData.z;
+  var contourLevels = [];
+  var nbLevels = 7;
+  var povarHeight = new Float32Array(4);
+  var isOver = [];
+  var nbSubSpectra = z.length;
+  var nbPovars = z[0].length;
+  var pAx, pAy, pBx, pBy;
+
+  var x0 = zData.minX;
+  var xN = zData.maxX;
+  var dx = (xN - x0) / (nbPovars - 1);
+  var y0 = zData.minY;
+  var yN = zData.maxY;
+  var dy = (yN - y0) / (nbSubSpectra - 1);
+  var minZ = zData.minZ;
+  var maxZ = zData.maxZ;
+
+  // System.out.prvarln('y0 '+y0+' yN '+yN);
+  // -------------------------
+  // Povars attribution
+  //
+  // 0----1
+  // |  / |
+  // | /  |
+  // 2----3
+  //
+  // ---------------------d------
+
+  var lineZValue;
+  for (var level = 0; level < nbLevels * 2; level++) {
+    // multiply by 2 for positif and negatif
+    var contourLevel = {};
+    contourLevels.push(contourLevel);
+    var side = level % 2;
+    if (side === 0) {
+      lineZValue = (maxZ - 5 * noise) * Math.exp(level / 2 - nbLevels) + 5 * noise;
+    } else {
+      lineZValue = -(maxZ - 5 * noise) * Math.exp(level / 2 - nbLevels) - 5 * noise;
+    }
+    var lines = [];
+    contourLevel.zValue = lineZValue;
+    contourLevel.lines = lines;
+
+    if (lineZValue <= minZ || lineZValue >= maxZ) continue;
+
+    for (var iSubSpectra = 0; iSubSpectra < nbSubSpectra - 1; iSubSpectra++) {
+      for (var povar = 0; povar < nbPovars - 1; povar++) {
+        povarHeight[0] = z[iSubSpectra][povar];
+        povarHeight[1] = z[iSubSpectra][povar + 1];
+        povarHeight[2] = z[iSubSpectra + 1][povar];
+        povarHeight[3] = z[iSubSpectra + 1][povar + 1];
+
+        for (var i = 0; i < 4; i++) {
+          isOver[i] = povarHeight[i] > lineZValue;
+        }
+
+        // Example povar0 is over the plane and povar1 and
+        // povar2 are below, we find the varersections and add
+        // the segment
+        if (isOver[0] !== isOver[1] && isOver[0] !== isOver[2]) {
+          pAx = povar + (lineZValue - povarHeight[0]) / (povarHeight[1] - povarHeight[0]);
+          pAy = iSubSpectra;
+          pBx = povar;
+          pBy = iSubSpectra + (lineZValue - povarHeight[0]) / (povarHeight[2] - povarHeight[0]);
+          lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
+        }
+        if (isOver[3] !== isOver[1] && isOver[3] !== isOver[2]) {
+          pAx = povar + 1;
+          pAy = iSubSpectra + 1 - (lineZValue - povarHeight[3]) / (povarHeight[1] - povarHeight[3]);
+          pBx = povar + 1 - (lineZValue - povarHeight[3]) / (povarHeight[2] - povarHeight[3]);
+          pBy = iSubSpectra + 1;
+          lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
+        }
+        // test around the diagonal
+        if (isOver[1] !== isOver[2]) {
+          pAx = povar + 1 - (lineZValue - povarHeight[1]) / (povarHeight[2] - povarHeight[1]);
+          pAy = iSubSpectra + (lineZValue - povarHeight[1]) / (povarHeight[2] - povarHeight[1]);
+          if (isOver[1] !== isOver[0]) {
+            pBx = povar + 1 - (lineZValue - povarHeight[1]) / (povarHeight[0] - povarHeight[1]);
+            pBy = iSubSpectra;
+            lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
+          }
+          if (isOver[2] !== isOver[0]) {
+            pBx = povar;
+            pBy = iSubSpectra + 1 - (lineZValue - povarHeight[2]) / (povarHeight[0] - povarHeight[2]);
+            lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
+          }
+          if (isOver[1] !== isOver[3]) {
+            pBx = povar + 1;
+            pBy = iSubSpectra + (lineZValue - povarHeight[1]) / (povarHeight[3] - povarHeight[1]);
+            lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
+          }
+          if (isOver[2] !== isOver[3]) {
+            pBx = povar + (lineZValue - povarHeight[2]) / (povarHeight[3] - povarHeight[2]);
+            pBy = iSubSpectra + 1;
+            lines.push(pAx * dx + x0, pAy * dy + y0, pBx * dx + x0, pBy * dy + y0);
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    minX: zData.minX,
+    maxX: zData.maxX,
+    minY: zData.minY,
+    maxY: zData.maxY,
+    segments: contourLevels
+  };
+}
+
+function ensureIOBuffer(data) {
+  if (data instanceof Array || data instanceof Uint8Array) {
+    data = new ArrayBuffer(data);
+  }
+  if (data instanceof ArrayBuffer) {
+    return new IOBuffer(data);
+  }
+  return data;
+}
+
+module.exports = {
+  convertZip: readZIP,
+  convertFolder: convert
+};
+
+},{"iobuffer":20,"jcampconverter":5,"jszip":34}],7:[function(require,module,exports){
 (function (Buffer){
 /*!
  * The buffer module from node.js, for the browser.
@@ -2716,7 +3517,601 @@ var hexSliceLookupTable = function () {
 }();
 
 }).call(this,require("buffer").Buffer)
-},{"base64-js":2,"buffer":6,"ieee754":14}],7:[function(require,module,exports){
+},{"base64-js":2,"buffer":7,"ieee754":17}],8:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// NOTE: These type checking functions intentionally don't use `instanceof`
+// because it is fragile and can be easily faked with `Object.create()`.
+
+function isArray(arg) {
+  if (Array.isArray) {
+    return Array.isArray(arg);
+  }
+  return objectToString(arg) === '[object Array]';
+}
+exports.isArray = isArray;
+
+function isBoolean(arg) {
+  return typeof arg === 'boolean';
+}
+exports.isBoolean = isBoolean;
+
+function isNull(arg) {
+  return arg === null;
+}
+exports.isNull = isNull;
+
+function isNullOrUndefined(arg) {
+  return arg == null;
+}
+exports.isNullOrUndefined = isNullOrUndefined;
+
+function isNumber(arg) {
+  return typeof arg === 'number';
+}
+exports.isNumber = isNumber;
+
+function isString(arg) {
+  return typeof arg === 'string';
+}
+exports.isString = isString;
+
+function isSymbol(arg) {
+  return typeof arg === 'symbol';
+}
+exports.isSymbol = isSymbol;
+
+function isUndefined(arg) {
+  return arg === void 0;
+}
+exports.isUndefined = isUndefined;
+
+function isRegExp(re) {
+  return objectToString(re) === '[object RegExp]';
+}
+exports.isRegExp = isRegExp;
+
+function isObject(arg) {
+  return typeof arg === 'object' && arg !== null;
+}
+exports.isObject = isObject;
+
+function isDate(d) {
+  return objectToString(d) === '[object Date]';
+}
+exports.isDate = isDate;
+
+function isError(e) {
+  return objectToString(e) === '[object Error]' || e instanceof Error;
+}
+exports.isError = isError;
+
+function isFunction(arg) {
+  return typeof arg === 'function';
+}
+exports.isFunction = isFunction;
+
+function isPrimitive(arg) {
+  return arg === null || typeof arg === 'boolean' || typeof arg === 'number' || typeof arg === 'string' || typeof arg === 'symbol' || // ES6 symbol
+  typeof arg === 'undefined';
+}
+exports.isPrimitive = isPrimitive;
+
+exports.isBuffer = Buffer.isBuffer;
+
+function objectToString(o) {
+  return Object.prototype.toString.call(o);
+}
+
+}).call(this,{"isBuffer":require("../../is-buffer/index.js")})
+},{"../../is-buffer/index.js":22}],9:[function(require,module,exports){
+'use strict';
+
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+var objectCreate = Object.create || objectCreatePolyfill;
+var objectKeys = Object.keys || objectKeysPolyfill;
+var bind = Function.prototype.bind || functionBindPolyfill;
+
+function EventEmitter() {
+  if (!this._events || !Object.prototype.hasOwnProperty.call(this, '_events')) {
+    this._events = objectCreate(null);
+    this._eventsCount = 0;
+  }
+
+  this._maxListeners = this._maxListeners || undefined;
+}
+module.exports = EventEmitter;
+
+// Backwards-compat with node 0.10.x
+EventEmitter.EventEmitter = EventEmitter;
+
+EventEmitter.prototype._events = undefined;
+EventEmitter.prototype._maxListeners = undefined;
+
+// By default EventEmitters will print a warning if more than 10 listeners are
+// added to it. This is a useful default which helps finding memory leaks.
+var defaultMaxListeners = 10;
+
+var hasDefineProperty;
+try {
+  var o = {};
+  if (Object.defineProperty) Object.defineProperty(o, 'x', { value: 0 });
+  hasDefineProperty = o.x === 0;
+} catch (err) {
+  hasDefineProperty = false;
+}
+if (hasDefineProperty) {
+  Object.defineProperty(EventEmitter, 'defaultMaxListeners', {
+    enumerable: true,
+    get: function get() {
+      return defaultMaxListeners;
+    },
+    set: function set(arg) {
+      // check whether the input is a positive number (whose value is zero or
+      // greater and not a NaN).
+      if (typeof arg !== 'number' || arg < 0 || arg !== arg) throw new TypeError('"defaultMaxListeners" must be a positive number');
+      defaultMaxListeners = arg;
+    }
+  });
+} else {
+  EventEmitter.defaultMaxListeners = defaultMaxListeners;
+}
+
+// Obviously not all Emitters should be limited to 10. This function allows
+// that to be increased. Set to zero for unlimited.
+EventEmitter.prototype.setMaxListeners = function setMaxListeners(n) {
+  if (typeof n !== 'number' || n < 0 || isNaN(n)) throw new TypeError('"n" argument must be a positive number');
+  this._maxListeners = n;
+  return this;
+};
+
+function $getMaxListeners(that) {
+  if (that._maxListeners === undefined) return EventEmitter.defaultMaxListeners;
+  return that._maxListeners;
+}
+
+EventEmitter.prototype.getMaxListeners = function getMaxListeners() {
+  return $getMaxListeners(this);
+};
+
+// These standalone emit* functions are used to optimize calling of event
+// handlers for fast cases because emit() itself often has a variable number of
+// arguments and can be deoptimized because of that. These functions always have
+// the same number of arguments and thus do not get deoptimized, so the code
+// inside them can execute faster.
+function emitNone(handler, isFn, self) {
+  if (isFn) handler.call(self);else {
+    var len = handler.length;
+    var listeners = arrayClone(handler, len);
+    for (var i = 0; i < len; ++i) {
+      listeners[i].call(self);
+    }
+  }
+}
+function emitOne(handler, isFn, self, arg1) {
+  if (isFn) handler.call(self, arg1);else {
+    var len = handler.length;
+    var listeners = arrayClone(handler, len);
+    for (var i = 0; i < len; ++i) {
+      listeners[i].call(self, arg1);
+    }
+  }
+}
+function emitTwo(handler, isFn, self, arg1, arg2) {
+  if (isFn) handler.call(self, arg1, arg2);else {
+    var len = handler.length;
+    var listeners = arrayClone(handler, len);
+    for (var i = 0; i < len; ++i) {
+      listeners[i].call(self, arg1, arg2);
+    }
+  }
+}
+function emitThree(handler, isFn, self, arg1, arg2, arg3) {
+  if (isFn) handler.call(self, arg1, arg2, arg3);else {
+    var len = handler.length;
+    var listeners = arrayClone(handler, len);
+    for (var i = 0; i < len; ++i) {
+      listeners[i].call(self, arg1, arg2, arg3);
+    }
+  }
+}
+
+function emitMany(handler, isFn, self, args) {
+  if (isFn) handler.apply(self, args);else {
+    var len = handler.length;
+    var listeners = arrayClone(handler, len);
+    for (var i = 0; i < len; ++i) {
+      listeners[i].apply(self, args);
+    }
+  }
+}
+
+EventEmitter.prototype.emit = function emit(type) {
+  var er, handler, len, args, i, events;
+  var doError = type === 'error';
+
+  events = this._events;
+  if (events) doError = doError && events.error == null;else if (!doError) return false;
+
+  // If there is no 'error' event listener then throw.
+  if (doError) {
+    if (arguments.length > 1) er = arguments[1];
+    if (er instanceof Error) {
+      throw er; // Unhandled 'error' event
+    } else {
+      // At least give some kind of context to the user
+      var err = new Error('Unhandled "error" event. (' + er + ')');
+      err.context = er;
+      throw err;
+    }
+    return false;
+  }
+
+  handler = events[type];
+
+  if (!handler) return false;
+
+  var isFn = typeof handler === 'function';
+  len = arguments.length;
+  switch (len) {
+    // fast cases
+    case 1:
+      emitNone(handler, isFn, this);
+      break;
+    case 2:
+      emitOne(handler, isFn, this, arguments[1]);
+      break;
+    case 3:
+      emitTwo(handler, isFn, this, arguments[1], arguments[2]);
+      break;
+    case 4:
+      emitThree(handler, isFn, this, arguments[1], arguments[2], arguments[3]);
+      break;
+    // slower
+    default:
+      args = new Array(len - 1);
+      for (i = 1; i < len; i++) {
+        args[i - 1] = arguments[i];
+      }emitMany(handler, isFn, this, args);
+  }
+
+  return true;
+};
+
+function _addListener(target, type, listener, prepend) {
+  var m;
+  var events;
+  var existing;
+
+  if (typeof listener !== 'function') throw new TypeError('"listener" argument must be a function');
+
+  events = target._events;
+  if (!events) {
+    events = target._events = objectCreate(null);
+    target._eventsCount = 0;
+  } else {
+    // To avoid recursion in the case that type === "newListener"! Before
+    // adding it to the listeners, first emit "newListener".
+    if (events.newListener) {
+      target.emit('newListener', type, listener.listener ? listener.listener : listener);
+
+      // Re-assign `events` because a newListener handler could have caused the
+      // this._events to be assigned to a new object
+      events = target._events;
+    }
+    existing = events[type];
+  }
+
+  if (!existing) {
+    // Optimize the case of one listener. Don't need the extra array object.
+    existing = events[type] = listener;
+    ++target._eventsCount;
+  } else {
+    if (typeof existing === 'function') {
+      // Adding the second element, need to change to array.
+      existing = events[type] = prepend ? [listener, existing] : [existing, listener];
+    } else {
+      // If we've already got an array, just append.
+      if (prepend) {
+        existing.unshift(listener);
+      } else {
+        existing.push(listener);
+      }
+    }
+
+    // Check for listener leak
+    if (!existing.warned) {
+      m = $getMaxListeners(target);
+      if (m && m > 0 && existing.length > m) {
+        existing.warned = true;
+        var w = new Error('Possible EventEmitter memory leak detected. ' + existing.length + ' "' + String(type) + '" listeners ' + 'added. Use emitter.setMaxListeners() to ' + 'increase limit.');
+        w.name = 'MaxListenersExceededWarning';
+        w.emitter = target;
+        w.type = type;
+        w.count = existing.length;
+        if (typeof console === 'object' && console.warn) {
+          console.warn('%s: %s', w.name, w.message);
+        }
+      }
+    }
+  }
+
+  return target;
+}
+
+EventEmitter.prototype.addListener = function addListener(type, listener) {
+  return _addListener(this, type, listener, false);
+};
+
+EventEmitter.prototype.on = EventEmitter.prototype.addListener;
+
+EventEmitter.prototype.prependListener = function prependListener(type, listener) {
+  return _addListener(this, type, listener, true);
+};
+
+function onceWrapper() {
+  if (!this.fired) {
+    this.target.removeListener(this.type, this.wrapFn);
+    this.fired = true;
+    switch (arguments.length) {
+      case 0:
+        return this.listener.call(this.target);
+      case 1:
+        return this.listener.call(this.target, arguments[0]);
+      case 2:
+        return this.listener.call(this.target, arguments[0], arguments[1]);
+      case 3:
+        return this.listener.call(this.target, arguments[0], arguments[1], arguments[2]);
+      default:
+        var args = new Array(arguments.length);
+        for (var i = 0; i < args.length; ++i) {
+          args[i] = arguments[i];
+        }this.listener.apply(this.target, args);
+    }
+  }
+}
+
+function _onceWrap(target, type, listener) {
+  var state = { fired: false, wrapFn: undefined, target: target, type: type, listener: listener };
+  var wrapped = bind.call(onceWrapper, state);
+  wrapped.listener = listener;
+  state.wrapFn = wrapped;
+  return wrapped;
+}
+
+EventEmitter.prototype.once = function once(type, listener) {
+  if (typeof listener !== 'function') throw new TypeError('"listener" argument must be a function');
+  this.on(type, _onceWrap(this, type, listener));
+  return this;
+};
+
+EventEmitter.prototype.prependOnceListener = function prependOnceListener(type, listener) {
+  if (typeof listener !== 'function') throw new TypeError('"listener" argument must be a function');
+  this.prependListener(type, _onceWrap(this, type, listener));
+  return this;
+};
+
+// Emits a 'removeListener' event if and only if the listener was removed.
+EventEmitter.prototype.removeListener = function removeListener(type, listener) {
+  var list, events, position, i, originalListener;
+
+  if (typeof listener !== 'function') throw new TypeError('"listener" argument must be a function');
+
+  events = this._events;
+  if (!events) return this;
+
+  list = events[type];
+  if (!list) return this;
+
+  if (list === listener || list.listener === listener) {
+    if (--this._eventsCount === 0) this._events = objectCreate(null);else {
+      delete events[type];
+      if (events.removeListener) this.emit('removeListener', type, list.listener || listener);
+    }
+  } else if (typeof list !== 'function') {
+    position = -1;
+
+    for (i = list.length - 1; i >= 0; i--) {
+      if (list[i] === listener || list[i].listener === listener) {
+        originalListener = list[i].listener;
+        position = i;
+        break;
+      }
+    }
+
+    if (position < 0) return this;
+
+    if (position === 0) list.shift();else spliceOne(list, position);
+
+    if (list.length === 1) events[type] = list[0];
+
+    if (events.removeListener) this.emit('removeListener', type, originalListener || listener);
+  }
+
+  return this;
+};
+
+EventEmitter.prototype.removeAllListeners = function removeAllListeners(type) {
+  var listeners, events, i;
+
+  events = this._events;
+  if (!events) return this;
+
+  // not listening for removeListener, no need to emit
+  if (!events.removeListener) {
+    if (arguments.length === 0) {
+      this._events = objectCreate(null);
+      this._eventsCount = 0;
+    } else if (events[type]) {
+      if (--this._eventsCount === 0) this._events = objectCreate(null);else delete events[type];
+    }
+    return this;
+  }
+
+  // emit removeListener for all listeners on all events
+  if (arguments.length === 0) {
+    var keys = objectKeys(events);
+    var key;
+    for (i = 0; i < keys.length; ++i) {
+      key = keys[i];
+      if (key === 'removeListener') continue;
+      this.removeAllListeners(key);
+    }
+    this.removeAllListeners('removeListener');
+    this._events = objectCreate(null);
+    this._eventsCount = 0;
+    return this;
+  }
+
+  listeners = events[type];
+
+  if (typeof listeners === 'function') {
+    this.removeListener(type, listeners);
+  } else if (listeners) {
+    // LIFO order
+    for (i = listeners.length - 1; i >= 0; i--) {
+      this.removeListener(type, listeners[i]);
+    }
+  }
+
+  return this;
+};
+
+function _listeners(target, type, unwrap) {
+  var events = target._events;
+
+  if (!events) return [];
+
+  var evlistener = events[type];
+  if (!evlistener) return [];
+
+  if (typeof evlistener === 'function') return unwrap ? [evlistener.listener || evlistener] : [evlistener];
+
+  return unwrap ? unwrapListeners(evlistener) : arrayClone(evlistener, evlistener.length);
+}
+
+EventEmitter.prototype.listeners = function listeners(type) {
+  return _listeners(this, type, true);
+};
+
+EventEmitter.prototype.rawListeners = function rawListeners(type) {
+  return _listeners(this, type, false);
+};
+
+EventEmitter.listenerCount = function (emitter, type) {
+  if (typeof emitter.listenerCount === 'function') {
+    return emitter.listenerCount(type);
+  } else {
+    return listenerCount.call(emitter, type);
+  }
+};
+
+EventEmitter.prototype.listenerCount = listenerCount;
+function listenerCount(type) {
+  var events = this._events;
+
+  if (events) {
+    var evlistener = events[type];
+
+    if (typeof evlistener === 'function') {
+      return 1;
+    } else if (evlistener) {
+      return evlistener.length;
+    }
+  }
+
+  return 0;
+}
+
+EventEmitter.prototype.eventNames = function eventNames() {
+  return this._eventsCount > 0 ? Reflect.ownKeys(this._events) : [];
+};
+
+// About 1.5x faster than the two-arg version of Array#splice().
+function spliceOne(list, index) {
+  for (var i = index, k = i + 1, n = list.length; k < n; i += 1, k += 1) {
+    list[i] = list[k];
+  }list.pop();
+}
+
+function arrayClone(arr, n) {
+  var copy = new Array(n);
+  for (var i = 0; i < n; ++i) {
+    copy[i] = arr[i];
+  }return copy;
+}
+
+function unwrapListeners(arr) {
+  var ret = new Array(arr.length);
+  for (var i = 0; i < ret.length; ++i) {
+    ret[i] = arr[i].listener || arr[i];
+  }
+  return ret;
+}
+
+function objectCreatePolyfill(proto) {
+  var F = function F() {};
+  F.prototype = proto;
+  return new F();
+}
+function objectKeysPolyfill(obj) {
+  var keys = [];
+  for (var k in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, k)) {
+      keys.push(k);
+    }
+  }return k;
+}
+function functionBindPolyfill(context) {
+  var fn = this;
+  return function () {
+    return fn.apply(context, arguments);
+  };
+}
+
+},{}],10:[function(require,module,exports){
 'use strict';
 
 var hasOwn = Object.prototype.hasOwnProperty;
@@ -2835,7 +4230,7 @@ module.exports = function extend() {
 	return target;
 };
 
-},{}],8:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 /* eslint no-div-regex: 0*/
 
 'use strict';
@@ -3323,7 +4718,7 @@ function getLengthOfWhiteSpaceBeforeStartOfLetters(string) {
 
 module.exports = genbankToJson;
 
-},{"./utils/createInitialSequence":9,"./utils/months":10,"./utils/splitStringIntoLines.js":11}],9:[function(require,module,exports){
+},{"./utils/createInitialSequence":12,"./utils/months":13,"./utils/splitStringIntoLines.js":14}],12:[function(require,module,exports){
 'use strict';
 
 module.exports = function createInitialSequence() {
@@ -3338,12 +4733,12 @@ module.exports = function createInitialSequence() {
   };
 };
 
-},{}],10:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 'use strict';
 
 module.exports = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 
-},{}],11:[function(require,module,exports){
+},{}],14:[function(require,module,exports){
 'use strict';
 
 module.exports = function splitStringIntoLines(string) {
@@ -3360,12 +4755,12 @@ module.exports = function splitStringIntoLines(string) {
   }
 };
 
-},{}],12:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./lib/heap');
 
-},{"./lib/heap":13}],13:[function(require,module,exports){
+},{"./lib/heap":16}],16:[function(require,module,exports){
 'use strict';
 
 // Generated by CoffeeScript 1.8.0
@@ -3734,7 +5129,7 @@ module.exports = require('./lib/heap');
   });
 }).call(undefined);
 
-},{}],14:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 "use strict";
 
 exports.read = function (buffer, offset, isLE, mLen, nBytes) {
@@ -3822,7 +5217,81 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128;
 };
 
-},{}],15:[function(require,module,exports){
+},{}],18:[function(require,module,exports){
+(function (global){
+'use strict';
+
+var Mutation = global.MutationObserver || global.WebKitMutationObserver;
+
+var scheduleDrain;
+
+{
+  if (Mutation) {
+    var called = 0;
+    var observer = new Mutation(nextTick);
+    var element = global.document.createTextNode('');
+    observer.observe(element, {
+      characterData: true
+    });
+    scheduleDrain = function scheduleDrain() {
+      element.data = called = ++called % 2;
+    };
+  } else if (!global.setImmediate && typeof global.MessageChannel !== 'undefined') {
+    var channel = new global.MessageChannel();
+    channel.port1.onmessage = nextTick;
+    scheduleDrain = function scheduleDrain() {
+      channel.port2.postMessage(0);
+    };
+  } else if ('document' in global && 'onreadystatechange' in global.document.createElement('script')) {
+    scheduleDrain = function scheduleDrain() {
+
+      // Create a <script> element; its readystatechange event will be fired asynchronously once it is inserted
+      // into the document. Do so, thus queuing up the task. Remember to clean up once it's been called.
+      var scriptEl = global.document.createElement('script');
+      scriptEl.onreadystatechange = function () {
+        nextTick();
+
+        scriptEl.onreadystatechange = null;
+        scriptEl.parentNode.removeChild(scriptEl);
+        scriptEl = null;
+      };
+      global.document.documentElement.appendChild(scriptEl);
+    };
+  } else {
+    scheduleDrain = function scheduleDrain() {
+      setTimeout(nextTick, 0);
+    };
+  }
+}
+
+var draining;
+var queue = [];
+//named nextTick for less confusing stack traces
+function nextTick() {
+  draining = true;
+  var i, oldQueue;
+  var len = queue.length;
+  while (len) {
+    oldQueue = queue;
+    queue = [];
+    i = -1;
+    while (++i < len) {
+      oldQueue[i]();
+    }
+    len = queue.length;
+  }
+  draining = false;
+}
+
+module.exports = immediate;
+function immediate(task) {
+  if (queue.push(task) === 1 && !draining) {
+    scheduleDrain();
+  }
+}
+
+}).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{}],19:[function(require,module,exports){
 'use strict';
 
 if (typeof Object.create === 'function') {
@@ -3849,59 +5318,42 @@ if (typeof Object.create === 'function') {
   };
 }
 
-},{}],16:[function(require,module,exports){
-(function (Buffer){
-'use strict';
+},{}],20:[function(require,module,exports){
+"use strict";
 
-var utf8 = require('utf8');
-
+Object.defineProperty(exports, "__esModule", { value: true });
+var utf8_1 = require("utf8");
 var defaultByteLength = 1024 * 8;
-var charArray = [];
-
-/**
- * IOBuffer
- * @constructor
- * @param {undefined|number|ArrayBuffer|TypedArray|IOBuffer|Buffer} data - The data to construct the IOBuffer with.
- *
- * If it's a number, it will initialize the buffer with the number as the buffer's length<br>
- * If it's undefined, it will initialize the buffer with a default length of 8 Kb<br>
- * If its an ArrayBuffer, a TypedArray, an IOBuffer instance,
- * or a Node.js Buffer, it will create a view over the underlying ArrayBuffer.
- * @param {object} [options]
- * @param {number} [options.offset=0] - Ignore the first n bytes of the ArrayBuffer
- * @property {ArrayBuffer} buffer - Reference to the internal ArrayBuffer object
- * @property {number} length - Byte length of the internal ArrayBuffer
- * @property {number} offset - The current offset of the buffer's pointer
- * @property {number} byteLength - Byte length of the internal ArrayBuffer
- * @property {number} byteOffset - Byte offset of the internal ArrayBuffer
- */
 class IOBuffer {
-    constructor(data, options) {
-        options = options || {};
+    /**
+     * @param data - The data to construct the IOBuffer with.
+     * If data is a number, it will be the new buffer's length<br>
+     * If data is `undefined`, the buffer will be initialized with a default length of 8Kb<br>
+     * If data is an ArrayBuffer, SharedArrayBuffer, an ArrayBufferView (Typed Array), an IOBuffer instance,
+     * or a Node.js Buffer, a view will be created over the underlying ArrayBuffer.
+     * @param options
+     */
+    constructor(data = defaultByteLength, options = {}) {
         var dataIsGiven = false;
-        if (data === undefined) {
-            data = defaultByteLength;
-        }
         if (typeof data === 'number') {
             data = new ArrayBuffer(data);
         } else {
             dataIsGiven = true;
-            this._lastWrittenByte = data.byteLength;
+            this.lastWrittenByte = data.byteLength;
         }
-
         var offset = options.offset ? options.offset >>> 0 : 0;
         var byteLength = data.byteLength - offset;
         var dvOffset = offset;
-        if (data.buffer) {
+        if (ArrayBuffer.isView(data) || data instanceof IOBuffer) {
             if (data.byteLength !== data.buffer.byteLength) {
                 dvOffset = data.byteOffset + offset;
             }
             data = data.buffer;
         }
         if (dataIsGiven) {
-            this._lastWrittenByte = byteLength;
+            this.lastWrittenByte = byteLength;
         } else {
-            this._lastWrittenByte = 0;
+            this.lastWrittenByte = 0;
         }
         this.buffer = data;
         this.length = byteLength;
@@ -3913,132 +5365,112 @@ class IOBuffer {
         this._mark = 0;
         this._marks = [];
     }
-
     /**
-     * Checks if the memory allocated to the buffer is sufficient to store more bytes after the offset
-     * @param {number} [byteLength=1] The needed memory in bytes
-     * @return {boolean} Returns true if there is sufficient space and false otherwise
+     * Checks if the memory allocated to the buffer is sufficient to store more
+     * bytes after the offset.
+     * @param byteLength - The needed memory in bytes.
+     * @returns `true` if there is sufficient space and `false` otherwise.
      */
-    available(byteLength) {
-        if (byteLength === undefined) byteLength = 1;
+    available(byteLength = 1) {
         return this.offset + byteLength <= this.length;
     }
-
     /**
-     * Check if little-endian mode is used for reading and writing multi-byte values
-     * @return {boolean} Returns true if little-endian mode is used, false otherwise
+     * Check if little-endian mode is used for reading and writing multi-byte
+     * values.
+     * @returns `true` if little-endian mode is used, `false` otherwise.
      */
     isLittleEndian() {
         return this.littleEndian;
     }
-
     /**
-     * Set little-endian mode for reading and writing multi-byte values
-     * @return {IOBuffer}
+     * Set little-endian mode for reading and writing multi-byte values.
      */
     setLittleEndian() {
         this.littleEndian = true;
         return this;
     }
-
     /**
-     * Check if big-endian mode is used for reading and writing multi-byte values
-     * @return {boolean} Returns true if big-endian mode is used, false otherwise
+     * Check if big-endian mode is used for reading and writing multi-byte values.
+     * @returns `true` if big-endian mode is used, `false` otherwise.
      */
     isBigEndian() {
         return !this.littleEndian;
     }
-
     /**
-     * Switches to big-endian mode for reading and writing multi-byte values
-     * @return {IOBuffer}
+     * Switches to big-endian mode for reading and writing multi-byte values.
      */
     setBigEndian() {
         this.littleEndian = false;
         return this;
     }
-
     /**
-     * Move the pointer n bytes forward
-     * @param {number} n
-     * @return {IOBuffer}
+     * Move the pointer n bytes forward.
+     * @param n - Number of bytes to skip.
      */
-    skip(n) {
-        if (n === undefined) n = 1;
+    skip(n = 1) {
         this.offset += n;
         return this;
     }
-
     /**
-     * Move the pointer to the given offset
-     * @param {number} offset
-     * @return {IOBuffer}
+     * Move the pointer to the given offset.
+     * @param offset
      */
     seek(offset) {
         this.offset = offset;
         return this;
     }
-
     /**
      * Store the current pointer offset.
      * @see {@link IOBuffer#reset}
-     * @return {IOBuffer}
      */
     mark() {
         this._mark = this.offset;
         return this;
     }
-
     /**
-     * Move the pointer back to the last pointer offset set by mark
+     * Move the pointer back to the last pointer offset set by mark.
      * @see {@link IOBuffer#mark}
-     * @return {IOBuffer}
      */
     reset() {
         this.offset = this._mark;
         return this;
     }
-
     /**
-     * Push the current pointer offset to the mark stack
+     * Push the current pointer offset to the mark stack.
      * @see {@link IOBuffer#popMark}
-     * @return {IOBuffer}
      */
     pushMark() {
         this._marks.push(this.offset);
         return this;
     }
-
     /**
-     * Pop the last pointer offset from the mark stack, and set the current pointer offset to the popped value
+     * Pop the last pointer offset from the mark stack, and set the current
+     * pointer offset to the popped value.
      * @see {@link IOBuffer#pushMark}
-     * @return {IOBuffer}
      */
     popMark() {
         var offset = this._marks.pop();
-        if (offset === undefined) throw new Error('Mark stack empty');
+        if (offset === undefined) {
+            throw new Error('Mark stack empty');
+        }
         this.seek(offset);
         return this;
     }
-
     /**
-     * Move the pointer offset back to 0
-     * @return {IOBuffer}
+     * Move the pointer offset back to 0.
      */
     rewind() {
         this.offset = 0;
         return this;
     }
-
     /**
-     * Make sure the buffer has sufficient memory to write a given byteLength at the current pointer offset
-     * If the buffer's memory is insufficient, this method will create a new buffer (a copy) with a length
-     * that is twice (byteLength + current offset)
-     * @param {number} [byteLength = 1]
-     * @return {IOBuffer}
+     * Make sure the buffer has sufficient memory to write a given byteLength at
+     * the current pointer offset.
+     * If the buffer's memory is insufficient, this method will create a new
+     * buffer (a copy) with a length that is twice (byteLength + current offset).
+     * @param byteLength
      */
-    ensureAvailable(byteLength) {
-        if (byteLength === undefined) byteLength = 1;
+    ensureAvailable(byteLength = 1) {
         if (!this.available(byteLength)) {
             var lengthNeeded = this.offset + byteLength;
             var newLength = lengthNeeded * 2;
@@ -4050,161 +5482,123 @@ class IOBuffer {
         }
         return this;
     }
-
     /**
-     * Read a byte and return false if the byte's value is 0, or true otherwise
-     * Moves pointer forward
-     * @return {boolean}
+     * Read a byte and return false if the byte's value is 0, or true otherwise.
+     * Moves pointer forward by one byte.
      */
     readBoolean() {
         return this.readUint8() !== 0;
     }
-
     /**
-     * Read a signed 8-bit integer and move pointer forward
-     * @return {number}
+     * Read a signed 8-bit integer and move pointer forward by 1 byte.
      */
     readInt8() {
         return this._data.getInt8(this.offset++);
     }
-
     /**
-     * Read an unsigned 8-bit integer and move pointer forward
-     * @return {number}
+     * Read an unsigned 8-bit integer and move pointer forward by 1 byte.
      */
     readUint8() {
         return this._data.getUint8(this.offset++);
     }
-
     /**
-     * Alias for {@link IOBuffer#readUint8}
-     * @return {number}
+     * Alias for {@link IOBuffer#readUint8}.
      */
     readByte() {
         return this.readUint8();
     }
-
     /**
-     * Read n bytes and move pointer forward.
-     * @param {number} n
-     * @return {Uint8Array}
+     * Read `n` bytes and move pointer forward by `n` bytes.
      */
-    readBytes(n) {
-        if (n === undefined) n = 1;
+    readBytes(n = 1) {
         var bytes = new Uint8Array(n);
         for (var i = 0; i < n; i++) {
             bytes[i] = this.readByte();
         }
         return bytes;
     }
-
     /**
-     * Read a 16-bit signed integer and move pointer forward
-     * @return {number}
+     * Read a 16-bit signed integer and move pointer forward by 2 bytes.
      */
     readInt16() {
         var value = this._data.getInt16(this.offset, this.littleEndian);
         this.offset += 2;
         return value;
     }
-
     /**
-     * Read a 16-bit unsigned integer and move pointer forward
-     * @return {number}
+     * Read a 16-bit unsigned integer and move pointer forward by 2 bytes.
      */
     readUint16() {
         var value = this._data.getUint16(this.offset, this.littleEndian);
         this.offset += 2;
         return value;
     }
-
     /**
-     * Read a 32-bit signed integer and move pointer forward
-     * @return {number}
+     * Read a 32-bit signed integer and move pointer forward by 4 bytes.
      */
     readInt32() {
         var value = this._data.getInt32(this.offset, this.littleEndian);
         this.offset += 4;
         return value;
     }
-
     /**
-     * Read a 32-bit unsigned integer and move pointer forward
-     * @return {number}
+     * Read a 32-bit unsigned integer and move pointer forward by 4 bytes.
      */
     readUint32() {
         var value = this._data.getUint32(this.offset, this.littleEndian);
         this.offset += 4;
         return value;
     }
-
     /**
-     * Read a 32-bit floating number and move pointer forward
-     * @return {number}
+     * Read a 32-bit floating number and move pointer forward by 4 bytes.
      */
     readFloat32() {
         var value = this._data.getFloat32(this.offset, this.littleEndian);
         this.offset += 4;
         return value;
     }
-
     /**
-     * Read a 64-bit floating number and move pointer forward
-     * @return {number}
+     * Read a 64-bit floating number and move pointer forward by 8 bytes.
      */
     readFloat64() {
         var value = this._data.getFloat64(this.offset, this.littleEndian);
         this.offset += 8;
         return value;
     }
-
     /**
-     * Read 1-byte ascii character and move pointer forward
-     * @return {string}
+     * Read a 1-byte ASCII character and move pointer forward by 1 byte.
      */
     readChar() {
         return String.fromCharCode(this.readInt8());
     }
-
     /**
-     * Read n 1-byte ascii characters and move pointer forward
-     * @param {number} n
-     * @return {string}
+     * Read `n` 1-byte ASCII characters and move pointer forward by `n` bytes.
      */
-    readChars(n) {
-        if (n === undefined) n = 1;
-        charArray.length = n;
+    readChars(n = 1) {
+        var result = '';
         for (var i = 0; i < n; i++) {
-            charArray[i] = this.readChar();
+            result += this.readChar();
         }
-        return charArray.join('');
+        return result;
     }
-
     /**
-     * Read the next n bytes, return a UTF-8 decoded string and move pointer forward
-     * @param {number} n
-     * @return {string}
+     * Read the next `n` bytes, return a UTF-8 decoded string and move pointer
+     * forward by `n` bytes.
      */
-    readUtf8(n) {
-        if (n === undefined) n = 1;
+    readUtf8(n = 1) {
         var bString = this.readChars(n);
-        return utf8.decode(bString);
+        return utf8_1.decode(bString);
     }
-
     /**
-     * Write 0xff if the passed value is truthy, 0x00 otherwise
-     * @param {any} value
-     * @return {IOBuffer}
+     * Write 0xff if the passed value is truthy, 0x00 otherwise and move pointer
+     * forward by 1 byte.
      */
     writeBoolean(value) {
         this.writeUint8(value ? 0xff : 0x00);
         return this;
     }
-
     /**
-     * Write value as an 8-bit signed integer
-     * @param {number} value
-     * @return {IOBuffer}
+     * Write `value` as an 8-bit signed integer and move pointer forward by 1 byte.
      */
     writeInt8(value) {
         this.ensureAvailable(1);
@@ -4212,11 +5606,9 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * Write value as a 8-bit unsigned integer
-     * @param {number} value
-     * @return {IOBuffer}
+     * Write `value` as an 8-bit unsigned integer and move pointer forward by 1
+     * byte.
      */
     writeUint8(value) {
         this.ensureAvailable(1);
@@ -4224,20 +5616,15 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * An alias for {@link IOBuffer#writeUint8}
-     * @param {number} value
-     * @return {IOBuffer}
+     * An alias for {@link IOBuffer#writeUint8}.
      */
     writeByte(value) {
         return this.writeUint8(value);
     }
-
     /**
-     * Write bytes
-     * @param {Array|Uint8Array} bytes
-     * @return {IOBuffer}
+     * Write all elements of `bytes` as uint8 values and move pointer forward by
+     * `bytes.length` bytes.
      */
     writeBytes(bytes) {
         this.ensureAvailable(bytes.length);
@@ -4247,11 +5634,9 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * Write value as an 16-bit signed integer
-     * @param {number} value
-     * @return {IOBuffer}
+     * Write `value` as a 16-bit signed integer and move pointer forward by 2
+     * bytes.
      */
     writeInt16(value) {
         this.ensureAvailable(2);
@@ -4260,11 +5645,9 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * Write value as a 16-bit unsigned integer
-     * @param {number} value
-     * @return {IOBuffer}
+     * Write `value` as a 16-bit unsigned integer and move pointer forward by 2
+     * bytes.
      */
     writeUint16(value) {
         this.ensureAvailable(2);
@@ -4273,11 +5656,9 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * Write a 32-bit signed integer at the current pointer offset
-     * @param {number} value
-     * @return {IOBuffer}
+     * Write `value` as a 32-bit signed integer and move pointer forward by 4
+     * bytes.
      */
     writeInt32(value) {
         this.ensureAvailable(4);
@@ -4286,11 +5667,9 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * Write a 32-bit unsigned integer at the current pointer offset
-     * @param {number} value - The value to set
-     * @return {IOBuffer}
+     * Write `value` as a 32-bit unsigned integer and move pointer forward by 4
+     * bytes.
      */
     writeUint32(value) {
         this.ensureAvailable(4);
@@ -4299,11 +5678,9 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * Write a 32-bit floating number at the current pointer offset
-     * @param {number} value - The value to set
-     * @return {IOBuffer}
+     * Write `value` as a 32-bit floating number and move pointer forward by 4
+     * bytes.
      */
     writeFloat32(value) {
         this.ensureAvailable(4);
@@ -4312,11 +5689,9 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * Write a 64-bit floating number at the current pointer offset
-     * @param {number} value
-     * @return {IOBuffer}
+     * Write `value` as a 64-bit floating number and move pointer forward by 8
+     * bytes.
      */
     writeFloat64(value) {
         this.ensureAvailable(8);
@@ -4325,20 +5700,16 @@ class IOBuffer {
         this._updateLastWrittenByte();
         return this;
     }
-
     /**
-     * Write the charCode of the passed string's first character to the current pointer offset
-     * @param {string} str - The character to set
-     * @return {IOBuffer}
+     * Write the charCode of `str`'s first character as an 8-bit unsigned integer
+     * and move pointer forward by 1 byte.
      */
     writeChar(str) {
         return this.writeUint8(str.charCodeAt(0));
     }
-
     /**
-     * Write the charCodes of the passed string's characters to the current pointer offset
-     * @param {string} str
-     * @return {IOBuffer}
+     * Write the charCodes of all `str`'s characters as 8-bit unsigned integers
+     * and move pointer forward by `str.length` bytes.
      */
     writeChars(str) {
         for (var i = 0; i < str.length; i++) {
@@ -4346,54 +5717,36 @@ class IOBuffer {
         }
         return this;
     }
-
     /**
-     * UTF-8 encode and write the passed string to the current pointer offset
-     * @param {string} str
-     * @return {IOBuffer}
+     * UTF-8 encode and write `str` to the current pointer offset and move pointer
+     * forward according to the encoded length.
      */
     writeUtf8(str) {
-        var bString = utf8.encode(str);
+        var bString = utf8_1.encode(str);
         return this.writeChars(bString);
     }
-
     /**
      * Export a Uint8Array view of the internal buffer.
      * The view starts at the byte offset and its length
      * is calculated to stop at the last written byte or the original length.
-     * @return {Uint8Array}
      */
     toArray() {
-        return new Uint8Array(this.buffer, this.byteOffset, this._lastWrittenByte);
+        return new Uint8Array(this.buffer, this.byteOffset, this.lastWrittenByte);
     }
-
-    /**
-     * Same as {@link IOBuffer#toArray} but returns a Buffer if possible. Otherwise returns a Uint8Array.
-     * @return {Buffer|Uint8Array}
-     */
-    getBuffer() {
-        if (typeof Buffer !== 'undefined') {
-            return Buffer.from(this.toArray());
-        } else {
-            return this.toArray();
-        }
-    }
-
     /**
      * Update the last written byte offset
      * @private
      */
     _updateLastWrittenByte() {
-        if (this.offset > this._lastWrittenByte) {
-            this._lastWrittenByte = this.offset;
+        if (this.offset > this.lastWrittenByte) {
+            this.lastWrittenByte = this.offset;
         }
     }
 }
+exports.IOBuffer = IOBuffer;
 
-module.exports = IOBuffer;
 
-}).call(this,require("buffer").Buffer)
-},{"buffer":6,"utf8":180}],17:[function(require,module,exports){
+},{"utf8":197}],21:[function(require,module,exports){
 'use strict';
 
 var toString = Object.prototype.toString;
@@ -4404,7 +5757,41 @@ function isAnyArray(object) {
 
 module.exports = isAnyArray;
 
-},{}],18:[function(require,module,exports){
+},{}],22:[function(require,module,exports){
+'use strict';
+
+/*!
+ * Determine if an object is a Buffer
+ *
+ * @author   Feross Aboukhadijeh <https://feross.org>
+ * @license  MIT
+ */
+
+// The _isBuffer check is for Safari 5-7 support, because it's missing
+// Object.prototype.constructor. Remove this eventually
+module.exports = function (obj) {
+  return obj != null && (isBuffer(obj) || isSlowBuffer(obj) || !!obj._isBuffer);
+};
+
+function isBuffer(obj) {
+  return !!obj.constructor && typeof obj.constructor.isBuffer === 'function' && obj.constructor.isBuffer(obj);
+}
+
+// For Node v0.10 support. Remove this eventually.
+function isSlowBuffer(obj) {
+  return typeof obj.readFloatLE === 'function' && typeof obj.slice === 'function' && isBuffer(obj.slice(0, 0));
+}
+
+},{}],23:[function(require,module,exports){
+'use strict';
+
+var toString = {}.toString;
+
+module.exports = Array.isArray || function (arr) {
+  return toString.call(arr) == '[object Array]';
+};
+
+},{}],24:[function(require,module,exports){
 'use strict';
 
 function getConverter() {
@@ -5389,24 +6776,1716 @@ module.exports = {
   createTree: createTree
 };
 
-},{}],19:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 'use strict';
 
-var DataReader = require('./dataReader');
+var utils = require('./utils');
+var support = require('./support');
+// private property
+var _keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 
-function ArrayReader(data) {
-    if (data) {
-        this.data = data;
-        this.length = this.data.length;
-        this.index = 0;
-        this.zero = 0;
+// public method for encoding
+exports.encode = function (input) {
+    var output = [];
+    var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
+    var i = 0,
+        len = input.length,
+        remainingBytes = len;
 
-        for (var i = 0; i < this.data.length; i++) {
-            data[i] = data[i] & 0xFF;
+    var isArray = utils.getTypeOf(input) !== "string";
+    while (i < input.length) {
+        remainingBytes = len - i;
+
+        if (!isArray) {
+            chr1 = input.charCodeAt(i++);
+            chr2 = i < len ? input.charCodeAt(i++) : 0;
+            chr3 = i < len ? input.charCodeAt(i++) : 0;
+        } else {
+            chr1 = input[i++];
+            chr2 = i < len ? input[i++] : 0;
+            chr3 = i < len ? input[i++] : 0;
+        }
+
+        enc1 = chr1 >> 2;
+        enc2 = (chr1 & 3) << 4 | chr2 >> 4;
+        enc3 = remainingBytes > 1 ? (chr2 & 15) << 2 | chr3 >> 6 : 64;
+        enc4 = remainingBytes > 2 ? chr3 & 63 : 64;
+
+        output.push(_keyStr.charAt(enc1) + _keyStr.charAt(enc2) + _keyStr.charAt(enc3) + _keyStr.charAt(enc4));
+    }
+
+    return output.join("");
+};
+
+// public method for decoding
+exports.decode = function (input) {
+    var chr1, chr2, chr3;
+    var enc1, enc2, enc3, enc4;
+    var i = 0,
+        resultIndex = 0;
+
+    var dataUrlPrefix = "data:";
+
+    if (input.substr(0, dataUrlPrefix.length) === dataUrlPrefix) {
+        // This is a common error: people give a data url
+        // (data:image/png;base64,iVBOR...) with a {base64: true} and
+        // wonders why things don't work.
+        // We can detect that the string input looks like a data url but we
+        // *can't* be sure it is one: removing everything up to the comma would
+        // be too dangerous.
+        throw new Error("Invalid base64 input, it looks like a data url.");
+    }
+
+    input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
+
+    var totalLength = input.length * 3 / 4;
+    if (input.charAt(input.length - 1) === _keyStr.charAt(64)) {
+        totalLength--;
+    }
+    if (input.charAt(input.length - 2) === _keyStr.charAt(64)) {
+        totalLength--;
+    }
+    if (totalLength % 1 !== 0) {
+        // totalLength is not an integer, the length does not match a valid
+        // base64 content. That can happen if:
+        // - the input is not a base64 content
+        // - the input is *almost* a base64 content, with a extra chars at the
+        //   beginning or at the end
+        // - the input uses a base64 variant (base64url for example)
+        throw new Error("Invalid base64 input, bad content length.");
+    }
+    var output;
+    if (support.uint8array) {
+        output = new Uint8Array(totalLength | 0);
+    } else {
+        output = new Array(totalLength | 0);
+    }
+
+    while (i < input.length) {
+
+        enc1 = _keyStr.indexOf(input.charAt(i++));
+        enc2 = _keyStr.indexOf(input.charAt(i++));
+        enc3 = _keyStr.indexOf(input.charAt(i++));
+        enc4 = _keyStr.indexOf(input.charAt(i++));
+
+        chr1 = enc1 << 2 | enc2 >> 4;
+        chr2 = (enc2 & 15) << 4 | enc3 >> 2;
+        chr3 = (enc3 & 3) << 6 | enc4;
+
+        output[resultIndex++] = chr1;
+
+        if (enc3 !== 64) {
+            output[resultIndex++] = chr2;
+        }
+        if (enc4 !== 64) {
+            output[resultIndex++] = chr3;
         }
     }
+
+    return output;
+};
+
+},{"./support":54,"./utils":56}],26:[function(require,module,exports){
+'use strict';
+
+var external = require("./external");
+var DataWorker = require('./stream/DataWorker');
+var DataLengthProbe = require('./stream/DataLengthProbe');
+var Crc32Probe = require('./stream/Crc32Probe');
+var DataLengthProbe = require('./stream/DataLengthProbe');
+
+/**
+ * Represent a compressed object, with everything needed to decompress it.
+ * @constructor
+ * @param {number} compressedSize the size of the data compressed.
+ * @param {number} uncompressedSize the size of the data after decompression.
+ * @param {number} crc32 the crc32 of the decompressed file.
+ * @param {object} compression the type of compression, see lib/compressions.js.
+ * @param {String|ArrayBuffer|Uint8Array|Buffer} data the compressed data.
+ */
+function CompressedObject(compressedSize, uncompressedSize, crc32, compression, data) {
+    this.compressedSize = compressedSize;
+    this.uncompressedSize = uncompressedSize;
+    this.crc32 = crc32;
+    this.compression = compression;
+    this.compressedContent = data;
 }
-ArrayReader.prototype = new DataReader();
+
+CompressedObject.prototype = {
+    /**
+     * Create a worker to get the uncompressed content.
+     * @return {GenericWorker} the worker.
+     */
+    getContentWorker: function getContentWorker() {
+        var worker = new DataWorker(external.Promise.resolve(this.compressedContent)).pipe(this.compression.uncompressWorker()).pipe(new DataLengthProbe("data_length"));
+
+        var that = this;
+        worker.on("end", function () {
+            if (this.streamInfo['data_length'] !== that.uncompressedSize) {
+                throw new Error("Bug : uncompressed data size mismatch");
+            }
+        });
+        return worker;
+    },
+    /**
+     * Create a worker to get the compressed content.
+     * @return {GenericWorker} the worker.
+     */
+    getCompressedWorker: function getCompressedWorker() {
+        return new DataWorker(external.Promise.resolve(this.compressedContent)).withStreamInfo("compressedSize", this.compressedSize).withStreamInfo("uncompressedSize", this.uncompressedSize).withStreamInfo("crc32", this.crc32).withStreamInfo("compression", this.compression);
+    }
+};
+
+/**
+ * Chain the given worker with other workers to compress the content with the
+ * given compresion.
+ * @param {GenericWorker} uncompressedWorker the worker to pipe.
+ * @param {Object} compression the compression object.
+ * @param {Object} compressionOptions the options to use when compressing.
+ * @return {GenericWorker} the new worker compressing the content.
+ */
+CompressedObject.createWorkerFrom = function (uncompressedWorker, compression, compressionOptions) {
+    return uncompressedWorker.pipe(new Crc32Probe()).pipe(new DataLengthProbe("uncompressedSize")).pipe(compression.compressWorker(compressionOptions)).pipe(new DataLengthProbe("compressedSize")).withStreamInfo("compression", compression);
+};
+
+module.exports = CompressedObject;
+
+},{"./external":30,"./stream/Crc32Probe":49,"./stream/DataLengthProbe":50,"./stream/DataWorker":51}],27:[function(require,module,exports){
+'use strict';
+
+var GenericWorker = require("./stream/GenericWorker");
+
+exports.STORE = {
+    magic: "\x00\x00",
+    compressWorker: function compressWorker(compressionOptions) {
+        return new GenericWorker("STORE compression");
+    },
+    uncompressWorker: function uncompressWorker() {
+        return new GenericWorker("STORE decompression");
+    }
+};
+exports.DEFLATE = require('./flate');
+
+},{"./flate":31,"./stream/GenericWorker":52}],28:[function(require,module,exports){
+'use strict';
+
+var utils = require('./utils');
+
+/**
+ * The following functions come from pako, from pako/lib/zlib/crc32.js
+ * released under the MIT license, see pako https://github.com/nodeca/pako/
+ */
+
+// Use ordinary array, since untyped makes no boost here
+function makeTable() {
+    var c,
+        table = [];
+
+    for (var n = 0; n < 256; n++) {
+        c = n;
+        for (var k = 0; k < 8; k++) {
+            c = c & 1 ? 0xEDB88320 ^ c >>> 1 : c >>> 1;
+        }
+        table[n] = c;
+    }
+
+    return table;
+}
+
+// Create table on load. Just 255 signed longs. Not a problem.
+var crcTable = makeTable();
+
+function crc32(crc, buf, len, pos) {
+    var t = crcTable,
+        end = pos + len;
+
+    crc = crc ^ -1;
+
+    for (var i = pos; i < end; i++) {
+        crc = crc >>> 8 ^ t[(crc ^ buf[i]) & 0xFF];
+    }
+
+    return crc ^ -1; // >>> 0;
+}
+
+// That's all for the pako functions.
+
+/**
+ * Compute the crc32 of a string.
+ * This is almost the same as the function crc32, but for strings. Using the
+ * same function for the two use cases leads to horrible performances.
+ * @param {Number} crc the starting value of the crc.
+ * @param {String} str the string to use.
+ * @param {Number} len the length of the string.
+ * @param {Number} pos the starting position for the crc32 computation.
+ * @return {Number} the computed crc32.
+ */
+function crc32str(crc, str, len, pos) {
+    var t = crcTable,
+        end = pos + len;
+
+    crc = crc ^ -1;
+
+    for (var i = pos; i < end; i++) {
+        crc = crc >>> 8 ^ t[(crc ^ str.charCodeAt(i)) & 0xFF];
+    }
+
+    return crc ^ -1; // >>> 0;
+}
+
+module.exports = function crc32wrapper(input, crc) {
+    if (typeof input === "undefined" || !input.length) {
+        return 0;
+    }
+
+    var isArray = utils.getTypeOf(input) !== "string";
+
+    if (isArray) {
+        return crc32(crc | 0, input, input.length, 0);
+    } else {
+        return crc32str(crc | 0, input, input.length, 0);
+    }
+};
+
+},{"./utils":56}],29:[function(require,module,exports){
+'use strict';
+
+exports.base64 = false;
+exports.binary = false;
+exports.dir = false;
+exports.createFolders = true;
+exports.date = null;
+exports.compression = null;
+exports.compressionOptions = null;
+exports.comment = null;
+exports.unixPermissions = null;
+exports.dosPermissions = null;
+
+},{}],30:[function(require,module,exports){
+/* global Promise */
+'use strict';
+
+// load the global object first:
+// - it should be better integrated in the system (unhandledRejection in node)
+// - the environment may have a custom Promise implementation (see zone.js)
+
+var ES6Promise = null;
+if (typeof Promise !== "undefined") {
+    ES6Promise = Promise;
+} else {
+    ES6Promise = require("lie");
+}
+
+/**
+ * Let the user use/change some implementations.
+ */
+module.exports = {
+    Promise: ES6Promise
+};
+
+},{"lie":60}],31:[function(require,module,exports){
+'use strict';
+
+var USE_TYPEDARRAY = typeof Uint8Array !== 'undefined' && typeof Uint16Array !== 'undefined' && typeof Uint32Array !== 'undefined';
+
+var pako = require("pako");
+var utils = require("./utils");
+var GenericWorker = require("./stream/GenericWorker");
+
+var ARRAY_TYPE = USE_TYPEDARRAY ? "uint8array" : "array";
+
+exports.magic = "\x08\x00";
+
+/**
+ * Create a worker that uses pako to inflate/deflate.
+ * @constructor
+ * @param {String} action the name of the pako function to call : either "Deflate" or "Inflate".
+ * @param {Object} options the options to use when (de)compressing.
+ */
+function FlateWorker(action, options) {
+    GenericWorker.call(this, "FlateWorker/" + action);
+
+    this._pako = null;
+    this._pakoAction = action;
+    this._pakoOptions = options;
+    // the `meta` object from the last chunk received
+    // this allow this worker to pass around metadata
+    this.meta = {};
+}
+
+utils.inherits(FlateWorker, GenericWorker);
+
+/**
+ * @see GenericWorker.processChunk
+ */
+FlateWorker.prototype.processChunk = function (chunk) {
+    this.meta = chunk.meta;
+    if (this._pako === null) {
+        this._createPako();
+    }
+    this._pako.push(utils.transformTo(ARRAY_TYPE, chunk.data), false);
+};
+
+/**
+ * @see GenericWorker.flush
+ */
+FlateWorker.prototype.flush = function () {
+    GenericWorker.prototype.flush.call(this);
+    if (this._pako === null) {
+        this._createPako();
+    }
+    this._pako.push([], true);
+};
+/**
+ * @see GenericWorker.cleanUp
+ */
+FlateWorker.prototype.cleanUp = function () {
+    GenericWorker.prototype.cleanUp.call(this);
+    this._pako = null;
+};
+
+/**
+ * Create the _pako object.
+ * TODO: lazy-loading this object isn't the best solution but it's the
+ * quickest. The best solution is to lazy-load the worker list. See also the
+ * issue #446.
+ */
+FlateWorker.prototype._createPako = function () {
+    this._pako = new pako[this._pakoAction]({
+        raw: true,
+        level: this._pakoOptions.level || -1 // default compression
+    });
+    var self = this;
+    this._pako.onData = function (data) {
+        self.push({
+            data: data,
+            meta: self.meta
+        });
+    };
+};
+
+exports.compressWorker = function (compressionOptions) {
+    return new FlateWorker("Deflate", compressionOptions);
+};
+exports.uncompressWorker = function () {
+    return new FlateWorker("Inflate", {});
+};
+
+},{"./stream/GenericWorker":52,"./utils":56,"pako":155}],32:[function(require,module,exports){
+'use strict';
+
+var utils = require('../utils');
+var GenericWorker = require('../stream/GenericWorker');
+var utf8 = require('../utf8');
+var crc32 = require('../crc32');
+var signature = require('../signature');
+
+/**
+ * Transform an integer into a string in hexadecimal.
+ * @private
+ * @param {number} dec the number to convert.
+ * @param {number} bytes the number of bytes to generate.
+ * @returns {string} the result.
+ */
+var decToHex = function decToHex(dec, bytes) {
+    var hex = "",
+        i;
+    for (i = 0; i < bytes; i++) {
+        hex += String.fromCharCode(dec & 0xff);
+        dec = dec >>> 8;
+    }
+    return hex;
+};
+
+/**
+ * Generate the UNIX part of the external file attributes.
+ * @param {Object} unixPermissions the unix permissions or null.
+ * @param {Boolean} isDir true if the entry is a directory, false otherwise.
+ * @return {Number} a 32 bit integer.
+ *
+ * adapted from http://unix.stackexchange.com/questions/14705/the-zip-formats-external-file-attribute :
+ *
+ * TTTTsstrwxrwxrwx0000000000ADVSHR
+ * ^^^^____________________________ file type, see zipinfo.c (UNX_*)
+ *     ^^^_________________________ setuid, setgid, sticky
+ *        ^^^^^^^^^________________ permissions
+ *                 ^^^^^^^^^^______ not used ?
+ *                           ^^^^^^ DOS attribute bits : Archive, Directory, Volume label, System file, Hidden, Read only
+ */
+var generateUnixExternalFileAttr = function generateUnixExternalFileAttr(unixPermissions, isDir) {
+
+    var result = unixPermissions;
+    if (!unixPermissions) {
+        // I can't use octal values in strict mode, hence the hexa.
+        //  040775 => 0x41fd
+        // 0100664 => 0x81b4
+        result = isDir ? 0x41fd : 0x81b4;
+    }
+    return (result & 0xFFFF) << 16;
+};
+
+/**
+ * Generate the DOS part of the external file attributes.
+ * @param {Object} dosPermissions the dos permissions or null.
+ * @param {Boolean} isDir true if the entry is a directory, false otherwise.
+ * @return {Number} a 32 bit integer.
+ *
+ * Bit 0     Read-Only
+ * Bit 1     Hidden
+ * Bit 2     System
+ * Bit 3     Volume Label
+ * Bit 4     Directory
+ * Bit 5     Archive
+ */
+var generateDosExternalFileAttr = function generateDosExternalFileAttr(dosPermissions, isDir) {
+
+    // the dir flag is already set for compatibility
+    return (dosPermissions || 0) & 0x3F;
+};
+
+/**
+ * Generate the various parts used in the construction of the final zip file.
+ * @param {Object} streamInfo the hash with informations about the compressed file.
+ * @param {Boolean} streamedContent is the content streamed ?
+ * @param {Boolean} streamingEnded is the stream finished ?
+ * @param {number} offset the current offset from the start of the zip file.
+ * @param {String} platform let's pretend we are this platform (change platform dependents fields)
+ * @param {Function} encodeFileName the function to encode the file name / comment.
+ * @return {Object} the zip parts.
+ */
+var generateZipParts = function generateZipParts(streamInfo, streamedContent, streamingEnded, offset, platform, encodeFileName) {
+    var file = streamInfo['file'],
+        compression = streamInfo['compression'],
+        useCustomEncoding = encodeFileName !== utf8.utf8encode,
+        encodedFileName = utils.transformTo("string", encodeFileName(file.name)),
+        utfEncodedFileName = utils.transformTo("string", utf8.utf8encode(file.name)),
+        comment = file.comment,
+        encodedComment = utils.transformTo("string", encodeFileName(comment)),
+        utfEncodedComment = utils.transformTo("string", utf8.utf8encode(comment)),
+        useUTF8ForFileName = utfEncodedFileName.length !== file.name.length,
+        useUTF8ForComment = utfEncodedComment.length !== comment.length,
+        dosTime,
+        dosDate,
+        extraFields = "",
+        unicodePathExtraField = "",
+        unicodeCommentExtraField = "",
+        dir = file.dir,
+        date = file.date;
+
+    var dataInfo = {
+        crc32: 0,
+        compressedSize: 0,
+        uncompressedSize: 0
+    };
+
+    // if the content is streamed, the sizes/crc32 are only available AFTER
+    // the end of the stream.
+    if (!streamedContent || streamingEnded) {
+        dataInfo.crc32 = streamInfo['crc32'];
+        dataInfo.compressedSize = streamInfo['compressedSize'];
+        dataInfo.uncompressedSize = streamInfo['uncompressedSize'];
+    }
+
+    var bitflag = 0;
+    if (streamedContent) {
+        // Bit 3: the sizes/crc32 are set to zero in the local header.
+        // The correct values are put in the data descriptor immediately
+        // following the compressed data.
+        bitflag |= 0x0008;
+    }
+    if (!useCustomEncoding && (useUTF8ForFileName || useUTF8ForComment)) {
+        // Bit 11: Language encoding flag (EFS).
+        bitflag |= 0x0800;
+    }
+
+    var extFileAttr = 0;
+    var versionMadeBy = 0;
+    if (dir) {
+        // dos or unix, we set the dos dir flag
+        extFileAttr |= 0x00010;
+    }
+    if (platform === "UNIX") {
+        versionMadeBy = 0x031E; // UNIX, version 3.0
+        extFileAttr |= generateUnixExternalFileAttr(file.unixPermissions, dir);
+    } else {
+        // DOS or other, fallback to DOS
+        versionMadeBy = 0x0014; // DOS, version 2.0
+        extFileAttr |= generateDosExternalFileAttr(file.dosPermissions, dir);
+    }
+
+    // date
+    // @see http://www.delorie.com/djgpp/doc/rbinter/it/52/13.html
+    // @see http://www.delorie.com/djgpp/doc/rbinter/it/65/16.html
+    // @see http://www.delorie.com/djgpp/doc/rbinter/it/66/16.html
+
+    dosTime = date.getUTCHours();
+    dosTime = dosTime << 6;
+    dosTime = dosTime | date.getUTCMinutes();
+    dosTime = dosTime << 5;
+    dosTime = dosTime | date.getUTCSeconds() / 2;
+
+    dosDate = date.getUTCFullYear() - 1980;
+    dosDate = dosDate << 4;
+    dosDate = dosDate | date.getUTCMonth() + 1;
+    dosDate = dosDate << 5;
+    dosDate = dosDate | date.getUTCDate();
+
+    if (useUTF8ForFileName) {
+        // set the unicode path extra field. unzip needs at least one extra
+        // field to correctly handle unicode path, so using the path is as good
+        // as any other information. This could improve the situation with
+        // other archive managers too.
+        // This field is usually used without the utf8 flag, with a non
+        // unicode path in the header (winrar, winzip). This helps (a bit)
+        // with the messy Windows' default compressed folders feature but
+        // breaks on p7zip which doesn't seek the unicode path extra field.
+        // So for now, UTF-8 everywhere !
+        unicodePathExtraField =
+        // Version
+        decToHex(1, 1) +
+        // NameCRC32
+        decToHex(crc32(encodedFileName), 4) +
+        // UnicodeName
+        utfEncodedFileName;
+
+        extraFields +=
+        // Info-ZIP Unicode Path Extra Field
+        "\x75\x70" +
+        // size
+        decToHex(unicodePathExtraField.length, 2) +
+        // content
+        unicodePathExtraField;
+    }
+
+    if (useUTF8ForComment) {
+
+        unicodeCommentExtraField =
+        // Version
+        decToHex(1, 1) +
+        // CommentCRC32
+        decToHex(crc32(encodedComment), 4) +
+        // UnicodeName
+        utfEncodedComment;
+
+        extraFields +=
+        // Info-ZIP Unicode Path Extra Field
+        "\x75\x63" +
+        // size
+        decToHex(unicodeCommentExtraField.length, 2) +
+        // content
+        unicodeCommentExtraField;
+    }
+
+    var header = "";
+
+    // version needed to extract
+    header += "\x0A\x00";
+    // general purpose bit flag
+    header += decToHex(bitflag, 2);
+    // compression method
+    header += compression.magic;
+    // last mod file time
+    header += decToHex(dosTime, 2);
+    // last mod file date
+    header += decToHex(dosDate, 2);
+    // crc-32
+    header += decToHex(dataInfo.crc32, 4);
+    // compressed size
+    header += decToHex(dataInfo.compressedSize, 4);
+    // uncompressed size
+    header += decToHex(dataInfo.uncompressedSize, 4);
+    // file name length
+    header += decToHex(encodedFileName.length, 2);
+    // extra field length
+    header += decToHex(extraFields.length, 2);
+
+    var fileRecord = signature.LOCAL_FILE_HEADER + header + encodedFileName + extraFields;
+
+    var dirRecord = signature.CENTRAL_FILE_HEADER +
+    // version made by (00: DOS)
+    decToHex(versionMadeBy, 2) +
+    // file header (common to file and central directory)
+    header +
+    // file comment length
+    decToHex(encodedComment.length, 2) +
+    // disk number start
+    "\x00\x00" +
+    // internal file attributes TODO
+    "\x00\x00" +
+    // external file attributes
+    decToHex(extFileAttr, 4) +
+    // relative offset of local header
+    decToHex(offset, 4) +
+    // file name
+    encodedFileName +
+    // extra field
+    extraFields +
+    // file comment
+    encodedComment;
+
+    return {
+        fileRecord: fileRecord,
+        dirRecord: dirRecord
+    };
+};
+
+/**
+ * Generate the EOCD record.
+ * @param {Number} entriesCount the number of entries in the zip file.
+ * @param {Number} centralDirLength the length (in bytes) of the central dir.
+ * @param {Number} localDirLength the length (in bytes) of the local dir.
+ * @param {String} comment the zip file comment as a binary string.
+ * @param {Function} encodeFileName the function to encode the comment.
+ * @return {String} the EOCD record.
+ */
+var generateCentralDirectoryEnd = function generateCentralDirectoryEnd(entriesCount, centralDirLength, localDirLength, comment, encodeFileName) {
+    var dirEnd = "";
+    var encodedComment = utils.transformTo("string", encodeFileName(comment));
+
+    // end of central dir signature
+    dirEnd = signature.CENTRAL_DIRECTORY_END +
+    // number of this disk
+    "\x00\x00" +
+    // number of the disk with the start of the central directory
+    "\x00\x00" +
+    // total number of entries in the central directory on this disk
+    decToHex(entriesCount, 2) +
+    // total number of entries in the central directory
+    decToHex(entriesCount, 2) +
+    // size of the central directory   4 bytes
+    decToHex(centralDirLength, 4) +
+    // offset of start of central directory with respect to the starting disk number
+    decToHex(localDirLength, 4) +
+    // .ZIP file comment length
+    decToHex(encodedComment.length, 2) +
+    // .ZIP file comment
+    encodedComment;
+
+    return dirEnd;
+};
+
+/**
+ * Generate data descriptors for a file entry.
+ * @param {Object} streamInfo the hash generated by a worker, containing informations
+ * on the file entry.
+ * @return {String} the data descriptors.
+ */
+var generateDataDescriptors = function generateDataDescriptors(streamInfo) {
+    var descriptor = "";
+    descriptor = signature.DATA_DESCRIPTOR +
+    // crc-32                          4 bytes
+    decToHex(streamInfo['crc32'], 4) +
+    // compressed size                 4 bytes
+    decToHex(streamInfo['compressedSize'], 4) +
+    // uncompressed size               4 bytes
+    decToHex(streamInfo['uncompressedSize'], 4);
+
+    return descriptor;
+};
+
+/**
+ * A worker to concatenate other workers to create a zip file.
+ * @param {Boolean} streamFiles `true` to stream the content of the files,
+ * `false` to accumulate it.
+ * @param {String} comment the comment to use.
+ * @param {String} platform the platform to use, "UNIX" or "DOS".
+ * @param {Function} encodeFileName the function to encode file names and comments.
+ */
+function ZipFileWorker(streamFiles, comment, platform, encodeFileName) {
+    GenericWorker.call(this, "ZipFileWorker");
+    // The number of bytes written so far. This doesn't count accumulated chunks.
+    this.bytesWritten = 0;
+    // The comment of the zip file
+    this.zipComment = comment;
+    // The platform "generating" the zip file.
+    this.zipPlatform = platform;
+    // the function to encode file names and comments.
+    this.encodeFileName = encodeFileName;
+    // Should we stream the content of the files ?
+    this.streamFiles = streamFiles;
+    // If `streamFiles` is false, we will need to accumulate the content of the
+    // files to calculate sizes / crc32 (and write them *before* the content).
+    // This boolean indicates if we are accumulating chunks (it will change a lot
+    // during the lifetime of this worker).
+    this.accumulate = false;
+    // The buffer receiving chunks when accumulating content.
+    this.contentBuffer = [];
+    // The list of generated directory records.
+    this.dirRecords = [];
+    // The offset (in bytes) from the beginning of the zip file for the current source.
+    this.currentSourceOffset = 0;
+    // The total number of entries in this zip file.
+    this.entriesCount = 0;
+    // the name of the file currently being added, null when handling the end of the zip file.
+    // Used for the emited metadata.
+    this.currentFile = null;
+
+    this._sources = [];
+}
+utils.inherits(ZipFileWorker, GenericWorker);
+
+/**
+ * @see GenericWorker.push
+ */
+ZipFileWorker.prototype.push = function (chunk) {
+
+    var currentFilePercent = chunk.meta.percent || 0;
+    var entriesCount = this.entriesCount;
+    var remainingFiles = this._sources.length;
+
+    if (this.accumulate) {
+        this.contentBuffer.push(chunk);
+    } else {
+        this.bytesWritten += chunk.data.length;
+
+        GenericWorker.prototype.push.call(this, {
+            data: chunk.data,
+            meta: {
+                currentFile: this.currentFile,
+                percent: entriesCount ? (currentFilePercent + 100 * (entriesCount - remainingFiles - 1)) / entriesCount : 100
+            }
+        });
+    }
+};
+
+/**
+ * The worker started a new source (an other worker).
+ * @param {Object} streamInfo the streamInfo object from the new source.
+ */
+ZipFileWorker.prototype.openedSource = function (streamInfo) {
+    this.currentSourceOffset = this.bytesWritten;
+    this.currentFile = streamInfo['file'].name;
+
+    var streamedContent = this.streamFiles && !streamInfo['file'].dir;
+
+    // don't stream folders (because they don't have any content)
+    if (streamedContent) {
+        var record = generateZipParts(streamInfo, streamedContent, false, this.currentSourceOffset, this.zipPlatform, this.encodeFileName);
+        this.push({
+            data: record.fileRecord,
+            meta: { percent: 0 }
+        });
+    } else {
+        // we need to wait for the whole file before pushing anything
+        this.accumulate = true;
+    }
+};
+
+/**
+ * The worker finished a source (an other worker).
+ * @param {Object} streamInfo the streamInfo object from the finished source.
+ */
+ZipFileWorker.prototype.closedSource = function (streamInfo) {
+    this.accumulate = false;
+    var streamedContent = this.streamFiles && !streamInfo['file'].dir;
+    var record = generateZipParts(streamInfo, streamedContent, true, this.currentSourceOffset, this.zipPlatform, this.encodeFileName);
+
+    this.dirRecords.push(record.dirRecord);
+    if (streamedContent) {
+        // after the streamed file, we put data descriptors
+        this.push({
+            data: generateDataDescriptors(streamInfo),
+            meta: { percent: 100 }
+        });
+    } else {
+        // the content wasn't streamed, we need to push everything now
+        // first the file record, then the content
+        this.push({
+            data: record.fileRecord,
+            meta: { percent: 0 }
+        });
+        while (this.contentBuffer.length) {
+            this.push(this.contentBuffer.shift());
+        }
+    }
+    this.currentFile = null;
+};
+
+/**
+ * @see GenericWorker.flush
+ */
+ZipFileWorker.prototype.flush = function () {
+
+    var localDirLength = this.bytesWritten;
+    for (var i = 0; i < this.dirRecords.length; i++) {
+        this.push({
+            data: this.dirRecords[i],
+            meta: { percent: 100 }
+        });
+    }
+    var centralDirLength = this.bytesWritten - localDirLength;
+
+    var dirEnd = generateCentralDirectoryEnd(this.dirRecords.length, centralDirLength, localDirLength, this.zipComment, this.encodeFileName);
+
+    this.push({
+        data: dirEnd,
+        meta: { percent: 100 }
+    });
+};
+
+/**
+ * Prepare the next source to be read.
+ */
+ZipFileWorker.prototype.prepareNextSource = function () {
+    this.previous = this._sources.shift();
+    this.openedSource(this.previous.streamInfo);
+    if (this.isPaused) {
+        this.previous.pause();
+    } else {
+        this.previous.resume();
+    }
+};
+
+/**
+ * @see GenericWorker.registerPrevious
+ */
+ZipFileWorker.prototype.registerPrevious = function (previous) {
+    this._sources.push(previous);
+    var self = this;
+
+    previous.on('data', function (chunk) {
+        self.processChunk(chunk);
+    });
+    previous.on('end', function () {
+        self.closedSource(self.previous.streamInfo);
+        if (self._sources.length) {
+            self.prepareNextSource();
+        } else {
+            self.end();
+        }
+    });
+    previous.on('error', function (e) {
+        self.error(e);
+    });
+    return this;
+};
+
+/**
+ * @see GenericWorker.resume
+ */
+ZipFileWorker.prototype.resume = function () {
+    if (!GenericWorker.prototype.resume.call(this)) {
+        return false;
+    }
+
+    if (!this.previous && this._sources.length) {
+        this.prepareNextSource();
+        return true;
+    }
+    if (!this.previous && !this._sources.length && !this.generatedError) {
+        this.end();
+        return true;
+    }
+};
+
+/**
+ * @see GenericWorker.error
+ */
+ZipFileWorker.prototype.error = function (e) {
+    var sources = this._sources;
+    if (!GenericWorker.prototype.error.call(this, e)) {
+        return false;
+    }
+    for (var i = 0; i < sources.length; i++) {
+        try {
+            sources[i].error(e);
+        } catch (e) {
+            // the `error` exploded, nothing to do
+        }
+    }
+    return true;
+};
+
+/**
+ * @see GenericWorker.lock
+ */
+ZipFileWorker.prototype.lock = function () {
+    GenericWorker.prototype.lock.call(this);
+    var sources = this._sources;
+    for (var i = 0; i < sources.length; i++) {
+        sources[i].lock();
+    }
+};
+
+module.exports = ZipFileWorker;
+
+},{"../crc32":28,"../signature":47,"../stream/GenericWorker":52,"../utf8":55,"../utils":56}],33:[function(require,module,exports){
+'use strict';
+
+var compressions = require('../compressions');
+var ZipFileWorker = require('./ZipFileWorker');
+
+/**
+ * Find the compression to use.
+ * @param {String} fileCompression the compression defined at the file level, if any.
+ * @param {String} zipCompression the compression defined at the load() level.
+ * @return {Object} the compression object to use.
+ */
+var getCompression = function getCompression(fileCompression, zipCompression) {
+
+    var compressionName = fileCompression || zipCompression;
+    var compression = compressions[compressionName];
+    if (!compression) {
+        throw new Error(compressionName + " is not a valid compression method !");
+    }
+    return compression;
+};
+
+/**
+ * Create a worker to generate a zip file.
+ * @param {JSZip} zip the JSZip instance at the right root level.
+ * @param {Object} options to generate the zip file.
+ * @param {String} comment the comment to use.
+ */
+exports.generateWorker = function (zip, options, comment) {
+
+    var zipFileWorker = new ZipFileWorker(options.streamFiles, comment, options.platform, options.encodeFileName);
+    var entriesCount = 0;
+    try {
+
+        zip.forEach(function (relativePath, file) {
+            entriesCount++;
+            var compression = getCompression(file.options.compression, options.compression);
+            var compressionOptions = file.options.compressionOptions || options.compressionOptions || {};
+            var dir = file.dir,
+                date = file.date;
+
+            file._compressWorker(compression, compressionOptions).withStreamInfo("file", {
+                name: relativePath,
+                dir: dir,
+                date: date,
+                comment: file.comment || "",
+                unixPermissions: file.unixPermissions,
+                dosPermissions: file.dosPermissions
+            }).pipe(zipFileWorker);
+        });
+        zipFileWorker.entriesCount = entriesCount;
+    } catch (e) {
+        zipFileWorker.error(e);
+    }
+
+    return zipFileWorker;
+};
+
+},{"../compressions":27,"./ZipFileWorker":32}],34:[function(require,module,exports){
+'use strict';
+
+/**
+ * Representation a of zip file in js
+ * @constructor
+ */
+
+function JSZip() {
+    // if this constructor is used without `new`, it adds `new` before itself:
+    if (!(this instanceof JSZip)) {
+        return new JSZip();
+    }
+
+    if (arguments.length) {
+        throw new Error("The constructor with parameters has been removed in JSZip 3.0, please check the upgrade guide.");
+    }
+
+    // object containing the files :
+    // {
+    //   "folder/" : {...},
+    //   "folder/data.txt" : {...}
+    // }
+    this.files = {};
+
+    this.comment = null;
+
+    // Where we are in the hierarchy
+    this.root = "";
+    this.clone = function () {
+        var newObj = new JSZip();
+        for (var i in this) {
+            if (typeof this[i] !== "function") {
+                newObj[i] = this[i];
+            }
+        }
+        return newObj;
+    };
+}
+JSZip.prototype = require('./object');
+JSZip.prototype.loadAsync = require('./load');
+JSZip.support = require('./support');
+JSZip.defaults = require('./defaults');
+
+// TODO find a better way to handle this version,
+// a require('package.json').version doesn't work with webpack, see #327
+JSZip.version = "3.2.0";
+
+JSZip.loadAsync = function (content, options) {
+    return new JSZip().loadAsync(content, options);
+};
+
+JSZip.external = require("./external");
+module.exports = JSZip;
+
+},{"./defaults":29,"./external":30,"./load":35,"./object":39,"./support":54}],35:[function(require,module,exports){
+'use strict';
+
+var utils = require('./utils');
+var external = require("./external");
+var utf8 = require('./utf8');
+var utils = require('./utils');
+var ZipEntries = require('./zipEntries');
+var Crc32Probe = require('./stream/Crc32Probe');
+var nodejsUtils = require("./nodejsUtils");
+
+/**
+ * Check the CRC32 of an entry.
+ * @param {ZipEntry} zipEntry the zip entry to check.
+ * @return {Promise} the result.
+ */
+function checkEntryCRC32(zipEntry) {
+    return new external.Promise(function (resolve, reject) {
+        var worker = zipEntry.decompressed.getContentWorker().pipe(new Crc32Probe());
+        worker.on("error", function (e) {
+            reject(e);
+        }).on("end", function () {
+            if (worker.streamInfo.crc32 !== zipEntry.decompressed.crc32) {
+                reject(new Error("Corrupted zip : CRC32 mismatch"));
+            } else {
+                resolve();
+            }
+        }).resume();
+    });
+}
+
+module.exports = function (data, options) {
+    var zip = this;
+    options = utils.extend(options || {}, {
+        base64: false,
+        checkCRC32: false,
+        optimizedBinaryString: false,
+        createFolders: false,
+        decodeFileName: utf8.utf8decode
+    });
+
+    if (nodejsUtils.isNode && nodejsUtils.isStream(data)) {
+        return external.Promise.reject(new Error("JSZip can't accept a stream when loading a zip file."));
+    }
+
+    return utils.prepareContent("the loaded zip file", data, true, options.optimizedBinaryString, options.base64).then(function (data) {
+        var zipEntries = new ZipEntries(options);
+        zipEntries.load(data);
+        return zipEntries;
+    }).then(function checkCRC32(zipEntries) {
+        var promises = [external.Promise.resolve(zipEntries)];
+        var files = zipEntries.files;
+        if (options.checkCRC32) {
+            for (var i = 0; i < files.length; i++) {
+                promises.push(checkEntryCRC32(files[i]));
+            }
+        }
+        return external.Promise.all(promises);
+    }).then(function addFiles(results) {
+        var zipEntries = results.shift();
+        var files = zipEntries.files;
+        for (var i = 0; i < files.length; i++) {
+            var input = files[i];
+            zip.file(input.fileNameStr, input.decompressed, {
+                binary: true,
+                optimizedBinaryString: true,
+                date: input.date,
+                dir: input.dir,
+                comment: input.fileCommentStr.length ? input.fileCommentStr : null,
+                unixPermissions: input.unixPermissions,
+                dosPermissions: input.dosPermissions,
+                createFolders: options.createFolders
+            });
+        }
+        if (zipEntries.zipComment.length) {
+            zip.comment = zipEntries.zipComment;
+        }
+
+        return zip;
+    });
+};
+
+},{"./external":30,"./nodejsUtils":38,"./stream/Crc32Probe":49,"./utf8":55,"./utils":56,"./zipEntries":57}],36:[function(require,module,exports){
+"use strict";
+
+var utils = require('../utils');
+var GenericWorker = require('../stream/GenericWorker');
+
+/**
+ * A worker that use a nodejs stream as source.
+ * @constructor
+ * @param {String} filename the name of the file entry for this stream.
+ * @param {Readable} stream the nodejs stream.
+ */
+function NodejsStreamInputAdapter(filename, stream) {
+    GenericWorker.call(this, "Nodejs stream input adapter for " + filename);
+    this._upstreamEnded = false;
+    this._bindStream(stream);
+}
+
+utils.inherits(NodejsStreamInputAdapter, GenericWorker);
+
+/**
+ * Prepare the stream and bind the callbacks on it.
+ * Do this ASAP on node 0.10 ! A lazy binding doesn't always work.
+ * @param {Stream} stream the nodejs stream to use.
+ */
+NodejsStreamInputAdapter.prototype._bindStream = function (stream) {
+    var self = this;
+    this._stream = stream;
+    stream.pause();
+    stream.on("data", function (chunk) {
+        self.push({
+            data: chunk,
+            meta: {
+                percent: 0
+            }
+        });
+    }).on("error", function (e) {
+        if (self.isPaused) {
+            this.generatedError = e;
+        } else {
+            self.error(e);
+        }
+    }).on("end", function () {
+        if (self.isPaused) {
+            self._upstreamEnded = true;
+        } else {
+            self.end();
+        }
+    });
+};
+NodejsStreamInputAdapter.prototype.pause = function () {
+    if (!GenericWorker.prototype.pause.call(this)) {
+        return false;
+    }
+    this._stream.pause();
+    return true;
+};
+NodejsStreamInputAdapter.prototype.resume = function () {
+    if (!GenericWorker.prototype.resume.call(this)) {
+        return false;
+    }
+
+    if (this._upstreamEnded) {
+        this.end();
+    } else {
+        this._stream.resume();
+    }
+
+    return true;
+};
+
+module.exports = NodejsStreamInputAdapter;
+
+},{"../stream/GenericWorker":52,"../utils":56}],37:[function(require,module,exports){
+'use strict';
+
+var Readable = require('readable-stream').Readable;
+
+var utils = require('../utils');
+utils.inherits(NodejsStreamOutputAdapter, Readable);
+
+/**
+* A nodejs stream using a worker as source.
+* @see the SourceWrapper in http://nodejs.org/api/stream.html
+* @constructor
+* @param {StreamHelper} helper the helper wrapping the worker
+* @param {Object} options the nodejs stream options
+* @param {Function} updateCb the update callback.
+*/
+function NodejsStreamOutputAdapter(helper, options, updateCb) {
+    Readable.call(this, options);
+    this._helper = helper;
+
+    var self = this;
+    helper.on("data", function (data, meta) {
+        if (!self.push(data)) {
+            self._helper.pause();
+        }
+        if (updateCb) {
+            updateCb(meta);
+        }
+    }).on("error", function (e) {
+        self.emit('error', e);
+    }).on("end", function () {
+        self.push(null);
+    });
+}
+
+NodejsStreamOutputAdapter.prototype._read = function () {
+    this._helper.resume();
+};
+
+module.exports = NodejsStreamOutputAdapter;
+
+},{"../utils":56,"readable-stream":40}],38:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+module.exports = {
+    /**
+     * True if this is running in Nodejs, will be undefined in a browser.
+     * In a browser, browserify won't include this file and the whole module
+     * will be resolved an empty object.
+     */
+    isNode: typeof Buffer !== "undefined",
+    /**
+     * Create a new nodejs Buffer from an existing content.
+     * @param {Object} data the data to pass to the constructor.
+     * @param {String} encoding the encoding to use.
+     * @return {Buffer} a new Buffer.
+     */
+    newBufferFrom: function newBufferFrom(data, encoding) {
+        if (Buffer.from && Buffer.from !== Uint8Array.from) {
+            return Buffer.from(data, encoding);
+        } else {
+            if (typeof data === "number") {
+                // Safeguard for old Node.js versions. On newer versions,
+                // Buffer.from(number) / Buffer(number, encoding) already throw.
+                throw new Error("The \"data\" argument must not be a number");
+            }
+            return new Buffer(data, encoding);
+        }
+    },
+    /**
+     * Create a new nodejs Buffer with the specified size.
+     * @param {Integer} size the size of the buffer.
+     * @return {Buffer} a new Buffer.
+     */
+    allocBuffer: function allocBuffer(size) {
+        if (Buffer.alloc) {
+            return Buffer.alloc(size);
+        } else {
+            var buf = new Buffer(size);
+            buf.fill(0);
+            return buf;
+        }
+    },
+    /**
+     * Find out if an object is a Buffer.
+     * @param {Object} b the object to test.
+     * @return {Boolean} true if the object is a Buffer, false otherwise.
+     */
+    isBuffer: function isBuffer(b) {
+        return Buffer.isBuffer(b);
+    },
+
+    isStream: function isStream(obj) {
+        return obj && typeof obj.on === "function" && typeof obj.pause === "function" && typeof obj.resume === "function";
+    }
+};
+
+}).call(this,require("buffer").Buffer)
+},{"buffer":7}],39:[function(require,module,exports){
+'use strict';
+
+var utf8 = require('./utf8');
+var utils = require('./utils');
+var GenericWorker = require('./stream/GenericWorker');
+var StreamHelper = require('./stream/StreamHelper');
+var defaults = require('./defaults');
+var CompressedObject = require('./compressedObject');
+var ZipObject = require('./zipObject');
+var generate = require("./generate");
+var nodejsUtils = require("./nodejsUtils");
+var NodejsStreamInputAdapter = require("./nodejs/NodejsStreamInputAdapter");
+
+/**
+ * Add a file in the current folder.
+ * @private
+ * @param {string} name the name of the file
+ * @param {String|ArrayBuffer|Uint8Array|Buffer} data the data of the file
+ * @param {Object} originalOptions the options of the file
+ * @return {Object} the new file.
+ */
+var fileAdd = function fileAdd(name, data, originalOptions) {
+    // be sure sub folders exist
+    var dataType = utils.getTypeOf(data),
+        parent;
+
+    /*
+     * Correct options.
+     */
+
+    var o = utils.extend(originalOptions || {}, defaults);
+    o.date = o.date || new Date();
+    if (o.compression !== null) {
+        o.compression = o.compression.toUpperCase();
+    }
+
+    if (typeof o.unixPermissions === "string") {
+        o.unixPermissions = parseInt(o.unixPermissions, 8);
+    }
+
+    // UNX_IFDIR  0040000 see zipinfo.c
+    if (o.unixPermissions && o.unixPermissions & 0x4000) {
+        o.dir = true;
+    }
+    // Bit 4    Directory
+    if (o.dosPermissions && o.dosPermissions & 0x0010) {
+        o.dir = true;
+    }
+
+    if (o.dir) {
+        name = forceTrailingSlash(name);
+    }
+    if (o.createFolders && (parent = parentFolder(name))) {
+        folderAdd.call(this, parent, true);
+    }
+
+    var isUnicodeString = dataType === "string" && o.binary === false && o.base64 === false;
+    if (!originalOptions || typeof originalOptions.binary === "undefined") {
+        o.binary = !isUnicodeString;
+    }
+
+    var isCompressedEmpty = data instanceof CompressedObject && data.uncompressedSize === 0;
+
+    if (isCompressedEmpty || o.dir || !data || data.length === 0) {
+        o.base64 = false;
+        o.binary = true;
+        data = "";
+        o.compression = "STORE";
+        dataType = "string";
+    }
+
+    /*
+     * Convert content to fit.
+     */
+
+    var zipObjectContent = null;
+    if (data instanceof CompressedObject || data instanceof GenericWorker) {
+        zipObjectContent = data;
+    } else if (nodejsUtils.isNode && nodejsUtils.isStream(data)) {
+        zipObjectContent = new NodejsStreamInputAdapter(name, data);
+    } else {
+        zipObjectContent = utils.prepareContent(name, data, o.binary, o.optimizedBinaryString, o.base64);
+    }
+
+    var object = new ZipObject(name, zipObjectContent, o);
+    this.files[name] = object;
+    /*
+    TODO: we can't throw an exception because we have async promises
+    (we can have a promise of a Date() for example) but returning a
+    promise is useless because file(name, data) returns the JSZip
+    object for chaining. Should we break that to allow the user
+    to catch the error ?
+     return external.Promise.resolve(zipObjectContent)
+    .then(function () {
+        return object;
+    });
+    */
+};
+
+/**
+ * Find the parent folder of the path.
+ * @private
+ * @param {string} path the path to use
+ * @return {string} the parent folder, or ""
+ */
+var parentFolder = function parentFolder(path) {
+    if (path.slice(-1) === '/') {
+        path = path.substring(0, path.length - 1);
+    }
+    var lastSlash = path.lastIndexOf('/');
+    return lastSlash > 0 ? path.substring(0, lastSlash) : "";
+};
+
+/**
+ * Returns the path with a slash at the end.
+ * @private
+ * @param {String} path the path to check.
+ * @return {String} the path with a trailing slash.
+ */
+var forceTrailingSlash = function forceTrailingSlash(path) {
+    // Check the name ends with a /
+    if (path.slice(-1) !== "/") {
+        path += "/"; // IE doesn't like substr(-1)
+    }
+    return path;
+};
+
+/**
+ * Add a (sub) folder in the current folder.
+ * @private
+ * @param {string} name the folder's name
+ * @param {boolean=} [createFolders] If true, automatically create sub
+ *  folders. Defaults to false.
+ * @return {Object} the new folder.
+ */
+var folderAdd = function folderAdd(name, createFolders) {
+    createFolders = typeof createFolders !== 'undefined' ? createFolders : defaults.createFolders;
+
+    name = forceTrailingSlash(name);
+
+    // Does this folder already exist?
+    if (!this.files[name]) {
+        fileAdd.call(this, name, null, {
+            dir: true,
+            createFolders: createFolders
+        });
+    }
+    return this.files[name];
+};
+
+/**
+* Cross-window, cross-Node-context regular expression detection
+* @param  {Object}  object Anything
+* @return {Boolean}        true if the object is a regular expression,
+* false otherwise
+*/
+function isRegExp(object) {
+    return Object.prototype.toString.call(object) === "[object RegExp]";
+}
+
+// return the actual prototype of JSZip
+var out = {
+    /**
+     * @see loadAsync
+     */
+    load: function load() {
+        throw new Error("This method has been removed in JSZip 3.0, please check the upgrade guide.");
+    },
+
+    /**
+     * Call a callback function for each entry at this folder level.
+     * @param {Function} cb the callback function:
+     * function (relativePath, file) {...}
+     * It takes 2 arguments : the relative path and the file.
+     */
+    forEach: function forEach(cb) {
+        var filename, relativePath, file;
+        for (filename in this.files) {
+            if (!this.files.hasOwnProperty(filename)) {
+                continue;
+            }
+            file = this.files[filename];
+            relativePath = filename.slice(this.root.length, filename.length);
+            if (relativePath && filename.slice(0, this.root.length) === this.root) {
+                // the file is in the current root
+                cb(relativePath, file); // TODO reverse the parameters ? need to be clean AND consistent with the filter search fn...
+            }
+        }
+    },
+
+    /**
+     * Filter nested files/folders with the specified function.
+     * @param {Function} search the predicate to use :
+     * function (relativePath, file) {...}
+     * It takes 2 arguments : the relative path and the file.
+     * @return {Array} An array of matching elements.
+     */
+    filter: function filter(search) {
+        var result = [];
+        this.forEach(function (relativePath, entry) {
+            if (search(relativePath, entry)) {
+                // the file matches the function
+                result.push(entry);
+            }
+        });
+        return result;
+    },
+
+    /**
+     * Add a file to the zip file, or search a file.
+     * @param   {string|RegExp} name The name of the file to add (if data is defined),
+     * the name of the file to find (if no data) or a regex to match files.
+     * @param   {String|ArrayBuffer|Uint8Array|Buffer} data  The file data, either raw or base64 encoded
+     * @param   {Object} o     File options
+     * @return  {JSZip|Object|Array} this JSZip object (when adding a file),
+     * a file (when searching by string) or an array of files (when searching by regex).
+     */
+    file: function file(name, data, o) {
+        if (arguments.length === 1) {
+            if (isRegExp(name)) {
+                var regexp = name;
+                return this.filter(function (relativePath, file) {
+                    return !file.dir && regexp.test(relativePath);
+                });
+            } else {
+                // text
+                var obj = this.files[this.root + name];
+                if (obj && !obj.dir) {
+                    return obj;
+                } else {
+                    return null;
+                }
+            }
+        } else {
+            // more than one argument : we have data !
+            name = this.root + name;
+            fileAdd.call(this, name, data, o);
+        }
+        return this;
+    },
+
+    /**
+     * Add a directory to the zip file, or search.
+     * @param   {String|RegExp} arg The name of the directory to add, or a regex to search folders.
+     * @return  {JSZip} an object with the new directory as the root, or an array containing matching folders.
+     */
+    folder: function folder(arg) {
+        if (!arg) {
+            return this;
+        }
+
+        if (isRegExp(arg)) {
+            return this.filter(function (relativePath, file) {
+                return file.dir && arg.test(relativePath);
+            });
+        }
+
+        // else, name is a new folder
+        var name = this.root + arg;
+        var newFolder = folderAdd.call(this, name);
+
+        // Allow chaining by returning a new object with this folder as the root
+        var ret = this.clone();
+        ret.root = newFolder.name;
+        return ret;
+    },
+
+    /**
+     * Delete a file, or a directory and all sub-files, from the zip
+     * @param {string} name the name of the file to delete
+     * @return {JSZip} this JSZip object
+     */
+    remove: function remove(name) {
+        name = this.root + name;
+        var file = this.files[name];
+        if (!file) {
+            // Look for any folders
+            if (name.slice(-1) !== "/") {
+                name += "/";
+            }
+            file = this.files[name];
+        }
+
+        if (file && !file.dir) {
+            // file
+            delete this.files[name];
+        } else {
+            // maybe a folder, delete recursively
+            var kids = this.filter(function (relativePath, file) {
+                return file.name.slice(0, name.length) === name;
+            });
+            for (var i = 0; i < kids.length; i++) {
+                delete this.files[kids[i].name];
+            }
+        }
+
+        return this;
+    },
+
+    /**
+     * Generate the complete zip file
+     * @param {Object} options the options to generate the zip file :
+     * - compression, "STORE" by default.
+     * - type, "base64" by default. Values are : string, base64, uint8array, arraybuffer, blob.
+     * @return {String|Uint8Array|ArrayBuffer|Buffer|Blob} the zip file
+     */
+    generate: function generate(options) {
+        throw new Error("This method has been removed in JSZip 3.0, please check the upgrade guide.");
+    },
+
+    /**
+     * Generate the complete zip file as an internal stream.
+     * @param {Object} options the options to generate the zip file :
+     * - compression, "STORE" by default.
+     * - type, "base64" by default. Values are : string, base64, uint8array, arraybuffer, blob.
+     * @return {StreamHelper} the streamed zip file.
+     */
+    generateInternalStream: function generateInternalStream(options) {
+        var worker,
+            opts = {};
+        try {
+            opts = utils.extend(options || {}, {
+                streamFiles: false,
+                compression: "STORE",
+                compressionOptions: null,
+                type: "",
+                platform: "DOS",
+                comment: null,
+                mimeType: 'application/zip',
+                encodeFileName: utf8.utf8encode
+            });
+
+            opts.type = opts.type.toLowerCase();
+            opts.compression = opts.compression.toUpperCase();
+
+            // "binarystring" is prefered but the internals use "string".
+            if (opts.type === "binarystring") {
+                opts.type = "string";
+            }
+
+            if (!opts.type) {
+                throw new Error("No output type specified.");
+            }
+
+            utils.checkSupport(opts.type);
+
+            // accept nodejs `process.platform`
+            if (opts.platform === 'darwin' || opts.platform === 'freebsd' || opts.platform === 'linux' || opts.platform === 'sunos') {
+                opts.platform = "UNIX";
+            }
+            if (opts.platform === 'win32') {
+                opts.platform = "DOS";
+            }
+
+            var comment = opts.comment || this.comment || "";
+            worker = generate.generateWorker(this, opts, comment);
+        } catch (e) {
+            worker = new GenericWorker("error");
+            worker.error(e);
+        }
+        return new StreamHelper(worker, opts.type || "string", opts.mimeType);
+    },
+    /**
+     * Generate the complete zip file asynchronously.
+     * @see generateInternalStream
+     */
+    generateAsync: function generateAsync(options, onUpdate) {
+        return this.generateInternalStream(options).accumulate(onUpdate);
+    },
+    /**
+     * Generate the complete zip file asynchronously.
+     * @see generateInternalStream
+     */
+    generateNodeStream: function generateNodeStream(options, onUpdate) {
+        options = options || {};
+        if (!options.type) {
+            options.type = "nodebuffer";
+        }
+        return this.generateInternalStream(options).toNodejsStream(onUpdate);
+    }
+};
+module.exports = out;
+
+},{"./compressedObject":26,"./defaults":29,"./generate":33,"./nodejs/NodejsStreamInputAdapter":36,"./nodejsUtils":38,"./stream/GenericWorker":52,"./stream/StreamHelper":53,"./utf8":55,"./utils":56,"./zipObject":59}],40:[function(require,module,exports){
+"use strict";
+
+/*
+ * This file is used by module bundlers (browserify/webpack/etc) when
+ * including a stream implementation. We use "readable-stream" to get a
+ * consistent behavior between nodejs versions but bundlers often have a shim
+ * for "stream". Using this shim greatly improve the compatibility and greatly
+ * reduce the final size of the bundle (only one stream implementation, not
+ * two).
+ */
+module.exports = require("stream");
+
+},{"stream":194}],41:[function(require,module,exports){
+'use strict';
+
+var DataReader = require('./DataReader');
+var utils = require('../utils');
+
+function ArrayReader(data) {
+    DataReader.call(this, data);
+    for (var i = 0; i < this.data.length; i++) {
+        data[i] = data[i] & 0xFF;
+    }
+}
+utils.inherits(ArrayReader, DataReader);
 /**
  * @see DataReader.byteAt
  */
@@ -5430,6 +8509,17 @@ ArrayReader.prototype.lastIndexOfSignature = function (sig) {
     return -1;
 };
 /**
+ * @see DataReader.readAndCheckSignature
+ */
+ArrayReader.prototype.readAndCheckSignature = function (sig) {
+    var sig0 = sig.charCodeAt(0),
+        sig1 = sig.charCodeAt(1),
+        sig2 = sig.charCodeAt(2),
+        sig3 = sig.charCodeAt(3),
+        data = this.readData(4);
+    return sig0 === data[0] && sig1 === data[1] && sig2 === data[2] && sig3 === data[3];
+};
+/**
  * @see DataReader.readData
  */
 ArrayReader.prototype.readData = function (size) {
@@ -5443,168 +8533,14 @@ ArrayReader.prototype.readData = function (size) {
 };
 module.exports = ArrayReader;
 
-},{"./dataReader":24}],20:[function(require,module,exports){
-'use strict';
-// private property
-
-var _keyStr = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
-
-// public method for encoding
-exports.encode = function (input, utf8) {
-    var output = "";
-    var chr1, chr2, chr3, enc1, enc2, enc3, enc4;
-    var i = 0;
-
-    while (i < input.length) {
-
-        chr1 = input.charCodeAt(i++);
-        chr2 = input.charCodeAt(i++);
-        chr3 = input.charCodeAt(i++);
-
-        enc1 = chr1 >> 2;
-        enc2 = (chr1 & 3) << 4 | chr2 >> 4;
-        enc3 = (chr2 & 15) << 2 | chr3 >> 6;
-        enc4 = chr3 & 63;
-
-        if (isNaN(chr2)) {
-            enc3 = enc4 = 64;
-        } else if (isNaN(chr3)) {
-            enc4 = 64;
-        }
-
-        output = output + _keyStr.charAt(enc1) + _keyStr.charAt(enc2) + _keyStr.charAt(enc3) + _keyStr.charAt(enc4);
-    }
-
-    return output;
-};
-
-// public method for decoding
-exports.decode = function (input, utf8) {
-    var output = "";
-    var chr1, chr2, chr3;
-    var enc1, enc2, enc3, enc4;
-    var i = 0;
-
-    input = input.replace(/[^A-Za-z0-9\+\/\=]/g, "");
-
-    while (i < input.length) {
-
-        enc1 = _keyStr.indexOf(input.charAt(i++));
-        enc2 = _keyStr.indexOf(input.charAt(i++));
-        enc3 = _keyStr.indexOf(input.charAt(i++));
-        enc4 = _keyStr.indexOf(input.charAt(i++));
-
-        chr1 = enc1 << 2 | enc2 >> 4;
-        chr2 = (enc2 & 15) << 4 | enc3 >> 2;
-        chr3 = (enc3 & 3) << 6 | enc4;
-
-        output = output + String.fromCharCode(chr1);
-
-        if (enc3 != 64) {
-            output = output + String.fromCharCode(chr2);
-        }
-        if (enc4 != 64) {
-            output = output + String.fromCharCode(chr3);
-        }
-    }
-
-    return output;
-};
-
-},{}],21:[function(require,module,exports){
+},{"../utils":56,"./DataReader":42}],42:[function(require,module,exports){
 'use strict';
 
-function CompressedObject() {
-    this.compressedSize = 0;
-    this.uncompressedSize = 0;
-    this.crc32 = 0;
-    this.compressionMethod = null;
-    this.compressedContent = null;
-}
-
-CompressedObject.prototype = {
-    /**
-     * Return the decompressed content in an unspecified format.
-     * The format will depend on the decompressor.
-     * @return {Object} the decompressed content.
-     */
-    getContent: function getContent() {
-        return null; // see implementation
-    },
-    /**
-     * Return the compressed content in an unspecified format.
-     * The format will depend on the compressed conten source.
-     * @return {Object} the compressed content.
-     */
-    getCompressedContent: function getCompressedContent() {
-        return null; // see implementation
-    }
-};
-module.exports = CompressedObject;
-
-},{}],22:[function(require,module,exports){
-'use strict';
-
-exports.STORE = {
-    magic: "\x00\x00",
-    compress: function compress(content, compressionOptions) {
-        return content; // no compression
-    },
-    uncompress: function uncompress(content) {
-        return content; // no compression
-    },
-    compressInputType: null,
-    uncompressInputType: null
-};
-exports.DEFLATE = require('./flate');
-
-},{"./flate":27}],23:[function(require,module,exports){
-'use strict';
-
-var utils = require('./utils');
-
-var table = [0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F, 0xE963A535, 0x9E6495A3, 0x0EDB8832, 0x79DCB8A4, 0xE0D5E91E, 0x97D2D988, 0x09B64C2B, 0x7EB17CBD, 0xE7B82D07, 0x90BF1D91, 0x1DB71064, 0x6AB020F2, 0xF3B97148, 0x84BE41DE, 0x1ADAD47D, 0x6DDDE4EB, 0xF4D4B551, 0x83D385C7, 0x136C9856, 0x646BA8C0, 0xFD62F97A, 0x8A65C9EC, 0x14015C4F, 0x63066CD9, 0xFA0F3D63, 0x8D080DF5, 0x3B6E20C8, 0x4C69105E, 0xD56041E4, 0xA2677172, 0x3C03E4D1, 0x4B04D447, 0xD20D85FD, 0xA50AB56B, 0x35B5A8FA, 0x42B2986C, 0xDBBBC9D6, 0xACBCF940, 0x32D86CE3, 0x45DF5C75, 0xDCD60DCF, 0xABD13D59, 0x26D930AC, 0x51DE003A, 0xC8D75180, 0xBFD06116, 0x21B4F4B5, 0x56B3C423, 0xCFBA9599, 0xB8BDA50F, 0x2802B89E, 0x5F058808, 0xC60CD9B2, 0xB10BE924, 0x2F6F7C87, 0x58684C11, 0xC1611DAB, 0xB6662D3D, 0x76DC4190, 0x01DB7106, 0x98D220BC, 0xEFD5102A, 0x71B18589, 0x06B6B51F, 0x9FBFE4A5, 0xE8B8D433, 0x7807C9A2, 0x0F00F934, 0x9609A88E, 0xE10E9818, 0x7F6A0DBB, 0x086D3D2D, 0x91646C97, 0xE6635C01, 0x6B6B51F4, 0x1C6C6162, 0x856530D8, 0xF262004E, 0x6C0695ED, 0x1B01A57B, 0x8208F4C1, 0xF50FC457, 0x65B0D9C6, 0x12B7E950, 0x8BBEB8EA, 0xFCB9887C, 0x62DD1DDF, 0x15DA2D49, 0x8CD37CF3, 0xFBD44C65, 0x4DB26158, 0x3AB551CE, 0xA3BC0074, 0xD4BB30E2, 0x4ADFA541, 0x3DD895D7, 0xA4D1C46D, 0xD3D6F4FB, 0x4369E96A, 0x346ED9FC, 0xAD678846, 0xDA60B8D0, 0x44042D73, 0x33031DE5, 0xAA0A4C5F, 0xDD0D7CC9, 0x5005713C, 0x270241AA, 0xBE0B1010, 0xC90C2086, 0x5768B525, 0x206F85B3, 0xB966D409, 0xCE61E49F, 0x5EDEF90E, 0x29D9C998, 0xB0D09822, 0xC7D7A8B4, 0x59B33D17, 0x2EB40D81, 0xB7BD5C3B, 0xC0BA6CAD, 0xEDB88320, 0x9ABFB3B6, 0x03B6E20C, 0x74B1D29A, 0xEAD54739, 0x9DD277AF, 0x04DB2615, 0x73DC1683, 0xE3630B12, 0x94643B84, 0x0D6D6A3E, 0x7A6A5AA8, 0xE40ECF0B, 0x9309FF9D, 0x0A00AE27, 0x7D079EB1, 0xF00F9344, 0x8708A3D2, 0x1E01F268, 0x6906C2FE, 0xF762575D, 0x806567CB, 0x196C3671, 0x6E6B06E7, 0xFED41B76, 0x89D32BE0, 0x10DA7A5A, 0x67DD4ACC, 0xF9B9DF6F, 0x8EBEEFF9, 0x17B7BE43, 0x60B08ED5, 0xD6D6A3E8, 0xA1D1937E, 0x38D8C2C4, 0x4FDFF252, 0xD1BB67F1, 0xA6BC5767, 0x3FB506DD, 0x48B2364B, 0xD80D2BDA, 0xAF0A1B4C, 0x36034AF6, 0x41047A60, 0xDF60EFC3, 0xA867DF55, 0x316E8EEF, 0x4669BE79, 0xCB61B38C, 0xBC66831A, 0x256FD2A0, 0x5268E236, 0xCC0C7795, 0xBB0B4703, 0x220216B9, 0x5505262F, 0xC5BA3BBE, 0xB2BD0B28, 0x2BB45A92, 0x5CB36A04, 0xC2D7FFA7, 0xB5D0CF31, 0x2CD99E8B, 0x5BDEAE1D, 0x9B64C2B0, 0xEC63F226, 0x756AA39C, 0x026D930A, 0x9C0906A9, 0xEB0E363F, 0x72076785, 0x05005713, 0x95BF4A82, 0xE2B87A14, 0x7BB12BAE, 0x0CB61B38, 0x92D28E9B, 0xE5D5BE0D, 0x7CDCEFB7, 0x0BDBDF21, 0x86D3D2D4, 0xF1D4E242, 0x68DDB3F8, 0x1FDA836E, 0x81BE16CD, 0xF6B9265B, 0x6FB077E1, 0x18B74777, 0x88085AE6, 0xFF0F6A70, 0x66063BCA, 0x11010B5C, 0x8F659EFF, 0xF862AE69, 0x616BFFD3, 0x166CCF45, 0xA00AE278, 0xD70DD2EE, 0x4E048354, 0x3903B3C2, 0xA7672661, 0xD06016F7, 0x4969474D, 0x3E6E77DB, 0xAED16A4A, 0xD9D65ADC, 0x40DF0B66, 0x37D83BF0, 0xA9BCAE53, 0xDEBB9EC5, 0x47B2CF7F, 0x30B5FFE9, 0xBDBDF21C, 0xCABAC28A, 0x53B39330, 0x24B4A3A6, 0xBAD03605, 0xCDD70693, 0x54DE5729, 0x23D967BF, 0xB3667A2E, 0xC4614AB8, 0x5D681B02, 0x2A6F2B94, 0xB40BBE37, 0xC30C8EA1, 0x5A05DF1B, 0x2D02EF8D];
-
-/**
- *
- *  Javascript crc32
- *  http://www.webtoolkit.info/
- *
- */
-module.exports = function crc32(input, crc) {
-    if (typeof input === "undefined" || !input.length) {
-        return 0;
-    }
-
-    var isArray = utils.getTypeOf(input) !== "string";
-
-    if (typeof crc == "undefined") {
-        crc = 0;
-    }
-    var x = 0;
-    var y = 0;
-    var b = 0;
-
-    crc = crc ^ -1;
-    for (var i = 0, iTop = input.length; i < iTop; i++) {
-        b = isArray ? input[i] : input.charCodeAt(i);
-        y = (crc ^ b) & 0xFF;
-        x = table[y];
-        crc = crc >>> 8 ^ x;
-    }
-
-    return crc ^ -1;
-};
-// vim: set shiftwidth=4 softtabstop=4:
-
-},{"./utils":40}],24:[function(require,module,exports){
-'use strict';
-
-var utils = require('./utils');
+var utils = require('../utils');
 
 function DataReader(data) {
-    this.data = null; // type : see implementation
-    this.length = 0;
+    this.data = data; // type : see implementation
+    this.length = data.length;
     this.index = 0;
     this.zero = 0;
 }
@@ -5618,7 +8554,7 @@ DataReader.prototype = {
         this.checkIndex(this.index + offset);
     },
     /**
-     * Check that the specifed index will not be too far.
+     * Check that the specified index will not be too far.
      * @param {string} newIndex the index to check.
      * @throws {Error} an Error if the index is out of bounds.
      */
@@ -5692,307 +8628,39 @@ DataReader.prototype = {
         // see implementations
     },
     /**
+     * Read the signature (4 bytes) at the current position and compare it with sig.
+     * @param {string} sig the expected signature
+     * @return {boolean} true if the signature matches, false otherwise.
+     */
+    readAndCheckSignature: function readAndCheckSignature(sig) {
+        // see implementations
+    },
+    /**
      * Get the next date.
      * @return {Date} the date.
      */
     readDate: function readDate() {
         var dostime = this.readInt(4);
-        return new Date((dostime >> 25 & 0x7f) + 1980, // year
+        return new Date(Date.UTC((dostime >> 25 & 0x7f) + 1980, // year
         (dostime >> 21 & 0x0f) - 1, // month
         dostime >> 16 & 0x1f, // day
         dostime >> 11 & 0x1f, // hour
         dostime >> 5 & 0x3f, // minute
-        (dostime & 0x1f) << 1); // second
+        (dostime & 0x1f) << 1)); // second
     }
 };
 module.exports = DataReader;
 
-},{"./utils":40}],25:[function(require,module,exports){
+},{"../utils":56}],43:[function(require,module,exports){
 'use strict';
 
-exports.base64 = false;
-exports.binary = false;
-exports.dir = false;
-exports.createFolders = false;
-exports.date = null;
-exports.compression = null;
-exports.compressionOptions = null;
-exports.comment = null;
-exports.unixPermissions = null;
-exports.dosPermissions = null;
-
-},{}],26:[function(require,module,exports){
-'use strict';
-
-var utils = require('./utils');
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.string2binary = function (str) {
-  return utils.string2binary(str);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.string2Uint8Array = function (str) {
-  return utils.transformTo("uint8array", str);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.uint8Array2String = function (array) {
-  return utils.transformTo("string", array);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.string2Blob = function (str) {
-  var buffer = utils.transformTo("arraybuffer", str);
-  return utils.arrayBuffer2Blob(buffer);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.arrayBuffer2Blob = function (buffer) {
-  return utils.arrayBuffer2Blob(buffer);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.transformTo = function (outputType, input) {
-  return utils.transformTo(outputType, input);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.getTypeOf = function (input) {
-  return utils.getTypeOf(input);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.checkSupport = function (type) {
-  return utils.checkSupport(type);
-};
-
-/**
- * @deprecated
- * This value will be removed in a future version without replacement.
- */
-exports.MAX_VALUE_16BITS = utils.MAX_VALUE_16BITS;
-
-/**
- * @deprecated
- * This value will be removed in a future version without replacement.
- */
-exports.MAX_VALUE_32BITS = utils.MAX_VALUE_32BITS;
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.pretty = function (str) {
-  return utils.pretty(str);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.findCompression = function (compressionMethod) {
-  return utils.findCompression(compressionMethod);
-};
-
-/**
- * @deprecated
- * This function will be removed in a future version without replacement.
- */
-exports.isRegExp = function (object) {
-  return utils.isRegExp(object);
-};
-
-},{"./utils":40}],27:[function(require,module,exports){
-'use strict';
-
-var USE_TYPEDARRAY = typeof Uint8Array !== 'undefined' && typeof Uint16Array !== 'undefined' && typeof Uint32Array !== 'undefined';
-
-var pako = require("pako");
-exports.uncompressInputType = USE_TYPEDARRAY ? "uint8array" : "array";
-exports.compressInputType = USE_TYPEDARRAY ? "uint8array" : "array";
-
-exports.magic = "\x08\x00";
-exports.compress = function (input, compressionOptions) {
-    return pako.deflateRaw(input, {
-        level: compressionOptions.level || -1 // default compression
-    });
-};
-exports.uncompress = function (input) {
-    return pako.inflateRaw(input);
-};
-
-},{"pako":137}],28:[function(require,module,exports){
-'use strict';
-
-var base64 = require('./base64');
-
-/**
-Usage:
-   zip = new JSZip();
-   zip.file("hello.txt", "Hello, World!").file("tempfile", "nothing");
-   zip.folder("images").file("smile.gif", base64Data, {base64: true});
-   zip.file("Xmas.txt", "Ho ho ho !", {date : new Date("December 25, 2007 00:00:01")});
-   zip.remove("tempfile");
-
-   base64zip = zip.generate();
-
-**/
-
-/**
- * Representation a of zip file in js
- * @constructor
- * @param {String=|ArrayBuffer=|Uint8Array=} data the data to load, if any (optional).
- * @param {Object=} options the options for creating this objects (optional).
- */
-function JSZip(data, options) {
-    // if this constructor is used without `new`, it adds `new` before itself:
-    if (!(this instanceof JSZip)) return new JSZip(data, options);
-
-    // object containing the files :
-    // {
-    //   "folder/" : {...},
-    //   "folder/data.txt" : {...}
-    // }
-    this.files = {};
-
-    this.comment = null;
-
-    // Where we are in the hierarchy
-    this.root = "";
-    if (data) {
-        this.load(data, options);
-    }
-    this.clone = function () {
-        var newObj = new JSZip();
-        for (var i in this) {
-            if (typeof this[i] !== "function") {
-                newObj[i] = this[i];
-            }
-        }
-        return newObj;
-    };
-}
-JSZip.prototype = require('./object');
-JSZip.prototype.load = require('./load');
-JSZip.support = require('./support');
-JSZip.defaults = require('./defaults');
-
-/**
- * @deprecated
- * This namespace will be removed in a future version without replacement.
- */
-JSZip.utils = require('./deprecatedPublicUtils');
-
-JSZip.base64 = {
-    /**
-     * @deprecated
-     * This method will be removed in a future version without replacement.
-     */
-    encode: function encode(input) {
-        return base64.encode(input);
-    },
-    /**
-     * @deprecated
-     * This method will be removed in a future version without replacement.
-     */
-    decode: function decode(input) {
-        return base64.decode(input);
-    }
-};
-JSZip.compressions = require('./compressions');
-module.exports = JSZip;
-
-},{"./base64":20,"./compressions":22,"./defaults":25,"./deprecatedPublicUtils":26,"./load":29,"./object":32,"./support":36}],29:[function(require,module,exports){
-'use strict';
-
-var base64 = require('./base64');
-var utf8 = require('./utf8');
-var utils = require('./utils');
-var ZipEntries = require('./zipEntries');
-module.exports = function (data, options) {
-    var files, zipEntries, i, input;
-    options = utils.extend(options || {}, {
-        base64: false,
-        checkCRC32: false,
-        optimizedBinaryString: false,
-        createFolders: false,
-        decodeFileName: utf8.utf8decode
-    });
-    if (options.base64) {
-        data = base64.decode(data);
-    }
-
-    zipEntries = new ZipEntries(data, options);
-    files = zipEntries.files;
-    for (i = 0; i < files.length; i++) {
-        input = files[i];
-        this.file(input.fileNameStr, input.decompressed, {
-            binary: true,
-            optimizedBinaryString: true,
-            date: input.date,
-            dir: input.dir,
-            comment: input.fileCommentStr.length ? input.fileCommentStr : null,
-            unixPermissions: input.unixPermissions,
-            dosPermissions: input.dosPermissions,
-            createFolders: options.createFolders
-        });
-    }
-    if (zipEntries.zipComment.length) {
-        this.comment = zipEntries.zipComment;
-    }
-
-    return this;
-};
-
-},{"./base64":20,"./utf8":39,"./utils":40,"./zipEntries":41}],30:[function(require,module,exports){
-(function (Buffer){
-'use strict';
-
-module.exports = function (data, encoding) {
-    return new Buffer(data, encoding);
-};
-module.exports.test = function (b) {
-    return Buffer.isBuffer(b);
-};
-
-}).call(this,require("buffer").Buffer)
-},{"buffer":6}],31:[function(require,module,exports){
-'use strict';
-
-var Uint8ArrayReader = require('./uint8ArrayReader');
+var Uint8ArrayReader = require('./Uint8ArrayReader');
+var utils = require('../utils');
 
 function NodeBufferReader(data) {
-    this.data = data;
-    this.length = this.data.length;
-    this.index = 0;
-    this.zero = 0;
+    Uint8ArrayReader.call(this, data);
 }
-NodeBufferReader.prototype = new Uint8ArrayReader();
+utils.inherits(NodeBufferReader, Uint8ArrayReader);
 
 /**
  * @see DataReader.readData
@@ -6005,892 +8673,16 @@ NodeBufferReader.prototype.readData = function (size) {
 };
 module.exports = NodeBufferReader;
 
-},{"./uint8ArrayReader":37}],32:[function(require,module,exports){
+},{"../utils":56,"./Uint8ArrayReader":45}],44:[function(require,module,exports){
 'use strict';
 
-var support = require('./support');
-var utils = require('./utils');
-var _crc = require('./crc32');
-var signature = require('./signature');
-var defaults = require('./defaults');
-var base64 = require('./base64');
-var compressions = require('./compressions');
-var CompressedObject = require('./compressedObject');
-var nodeBuffer = require('./nodeBuffer');
-var utf8 = require('./utf8');
-var StringWriter = require('./stringWriter');
-var Uint8ArrayWriter = require('./uint8ArrayWriter');
-
-/**
- * Returns the raw data of a ZipObject, decompress the content if necessary.
- * @param {ZipObject} file the file to use.
- * @return {String|ArrayBuffer|Uint8Array|Buffer} the data.
- */
-var getRawData = function getRawData(file) {
-    if (file._data instanceof CompressedObject) {
-        file._data = file._data.getContent();
-        file.options.binary = true;
-        file.options.base64 = false;
-
-        if (utils.getTypeOf(file._data) === "uint8array") {
-            var copy = file._data;
-            // when reading an arraybuffer, the CompressedObject mechanism will keep it and subarray() a Uint8Array.
-            // if we request a file in the same format, we might get the same Uint8Array or its ArrayBuffer (the original zip file).
-            file._data = new Uint8Array(copy.length);
-            // with an empty Uint8Array, Opera fails with a "Offset larger than array size"
-            if (copy.length !== 0) {
-                file._data.set(copy, 0);
-            }
-        }
-    }
-    return file._data;
-};
-
-/**
- * Returns the data of a ZipObject in a binary form. If the content is an unicode string, encode it.
- * @param {ZipObject} file the file to use.
- * @return {String|ArrayBuffer|Uint8Array|Buffer} the data.
- */
-var getBinaryData = function getBinaryData(file) {
-    var result = getRawData(file),
-        type = utils.getTypeOf(result);
-    if (type === "string") {
-        if (!file.options.binary) {
-            // unicode text !
-            // unicode string => binary string is a painful process, check if we can avoid it.
-            if (support.nodebuffer) {
-                return nodeBuffer(result, "utf-8");
-            }
-        }
-        return file.asBinary();
-    }
-    return result;
-};
-
-/**
- * Transform this._data into a string.
- * @param {function} filter a function String -> String, applied if not null on the result.
- * @return {String} the string representing this._data.
- */
-var dataToString = function dataToString(asUTF8) {
-    var result = getRawData(this);
-    if (result === null || typeof result === "undefined") {
-        return "";
-    }
-    // if the data is a base64 string, we decode it before checking the encoding !
-    if (this.options.base64) {
-        result = base64.decode(result);
-    }
-    if (asUTF8 && this.options.binary) {
-        // JSZip.prototype.utf8decode supports arrays as input
-        // skip to array => string step, utf8decode will do it.
-        result = out.utf8decode(result);
-    } else {
-        // no utf8 transformation, do the array => string step.
-        result = utils.transformTo("string", result);
-    }
-
-    if (!asUTF8 && !this.options.binary) {
-        result = utils.transformTo("string", out.utf8encode(result));
-    }
-    return result;
-};
-/**
- * A simple object representing a file in the zip file.
- * @constructor
- * @param {string} name the name of the file
- * @param {String|ArrayBuffer|Uint8Array|Buffer} data the data
- * @param {Object} options the options of the file
- */
-var ZipObject = function ZipObject(name, data, options) {
-    this.name = name;
-    this.dir = options.dir;
-    this.date = options.date;
-    this.comment = options.comment;
-    this.unixPermissions = options.unixPermissions;
-    this.dosPermissions = options.dosPermissions;
-
-    this._data = data;
-    this.options = options;
-
-    /*
-     * This object contains initial values for dir and date.
-     * With them, we can check if the user changed the deprecated metadata in
-     * `ZipObject#options` or not.
-     */
-    this._initialMetadata = {
-        dir: options.dir,
-        date: options.date
-    };
-};
-
-ZipObject.prototype = {
-    /**
-     * Return the content as UTF8 string.
-     * @return {string} the UTF8 string.
-     */
-    asText: function asText() {
-        return dataToString.call(this, true);
-    },
-    /**
-     * Returns the binary content.
-     * @return {string} the content as binary.
-     */
-    asBinary: function asBinary() {
-        return dataToString.call(this, false);
-    },
-    /**
-     * Returns the content as a nodejs Buffer.
-     * @return {Buffer} the content as a Buffer.
-     */
-    asNodeBuffer: function asNodeBuffer() {
-        var result = getBinaryData(this);
-        return utils.transformTo("nodebuffer", result);
-    },
-    /**
-     * Returns the content as an Uint8Array.
-     * @return {Uint8Array} the content as an Uint8Array.
-     */
-    asUint8Array: function asUint8Array() {
-        var result = getBinaryData(this);
-        return utils.transformTo("uint8array", result);
-    },
-    /**
-     * Returns the content as an ArrayBuffer.
-     * @return {ArrayBuffer} the content as an ArrayBufer.
-     */
-    asArrayBuffer: function asArrayBuffer() {
-        return this.asUint8Array().buffer;
-    }
-};
-
-/**
- * Transform an integer into a string in hexadecimal.
- * @private
- * @param {number} dec the number to convert.
- * @param {number} bytes the number of bytes to generate.
- * @returns {string} the result.
- */
-var decToHex = function decToHex(dec, bytes) {
-    var hex = "",
-        i;
-    for (i = 0; i < bytes; i++) {
-        hex += String.fromCharCode(dec & 0xff);
-        dec = dec >>> 8;
-    }
-    return hex;
-};
-
-/**
- * Transforms the (incomplete) options from the user into the complete
- * set of options to create a file.
- * @private
- * @param {Object} o the options from the user.
- * @return {Object} the complete set of options.
- */
-var prepareFileAttrs = function prepareFileAttrs(o) {
-    o = o || {};
-    if (o.base64 === true && (o.binary === null || o.binary === undefined)) {
-        o.binary = true;
-    }
-    o = utils.extend(o, defaults);
-    o.date = o.date || new Date();
-    if (o.compression !== null) o.compression = o.compression.toUpperCase();
-
-    return o;
-};
-
-/**
- * Add a file in the current folder.
- * @private
- * @param {string} name the name of the file
- * @param {String|ArrayBuffer|Uint8Array|Buffer} data the data of the file
- * @param {Object} o the options of the file
- * @return {Object} the new file.
- */
-var fileAdd = function fileAdd(name, data, o) {
-    // be sure sub folders exist
-    var dataType = utils.getTypeOf(data),
-        parent;
-
-    o = prepareFileAttrs(o);
-
-    if (typeof o.unixPermissions === "string") {
-        o.unixPermissions = parseInt(o.unixPermissions, 8);
-    }
-
-    // UNX_IFDIR  0040000 see zipinfo.c
-    if (o.unixPermissions && o.unixPermissions & 0x4000) {
-        o.dir = true;
-    }
-    // Bit 4    Directory
-    if (o.dosPermissions && o.dosPermissions & 0x0010) {
-        o.dir = true;
-    }
-
-    if (o.dir) {
-        name = forceTrailingSlash(name);
-    }
-
-    if (o.createFolders && (parent = parentFolder(name))) {
-        folderAdd.call(this, parent, true);
-    }
-
-    if (o.dir || data === null || typeof data === "undefined") {
-        o.base64 = false;
-        o.binary = false;
-        data = null;
-        dataType = null;
-    } else if (dataType === "string") {
-        if (o.binary && !o.base64) {
-            // optimizedBinaryString == true means that the file has already been filtered with a 0xFF mask
-            if (o.optimizedBinaryString !== true) {
-                // this is a string, not in a base64 format.
-                // Be sure that this is a correct "binary string"
-                data = utils.string2binary(data);
-            }
-        }
-    } else {
-        // arraybuffer, uint8array, ...
-        o.base64 = false;
-        o.binary = true;
-
-        if (!dataType && !(data instanceof CompressedObject)) {
-            throw new Error("The data of '" + name + "' is in an unsupported format !");
-        }
-
-        // special case : it's way easier to work with Uint8Array than with ArrayBuffer
-        if (dataType === "arraybuffer") {
-            data = utils.transformTo("uint8array", data);
-        }
-    }
-
-    var object = new ZipObject(name, data, o);
-    this.files[name] = object;
-    return object;
-};
-
-/**
- * Find the parent folder of the path.
- * @private
- * @param {string} path the path to use
- * @return {string} the parent folder, or ""
- */
-var parentFolder = function parentFolder(path) {
-    if (path.slice(-1) == '/') {
-        path = path.substring(0, path.length - 1);
-    }
-    var lastSlash = path.lastIndexOf('/');
-    return lastSlash > 0 ? path.substring(0, lastSlash) : "";
-};
-
-/**
- * Returns the path with a slash at the end.
- * @private
- * @param {String} path the path to check.
- * @return {String} the path with a trailing slash.
- */
-var forceTrailingSlash = function forceTrailingSlash(path) {
-    // Check the name ends with a /
-    if (path.slice(-1) != "/") {
-        path += "/"; // IE doesn't like substr(-1)
-    }
-    return path;
-};
-/**
- * Add a (sub) folder in the current folder.
- * @private
- * @param {string} name the folder's name
- * @param {boolean=} [createFolders] If true, automatically create sub
- *  folders. Defaults to false.
- * @return {Object} the new folder.
- */
-var folderAdd = function folderAdd(name, createFolders) {
-    createFolders = typeof createFolders !== 'undefined' ? createFolders : false;
-
-    name = forceTrailingSlash(name);
-
-    // Does this folder already exist?
-    if (!this.files[name]) {
-        fileAdd.call(this, name, null, {
-            dir: true,
-            createFolders: createFolders
-        });
-    }
-    return this.files[name];
-};
-
-/**
- * Generate a JSZip.CompressedObject for a given zipOject.
- * @param {ZipObject} file the object to read.
- * @param {JSZip.compression} compression the compression to use.
- * @param {Object} compressionOptions the options to use when compressing.
- * @return {JSZip.CompressedObject} the compressed result.
- */
-var generateCompressedObjectFrom = function generateCompressedObjectFrom(file, compression, compressionOptions) {
-    var result = new CompressedObject(),
-        content;
-
-    // the data has not been decompressed, we might reuse things !
-    if (file._data instanceof CompressedObject) {
-        result.uncompressedSize = file._data.uncompressedSize;
-        result.crc32 = file._data.crc32;
-
-        if (result.uncompressedSize === 0 || file.dir) {
-            compression = compressions['STORE'];
-            result.compressedContent = "";
-            result.crc32 = 0;
-        } else if (file._data.compressionMethod === compression.magic) {
-            result.compressedContent = file._data.getCompressedContent();
-        } else {
-            content = file._data.getContent();
-            // need to decompress / recompress
-            result.compressedContent = compression.compress(utils.transformTo(compression.compressInputType, content), compressionOptions);
-        }
-    } else {
-        // have uncompressed data
-        content = getBinaryData(file);
-        if (!content || content.length === 0 || file.dir) {
-            compression = compressions['STORE'];
-            content = "";
-        }
-        result.uncompressedSize = content.length;
-        result.crc32 = _crc(content);
-        result.compressedContent = compression.compress(utils.transformTo(compression.compressInputType, content), compressionOptions);
-    }
-
-    result.compressedSize = result.compressedContent.length;
-    result.compressionMethod = compression.magic;
-
-    return result;
-};
-
-/**
- * Generate the UNIX part of the external file attributes.
- * @param {Object} unixPermissions the unix permissions or null.
- * @param {Boolean} isDir true if the entry is a directory, false otherwise.
- * @return {Number} a 32 bit integer.
- *
- * adapted from http://unix.stackexchange.com/questions/14705/the-zip-formats-external-file-attribute :
- *
- * TTTTsstrwxrwxrwx0000000000ADVSHR
- * ^^^^____________________________ file type, see zipinfo.c (UNX_*)
- *     ^^^_________________________ setuid, setgid, sticky
- *        ^^^^^^^^^________________ permissions
- *                 ^^^^^^^^^^______ not used ?
- *                           ^^^^^^ DOS attribute bits : Archive, Directory, Volume label, System file, Hidden, Read only
- */
-var generateUnixExternalFileAttr = function generateUnixExternalFileAttr(unixPermissions, isDir) {
-
-    var result = unixPermissions;
-    if (!unixPermissions) {
-        // I can't use octal values in strict mode, hence the hexa.
-        //  040775 => 0x41fd
-        // 0100664 => 0x81b4
-        result = isDir ? 0x41fd : 0x81b4;
-    }
-
-    return (result & 0xFFFF) << 16;
-};
-
-/**
- * Generate the DOS part of the external file attributes.
- * @param {Object} dosPermissions the dos permissions or null.
- * @param {Boolean} isDir true if the entry is a directory, false otherwise.
- * @return {Number} a 32 bit integer.
- *
- * Bit 0     Read-Only
- * Bit 1     Hidden
- * Bit 2     System
- * Bit 3     Volume Label
- * Bit 4     Directory
- * Bit 5     Archive
- */
-var generateDosExternalFileAttr = function generateDosExternalFileAttr(dosPermissions, isDir) {
-
-    // the dir flag is already set for compatibility
-
-    return (dosPermissions || 0) & 0x3F;
-};
-
-/**
- * Generate the various parts used in the construction of the final zip file.
- * @param {string} name the file name.
- * @param {ZipObject} file the file content.
- * @param {JSZip.CompressedObject} compressedObject the compressed object.
- * @param {number} offset the current offset from the start of the zip file.
- * @param {String} platform let's pretend we are this platform (change platform dependents fields)
- * @param {Function} encodeFileName the function to encode the file name / comment.
- * @return {object} the zip parts.
- */
-var generateZipParts = function generateZipParts(name, file, compressedObject, offset, platform, encodeFileName) {
-    var data = compressedObject.compressedContent,
-        useCustomEncoding = encodeFileName !== utf8.utf8encode,
-        encodedFileName = utils.transformTo("string", encodeFileName(file.name)),
-        utfEncodedFileName = utils.transformTo("string", utf8.utf8encode(file.name)),
-        comment = file.comment || "",
-        encodedComment = utils.transformTo("string", encodeFileName(comment)),
-        utfEncodedComment = utils.transformTo("string", utf8.utf8encode(comment)),
-        useUTF8ForFileName = utfEncodedFileName.length !== file.name.length,
-        useUTF8ForComment = utfEncodedComment.length !== comment.length,
-        o = file.options,
-        dosTime,
-        dosDate,
-        extraFields = "",
-        unicodePathExtraField = "",
-        unicodeCommentExtraField = "",
-        dir,
-        date;
-
-    // handle the deprecated options.dir
-    if (file._initialMetadata.dir !== file.dir) {
-        dir = file.dir;
-    } else {
-        dir = o.dir;
-    }
-
-    // handle the deprecated options.date
-    if (file._initialMetadata.date !== file.date) {
-        date = file.date;
-    } else {
-        date = o.date;
-    }
-
-    var extFileAttr = 0;
-    var versionMadeBy = 0;
-    if (dir) {
-        // dos or unix, we set the dos dir flag
-        extFileAttr |= 0x00010;
-    }
-    if (platform === "UNIX") {
-        versionMadeBy = 0x031E; // UNIX, version 3.0
-        extFileAttr |= generateUnixExternalFileAttr(file.unixPermissions, dir);
-    } else {
-        // DOS or other, fallback to DOS
-        versionMadeBy = 0x0014; // DOS, version 2.0
-        extFileAttr |= generateDosExternalFileAttr(file.dosPermissions, dir);
-    }
-
-    // date
-    // @see http://www.delorie.com/djgpp/doc/rbinter/it/52/13.html
-    // @see http://www.delorie.com/djgpp/doc/rbinter/it/65/16.html
-    // @see http://www.delorie.com/djgpp/doc/rbinter/it/66/16.html
-
-    dosTime = date.getHours();
-    dosTime = dosTime << 6;
-    dosTime = dosTime | date.getMinutes();
-    dosTime = dosTime << 5;
-    dosTime = dosTime | date.getSeconds() / 2;
-
-    dosDate = date.getFullYear() - 1980;
-    dosDate = dosDate << 4;
-    dosDate = dosDate | date.getMonth() + 1;
-    dosDate = dosDate << 5;
-    dosDate = dosDate | date.getDate();
-
-    if (useUTF8ForFileName) {
-        // set the unicode path extra field. unzip needs at least one extra
-        // field to correctly handle unicode path, so using the path is as good
-        // as any other information. This could improve the situation with
-        // other archive managers too.
-        // This field is usually used without the utf8 flag, with a non
-        // unicode path in the header (winrar, winzip). This helps (a bit)
-        // with the messy Windows' default compressed folders feature but
-        // breaks on p7zip which doesn't seek the unicode path extra field.
-        // So for now, UTF-8 everywhere !
-        unicodePathExtraField =
-        // Version
-        decToHex(1, 1) +
-        // NameCRC32
-        decToHex(_crc(encodedFileName), 4) +
-        // UnicodeName
-        utfEncodedFileName;
-
-        extraFields +=
-        // Info-ZIP Unicode Path Extra Field
-        "\x75\x70" +
-        // size
-        decToHex(unicodePathExtraField.length, 2) +
-        // content
-        unicodePathExtraField;
-    }
-
-    if (useUTF8ForComment) {
-
-        unicodeCommentExtraField =
-        // Version
-        decToHex(1, 1) +
-        // CommentCRC32
-        decToHex(this.crc32(encodedComment), 4) +
-        // UnicodeName
-        utfEncodedComment;
-
-        extraFields +=
-        // Info-ZIP Unicode Path Extra Field
-        "\x75\x63" +
-        // size
-        decToHex(unicodeCommentExtraField.length, 2) +
-        // content
-        unicodeCommentExtraField;
-    }
-
-    var header = "";
-
-    // version needed to extract
-    header += "\x0A\x00";
-    // general purpose bit flag
-    // set bit 11 if utf8
-    header += !useCustomEncoding && (useUTF8ForFileName || useUTF8ForComment) ? "\x00\x08" : "\x00\x00";
-    // compression method
-    header += compressedObject.compressionMethod;
-    // last mod file time
-    header += decToHex(dosTime, 2);
-    // last mod file date
-    header += decToHex(dosDate, 2);
-    // crc-32
-    header += decToHex(compressedObject.crc32, 4);
-    // compressed size
-    header += decToHex(compressedObject.compressedSize, 4);
-    // uncompressed size
-    header += decToHex(compressedObject.uncompressedSize, 4);
-    // file name length
-    header += decToHex(encodedFileName.length, 2);
-    // extra field length
-    header += decToHex(extraFields.length, 2);
-
-    var fileRecord = signature.LOCAL_FILE_HEADER + header + encodedFileName + extraFields;
-
-    var dirRecord = signature.CENTRAL_FILE_HEADER +
-    // version made by (00: DOS)
-    decToHex(versionMadeBy, 2) +
-    // file header (common to file and central directory)
-    header +
-    // file comment length
-    decToHex(encodedComment.length, 2) +
-    // disk number start
-    "\x00\x00" +
-    // internal file attributes TODO
-    "\x00\x00" +
-    // external file attributes
-    decToHex(extFileAttr, 4) +
-    // relative offset of local header
-    decToHex(offset, 4) +
-    // file name
-    encodedFileName +
-    // extra field
-    extraFields +
-    // file comment
-    encodedComment;
-
-    return {
-        fileRecord: fileRecord,
-        dirRecord: dirRecord,
-        compressedObject: compressedObject
-    };
-};
-
-// return the actual prototype of JSZip
-var out = {
-    /**
-     * Read an existing zip and merge the data in the current JSZip object.
-     * The implementation is in jszip-load.js, don't forget to include it.
-     * @param {String|ArrayBuffer|Uint8Array|Buffer} stream  The stream to load
-     * @param {Object} options Options for loading the stream.
-     *  options.base64 : is the stream in base64 ? default : false
-     * @return {JSZip} the current JSZip object
-     */
-    load: function load(stream, options) {
-        throw new Error("Load method is not defined. Is the file jszip-load.js included ?");
-    },
-
-    /**
-     * Filter nested files/folders with the specified function.
-     * @param {Function} search the predicate to use :
-     * function (relativePath, file) {...}
-     * It takes 2 arguments : the relative path and the file.
-     * @return {Array} An array of matching elements.
-     */
-    filter: function filter(search) {
-        var result = [],
-            filename,
-            relativePath,
-            file,
-            fileClone;
-        for (filename in this.files) {
-            if (!this.files.hasOwnProperty(filename)) {
-                continue;
-            }
-            file = this.files[filename];
-            // return a new object, don't let the user mess with our internal objects :)
-            fileClone = new ZipObject(file.name, file._data, utils.extend(file.options));
-            relativePath = filename.slice(this.root.length, filename.length);
-            if (filename.slice(0, this.root.length) === this.root && // the file is in the current root
-            search(relativePath, fileClone)) {
-                // and the file matches the function
-                result.push(fileClone);
-            }
-        }
-        return result;
-    },
-
-    /**
-     * Add a file to the zip file, or search a file.
-     * @param   {string|RegExp} name The name of the file to add (if data is defined),
-     * the name of the file to find (if no data) or a regex to match files.
-     * @param   {String|ArrayBuffer|Uint8Array|Buffer} data  The file data, either raw or base64 encoded
-     * @param   {Object} o     File options
-     * @return  {JSZip|Object|Array} this JSZip object (when adding a file),
-     * a file (when searching by string) or an array of files (when searching by regex).
-     */
-    file: function file(name, data, o) {
-        if (arguments.length === 1) {
-            if (utils.isRegExp(name)) {
-                var regexp = name;
-                return this.filter(function (relativePath, file) {
-                    return !file.dir && regexp.test(relativePath);
-                });
-            } else {
-                // text
-                return this.filter(function (relativePath, file) {
-                    return !file.dir && relativePath === name;
-                })[0] || null;
-            }
-        } else {
-            // more than one argument : we have data !
-            name = this.root + name;
-            fileAdd.call(this, name, data, o);
-        }
-        return this;
-    },
-
-    /**
-     * Add a directory to the zip file, or search.
-     * @param   {String|RegExp} arg The name of the directory to add, or a regex to search folders.
-     * @return  {JSZip} an object with the new directory as the root, or an array containing matching folders.
-     */
-    folder: function folder(arg) {
-        if (!arg) {
-            return this;
-        }
-
-        if (utils.isRegExp(arg)) {
-            return this.filter(function (relativePath, file) {
-                return file.dir && arg.test(relativePath);
-            });
-        }
-
-        // else, name is a new folder
-        var name = this.root + arg;
-        var newFolder = folderAdd.call(this, name);
-
-        // Allow chaining by returning a new object with this folder as the root
-        var ret = this.clone();
-        ret.root = newFolder.name;
-        return ret;
-    },
-
-    /**
-     * Delete a file, or a directory and all sub-files, from the zip
-     * @param {string} name the name of the file to delete
-     * @return {JSZip} this JSZip object
-     */
-    remove: function remove(name) {
-        name = this.root + name;
-        var file = this.files[name];
-        if (!file) {
-            // Look for any folders
-            if (name.slice(-1) != "/") {
-                name += "/";
-            }
-            file = this.files[name];
-        }
-
-        if (file && !file.dir) {
-            // file
-            delete this.files[name];
-        } else {
-            // maybe a folder, delete recursively
-            var kids = this.filter(function (relativePath, file) {
-                return file.name.slice(0, name.length) === name;
-            });
-            for (var i = 0; i < kids.length; i++) {
-                delete this.files[kids[i].name];
-            }
-        }
-
-        return this;
-    },
-
-    /**
-     * Generate the complete zip file
-     * @param {Object} options the options to generate the zip file :
-     * - base64, (deprecated, use type instead) true to generate base64.
-     * - compression, "STORE" by default.
-     * - type, "base64" by default. Values are : string, base64, uint8array, arraybuffer, blob.
-     * @return {String|Uint8Array|ArrayBuffer|Buffer|Blob} the zip file
-     */
-    generate: function generate(options) {
-        options = utils.extend(options || {}, {
-            base64: true,
-            compression: "STORE",
-            compressionOptions: null,
-            type: "base64",
-            platform: "DOS",
-            comment: null,
-            mimeType: 'application/zip',
-            encodeFileName: utf8.utf8encode
-        });
-
-        utils.checkSupport(options.type);
-
-        // accept nodejs `process.platform`
-        if (options.platform === 'darwin' || options.platform === 'freebsd' || options.platform === 'linux' || options.platform === 'sunos') {
-            options.platform = "UNIX";
-        }
-        if (options.platform === 'win32') {
-            options.platform = "DOS";
-        }
-
-        var zipData = [],
-            localDirLength = 0,
-            centralDirLength = 0,
-            writer,
-            i,
-            encodedComment = utils.transformTo("string", options.encodeFileName(options.comment || this.comment || ""));
-
-        // first, generate all the zip parts.
-        for (var name in this.files) {
-            if (!this.files.hasOwnProperty(name)) {
-                continue;
-            }
-            var file = this.files[name];
-
-            var compressionName = file.options.compression || options.compression.toUpperCase();
-            var compression = compressions[compressionName];
-            if (!compression) {
-                throw new Error(compressionName + " is not a valid compression method !");
-            }
-            var compressionOptions = file.options.compressionOptions || options.compressionOptions || {};
-
-            var compressedObject = generateCompressedObjectFrom.call(this, file, compression, compressionOptions);
-
-            var zipPart = generateZipParts.call(this, name, file, compressedObject, localDirLength, options.platform, options.encodeFileName);
-            localDirLength += zipPart.fileRecord.length + compressedObject.compressedSize;
-            centralDirLength += zipPart.dirRecord.length;
-            zipData.push(zipPart);
-        }
-
-        var dirEnd = "";
-
-        // end of central dir signature
-        dirEnd = signature.CENTRAL_DIRECTORY_END +
-        // number of this disk
-        "\x00\x00" +
-        // number of the disk with the start of the central directory
-        "\x00\x00" +
-        // total number of entries in the central directory on this disk
-        decToHex(zipData.length, 2) +
-        // total number of entries in the central directory
-        decToHex(zipData.length, 2) +
-        // size of the central directory   4 bytes
-        decToHex(centralDirLength, 4) +
-        // offset of start of central directory with respect to the starting disk number
-        decToHex(localDirLength, 4) +
-        // .ZIP file comment length
-        decToHex(encodedComment.length, 2) +
-        // .ZIP file comment
-        encodedComment;
-
-        // we have all the parts (and the total length)
-        // time to create a writer !
-        var typeName = options.type.toLowerCase();
-        if (typeName === "uint8array" || typeName === "arraybuffer" || typeName === "blob" || typeName === "nodebuffer") {
-            writer = new Uint8ArrayWriter(localDirLength + centralDirLength + dirEnd.length);
-        } else {
-            writer = new StringWriter(localDirLength + centralDirLength + dirEnd.length);
-        }
-
-        for (i = 0; i < zipData.length; i++) {
-            writer.append(zipData[i].fileRecord);
-            writer.append(zipData[i].compressedObject.compressedContent);
-        }
-        for (i = 0; i < zipData.length; i++) {
-            writer.append(zipData[i].dirRecord);
-        }
-
-        writer.append(dirEnd);
-
-        var zip = writer.finalize();
-
-        switch (options.type.toLowerCase()) {
-            // case "zip is an Uint8Array"
-            case "uint8array":
-            case "arraybuffer":
-            case "nodebuffer":
-                return utils.transformTo(options.type.toLowerCase(), zip);
-            case "blob":
-                return utils.arrayBuffer2Blob(utils.transformTo("arraybuffer", zip), options.mimeType);
-            // case "zip is a string"
-            case "base64":
-                return options.base64 ? base64.encode(zip) : zip;
-            default:
-                // case "string" :
-                return zip;
-        }
-    },
-
-    /**
-     * @deprecated
-     * This method will be removed in a future version without replacement.
-     */
-    crc32: function crc32(input, crc) {
-        return _crc(input, crc);
-    },
-
-    /**
-     * @deprecated
-     * This method will be removed in a future version without replacement.
-     */
-    utf8encode: function utf8encode(string) {
-        return utils.transformTo("string", utf8.utf8encode(string));
-    },
-
-    /**
-     * @deprecated
-     * This method will be removed in a future version without replacement.
-     */
-    utf8decode: function utf8decode(input) {
-        return utf8.utf8decode(input);
-    }
-};
-module.exports = out;
-
-},{"./base64":20,"./compressedObject":21,"./compressions":22,"./crc32":23,"./defaults":25,"./nodeBuffer":30,"./signature":33,"./stringWriter":35,"./support":36,"./uint8ArrayWriter":38,"./utf8":39,"./utils":40}],33:[function(require,module,exports){
-'use strict';
-
-exports.LOCAL_FILE_HEADER = "PK\x03\x04";
-exports.CENTRAL_FILE_HEADER = "PK\x01\x02";
-exports.CENTRAL_DIRECTORY_END = "PK\x05\x06";
-exports.ZIP64_CENTRAL_DIRECTORY_LOCATOR = "PK\x06\x07";
-exports.ZIP64_CENTRAL_DIRECTORY_END = "PK\x06\x06";
-exports.DATA_DESCRIPTOR = "PK\x07\x08";
-
-},{}],34:[function(require,module,exports){
-'use strict';
-
-var DataReader = require('./dataReader');
-var utils = require('./utils');
-
-function StringReader(data, optimizedBinaryString) {
-    this.data = data;
-    if (!optimizedBinaryString) {
-        this.data = utils.string2binary(this.data);
-    }
-    this.length = this.data.length;
-    this.index = 0;
-    this.zero = 0;
+var DataReader = require('./DataReader');
+var utils = require('../utils');
+
+function StringReader(data) {
+    DataReader.call(this, data);
 }
-StringReader.prototype = new DataReader();
+utils.inherits(StringReader, DataReader);
 /**
  * @see DataReader.byteAt
  */
@@ -6904,6 +8696,13 @@ StringReader.prototype.lastIndexOfSignature = function (sig) {
     return this.data.lastIndexOf(sig) - this.zero;
 };
 /**
+ * @see DataReader.readAndCheckSignature
+ */
+StringReader.prototype.readAndCheckSignature = function (sig) {
+    var data = this.readData(4);
+    return sig === data;
+};
+/**
  * @see DataReader.readData
  */
 StringReader.prototype.readData = function (size) {
@@ -6915,88 +8714,16 @@ StringReader.prototype.readData = function (size) {
 };
 module.exports = StringReader;
 
-},{"./dataReader":24,"./utils":40}],35:[function(require,module,exports){
+},{"../utils":56,"./DataReader":42}],45:[function(require,module,exports){
 'use strict';
 
-var utils = require('./utils');
-
-/**
- * An object to write any content to a string.
- * @constructor
- */
-var StringWriter = function StringWriter() {
-    this.data = [];
-};
-StringWriter.prototype = {
-    /**
-     * Append any content to the current string.
-     * @param {Object} input the content to add.
-     */
-    append: function append(input) {
-        input = utils.transformTo("string", input);
-        this.data.push(input);
-    },
-    /**
-     * Finalize the construction an return the result.
-     * @return {string} the generated string.
-     */
-    finalize: function finalize() {
-        return this.data.join("");
-    }
-};
-
-module.exports = StringWriter;
-
-},{"./utils":40}],36:[function(require,module,exports){
-(function (Buffer){
-'use strict';
-
-exports.base64 = true;
-exports.array = true;
-exports.string = true;
-exports.arraybuffer = typeof ArrayBuffer !== "undefined" && typeof Uint8Array !== "undefined";
-// contains true if JSZip can read/generate nodejs Buffer, false otherwise.
-// Browserify will provide a Buffer implementation for browsers, which is
-// an augmented Uint8Array (i.e., can be used as either Buffer or U8).
-exports.nodebuffer = typeof Buffer !== "undefined";
-// contains true if JSZip can read/generate Uint8Array, false otherwise.
-exports.uint8array = typeof Uint8Array !== "undefined";
-
-if (typeof ArrayBuffer === "undefined") {
-    exports.blob = false;
-} else {
-    var buffer = new ArrayBuffer(0);
-    try {
-        exports.blob = new Blob([buffer], {
-            type: "application/zip"
-        }).size === 0;
-    } catch (e) {
-        try {
-            var Builder = window.BlobBuilder || window.WebKitBlobBuilder || window.MozBlobBuilder || window.MSBlobBuilder;
-            var builder = new Builder();
-            builder.append(buffer);
-            exports.blob = builder.getBlob('application/zip').size === 0;
-        } catch (e) {
-            exports.blob = false;
-        }
-    }
-}
-
-}).call(this,require("buffer").Buffer)
-},{"buffer":6}],37:[function(require,module,exports){
-'use strict';
-
-var ArrayReader = require('./arrayReader');
+var ArrayReader = require('./ArrayReader');
+var utils = require('../utils');
 
 function Uint8ArrayReader(data) {
-    if (data) {
-        this.data = data;
-        this.length = this.data.length;
-        this.index = 0;
-        this.zero = 0;
-    }
+    ArrayReader.call(this, data);
 }
-Uint8ArrayReader.prototype = new ArrayReader();
+utils.inherits(Uint8ArrayReader, ArrayReader);
 /**
  * @see DataReader.readData
  */
@@ -7012,50 +8739,775 @@ Uint8ArrayReader.prototype.readData = function (size) {
 };
 module.exports = Uint8ArrayReader;
 
-},{"./arrayReader":19}],38:[function(require,module,exports){
+},{"../utils":56,"./ArrayReader":41}],46:[function(require,module,exports){
 'use strict';
 
-var utils = require('./utils');
+var utils = require('../utils');
+var support = require('../support');
+var ArrayReader = require('./ArrayReader');
+var StringReader = require('./StringReader');
+var NodeBufferReader = require('./NodeBufferReader');
+var Uint8ArrayReader = require('./Uint8ArrayReader');
 
 /**
- * An object to write any content to an Uint8Array.
- * @constructor
- * @param {number} length The length of the array.
+ * Create a reader adapted to the data.
+ * @param {String|ArrayBuffer|Uint8Array|Buffer} data the data to read.
+ * @return {DataReader} the data reader.
  */
-var Uint8ArrayWriter = function Uint8ArrayWriter(length) {
-    this.data = new Uint8Array(length);
-    this.index = 0;
+module.exports = function (data) {
+    var type = utils.getTypeOf(data);
+    utils.checkSupport(type);
+    if (type === "string" && !support.uint8array) {
+        return new StringReader(data);
+    }
+    if (type === "nodebuffer") {
+        return new NodeBufferReader(data);
+    }
+    if (support.uint8array) {
+        return new Uint8ArrayReader(utils.transformTo("uint8array", data));
+    }
+    return new ArrayReader(utils.transformTo("array", data));
 };
-Uint8ArrayWriter.prototype = {
-    /**
-     * Append any content to the current array.
-     * @param {Object} input the content to add.
-     */
-    append: function append(input) {
-        if (input.length !== 0) {
-            // with an empty Uint8Array, Opera fails with a "Offset larger than array size"
-            input = utils.transformTo("uint8array", input);
-            this.data.set(input, this.index);
-            this.index += input.length;
+
+},{"../support":54,"../utils":56,"./ArrayReader":41,"./NodeBufferReader":43,"./StringReader":44,"./Uint8ArrayReader":45}],47:[function(require,module,exports){
+'use strict';
+
+exports.LOCAL_FILE_HEADER = "PK\x03\x04";
+exports.CENTRAL_FILE_HEADER = "PK\x01\x02";
+exports.CENTRAL_DIRECTORY_END = "PK\x05\x06";
+exports.ZIP64_CENTRAL_DIRECTORY_LOCATOR = "PK\x06\x07";
+exports.ZIP64_CENTRAL_DIRECTORY_END = "PK\x06\x06";
+exports.DATA_DESCRIPTOR = "PK\x07\x08";
+
+},{}],48:[function(require,module,exports){
+'use strict';
+
+var GenericWorker = require('./GenericWorker');
+var utils = require('../utils');
+
+/**
+ * A worker which convert chunks to a specified type.
+ * @constructor
+ * @param {String} destType the destination type.
+ */
+function ConvertWorker(destType) {
+    GenericWorker.call(this, "ConvertWorker to " + destType);
+    this.destType = destType;
+}
+utils.inherits(ConvertWorker, GenericWorker);
+
+/**
+ * @see GenericWorker.processChunk
+ */
+ConvertWorker.prototype.processChunk = function (chunk) {
+    this.push({
+        data: utils.transformTo(this.destType, chunk.data),
+        meta: chunk.meta
+    });
+};
+module.exports = ConvertWorker;
+
+},{"../utils":56,"./GenericWorker":52}],49:[function(require,module,exports){
+'use strict';
+
+var GenericWorker = require('./GenericWorker');
+var crc32 = require('../crc32');
+var utils = require('../utils');
+
+/**
+ * A worker which calculate the crc32 of the data flowing through.
+ * @constructor
+ */
+function Crc32Probe() {
+  GenericWorker.call(this, "Crc32Probe");
+  this.withStreamInfo("crc32", 0);
+}
+utils.inherits(Crc32Probe, GenericWorker);
+
+/**
+ * @see GenericWorker.processChunk
+ */
+Crc32Probe.prototype.processChunk = function (chunk) {
+  this.streamInfo.crc32 = crc32(chunk.data, this.streamInfo.crc32 || 0);
+  this.push(chunk);
+};
+module.exports = Crc32Probe;
+
+},{"../crc32":28,"../utils":56,"./GenericWorker":52}],50:[function(require,module,exports){
+'use strict';
+
+var utils = require('../utils');
+var GenericWorker = require('./GenericWorker');
+
+/**
+ * A worker which calculate the total length of the data flowing through.
+ * @constructor
+ * @param {String} propName the name used to expose the length
+ */
+function DataLengthProbe(propName) {
+    GenericWorker.call(this, "DataLengthProbe for " + propName);
+    this.propName = propName;
+    this.withStreamInfo(propName, 0);
+}
+utils.inherits(DataLengthProbe, GenericWorker);
+
+/**
+ * @see GenericWorker.processChunk
+ */
+DataLengthProbe.prototype.processChunk = function (chunk) {
+    if (chunk) {
+        var length = this.streamInfo[this.propName] || 0;
+        this.streamInfo[this.propName] = length + chunk.data.length;
+    }
+    GenericWorker.prototype.processChunk.call(this, chunk);
+};
+module.exports = DataLengthProbe;
+
+},{"../utils":56,"./GenericWorker":52}],51:[function(require,module,exports){
+'use strict';
+
+var utils = require('../utils');
+var GenericWorker = require('./GenericWorker');
+
+// the size of the generated chunks
+// TODO expose this as a public variable
+var DEFAULT_BLOCK_SIZE = 16 * 1024;
+
+/**
+ * A worker that reads a content and emits chunks.
+ * @constructor
+ * @param {Promise} dataP the promise of the data to split
+ */
+function DataWorker(dataP) {
+    GenericWorker.call(this, "DataWorker");
+    var self = this;
+    this.dataIsReady = false;
+    this.index = 0;
+    this.max = 0;
+    this.data = null;
+    this.type = "";
+
+    this._tickScheduled = false;
+
+    dataP.then(function (data) {
+        self.dataIsReady = true;
+        self.data = data;
+        self.max = data && data.length || 0;
+        self.type = utils.getTypeOf(data);
+        if (!self.isPaused) {
+            self._tickAndRepeat();
         }
-    },
-    /**
-     * Finalize the construction an return the result.
-     * @return {Uint8Array} the generated array.
-     */
-    finalize: function finalize() {
-        return this.data;
+    }, function (e) {
+        self.error(e);
+    });
+}
+
+utils.inherits(DataWorker, GenericWorker);
+
+/**
+ * @see GenericWorker.cleanUp
+ */
+DataWorker.prototype.cleanUp = function () {
+    GenericWorker.prototype.cleanUp.call(this);
+    this.data = null;
+};
+
+/**
+ * @see GenericWorker.resume
+ */
+DataWorker.prototype.resume = function () {
+    if (!GenericWorker.prototype.resume.call(this)) {
+        return false;
+    }
+
+    if (!this._tickScheduled && this.dataIsReady) {
+        this._tickScheduled = true;
+        utils.delay(this._tickAndRepeat, [], this);
+    }
+    return true;
+};
+
+/**
+ * Trigger a tick a schedule an other call to this function.
+ */
+DataWorker.prototype._tickAndRepeat = function () {
+    this._tickScheduled = false;
+    if (this.isPaused || this.isFinished) {
+        return;
+    }
+    this._tick();
+    if (!this.isFinished) {
+        utils.delay(this._tickAndRepeat, [], this);
+        this._tickScheduled = true;
     }
 };
 
-module.exports = Uint8ArrayWriter;
+/**
+ * Read and push a chunk.
+ */
+DataWorker.prototype._tick = function () {
 
-},{"./utils":40}],39:[function(require,module,exports){
+    if (this.isPaused || this.isFinished) {
+        return false;
+    }
+
+    var size = DEFAULT_BLOCK_SIZE;
+    var data = null,
+        nextIndex = Math.min(this.max, this.index + size);
+    if (this.index >= this.max) {
+        // EOF
+        return this.end();
+    } else {
+        switch (this.type) {
+            case "string":
+                data = this.data.substring(this.index, nextIndex);
+                break;
+            case "uint8array":
+                data = this.data.subarray(this.index, nextIndex);
+                break;
+            case "array":
+            case "nodebuffer":
+                data = this.data.slice(this.index, nextIndex);
+                break;
+        }
+        this.index = nextIndex;
+        return this.push({
+            data: data,
+            meta: {
+                percent: this.max ? this.index / this.max * 100 : 0
+            }
+        });
+    }
+};
+
+module.exports = DataWorker;
+
+},{"../utils":56,"./GenericWorker":52}],52:[function(require,module,exports){
+'use strict';
+
+/**
+ * A worker that does nothing but passing chunks to the next one. This is like
+ * a nodejs stream but with some differences. On the good side :
+ * - it works on IE 6-9 without any issue / polyfill
+ * - it weights less than the full dependencies bundled with browserify
+ * - it forwards errors (no need to declare an error handler EVERYWHERE)
+ *
+ * A chunk is an object with 2 attributes : `meta` and `data`. The former is an
+ * object containing anything (`percent` for example), see each worker for more
+ * details. The latter is the real data (String, Uint8Array, etc).
+ *
+ * @constructor
+ * @param {String} name the name of the stream (mainly used for debugging purposes)
+ */
+
+function GenericWorker(name) {
+    // the name of the worker
+    this.name = name || "default";
+    // an object containing metadata about the workers chain
+    this.streamInfo = {};
+    // an error which happened when the worker was paused
+    this.generatedError = null;
+    // an object containing metadata to be merged by this worker into the general metadata
+    this.extraStreamInfo = {};
+    // true if the stream is paused (and should not do anything), false otherwise
+    this.isPaused = true;
+    // true if the stream is finished (and should not do anything), false otherwise
+    this.isFinished = false;
+    // true if the stream is locked to prevent further structure updates (pipe), false otherwise
+    this.isLocked = false;
+    // the event listeners
+    this._listeners = {
+        'data': [],
+        'end': [],
+        'error': []
+    };
+    // the previous worker, if any
+    this.previous = null;
+}
+
+GenericWorker.prototype = {
+    /**
+     * Push a chunk to the next workers.
+     * @param {Object} chunk the chunk to push
+     */
+    push: function push(chunk) {
+        this.emit("data", chunk);
+    },
+    /**
+     * End the stream.
+     * @return {Boolean} true if this call ended the worker, false otherwise.
+     */
+    end: function end() {
+        if (this.isFinished) {
+            return false;
+        }
+
+        this.flush();
+        try {
+            this.emit("end");
+            this.cleanUp();
+            this.isFinished = true;
+        } catch (e) {
+            this.emit("error", e);
+        }
+        return true;
+    },
+    /**
+     * End the stream with an error.
+     * @param {Error} e the error which caused the premature end.
+     * @return {Boolean} true if this call ended the worker with an error, false otherwise.
+     */
+    error: function error(e) {
+        if (this.isFinished) {
+            return false;
+        }
+
+        if (this.isPaused) {
+            this.generatedError = e;
+        } else {
+            this.isFinished = true;
+
+            this.emit("error", e);
+
+            // in the workers chain exploded in the middle of the chain,
+            // the error event will go downward but we also need to notify
+            // workers upward that there has been an error.
+            if (this.previous) {
+                this.previous.error(e);
+            }
+
+            this.cleanUp();
+        }
+        return true;
+    },
+    /**
+     * Add a callback on an event.
+     * @param {String} name the name of the event (data, end, error)
+     * @param {Function} listener the function to call when the event is triggered
+     * @return {GenericWorker} the current object for chainability
+     */
+    on: function on(name, listener) {
+        this._listeners[name].push(listener);
+        return this;
+    },
+    /**
+     * Clean any references when a worker is ending.
+     */
+    cleanUp: function cleanUp() {
+        this.streamInfo = this.generatedError = this.extraStreamInfo = null;
+        this._listeners = [];
+    },
+    /**
+     * Trigger an event. This will call registered callback with the provided arg.
+     * @param {String} name the name of the event (data, end, error)
+     * @param {Object} arg the argument to call the callback with.
+     */
+    emit: function emit(name, arg) {
+        if (this._listeners[name]) {
+            for (var i = 0; i < this._listeners[name].length; i++) {
+                this._listeners[name][i].call(this, arg);
+            }
+        }
+    },
+    /**
+     * Chain a worker with an other.
+     * @param {Worker} next the worker receiving events from the current one.
+     * @return {worker} the next worker for chainability
+     */
+    pipe: function pipe(next) {
+        return next.registerPrevious(this);
+    },
+    /**
+     * Same as `pipe` in the other direction.
+     * Using an API with `pipe(next)` is very easy.
+     * Implementing the API with the point of view of the next one registering
+     * a source is easier, see the ZipFileWorker.
+     * @param {Worker} previous the previous worker, sending events to this one
+     * @return {Worker} the current worker for chainability
+     */
+    registerPrevious: function registerPrevious(previous) {
+        if (this.isLocked) {
+            throw new Error("The stream '" + this + "' has already been used.");
+        }
+
+        // sharing the streamInfo...
+        this.streamInfo = previous.streamInfo;
+        // ... and adding our own bits
+        this.mergeStreamInfo();
+        this.previous = previous;
+        var self = this;
+        previous.on('data', function (chunk) {
+            self.processChunk(chunk);
+        });
+        previous.on('end', function () {
+            self.end();
+        });
+        previous.on('error', function (e) {
+            self.error(e);
+        });
+        return this;
+    },
+    /**
+     * Pause the stream so it doesn't send events anymore.
+     * @return {Boolean} true if this call paused the worker, false otherwise.
+     */
+    pause: function pause() {
+        if (this.isPaused || this.isFinished) {
+            return false;
+        }
+        this.isPaused = true;
+
+        if (this.previous) {
+            this.previous.pause();
+        }
+        return true;
+    },
+    /**
+     * Resume a paused stream.
+     * @return {Boolean} true if this call resumed the worker, false otherwise.
+     */
+    resume: function resume() {
+        if (!this.isPaused || this.isFinished) {
+            return false;
+        }
+        this.isPaused = false;
+
+        // if true, the worker tried to resume but failed
+        var withError = false;
+        if (this.generatedError) {
+            this.error(this.generatedError);
+            withError = true;
+        }
+        if (this.previous) {
+            this.previous.resume();
+        }
+
+        return !withError;
+    },
+    /**
+     * Flush any remaining bytes as the stream is ending.
+     */
+    flush: function flush() {},
+    /**
+     * Process a chunk. This is usually the method overridden.
+     * @param {Object} chunk the chunk to process.
+     */
+    processChunk: function processChunk(chunk) {
+        this.push(chunk);
+    },
+    /**
+     * Add a key/value to be added in the workers chain streamInfo once activated.
+     * @param {String} key the key to use
+     * @param {Object} value the associated value
+     * @return {Worker} the current worker for chainability
+     */
+    withStreamInfo: function withStreamInfo(key, value) {
+        this.extraStreamInfo[key] = value;
+        this.mergeStreamInfo();
+        return this;
+    },
+    /**
+     * Merge this worker's streamInfo into the chain's streamInfo.
+     */
+    mergeStreamInfo: function mergeStreamInfo() {
+        for (var key in this.extraStreamInfo) {
+            if (!this.extraStreamInfo.hasOwnProperty(key)) {
+                continue;
+            }
+            this.streamInfo[key] = this.extraStreamInfo[key];
+        }
+    },
+
+    /**
+     * Lock the stream to prevent further updates on the workers chain.
+     * After calling this method, all calls to pipe will fail.
+     */
+    lock: function lock() {
+        if (this.isLocked) {
+            throw new Error("The stream '" + this + "' has already been used.");
+        }
+        this.isLocked = true;
+        if (this.previous) {
+            this.previous.lock();
+        }
+    },
+
+    /**
+     *
+     * Pretty print the workers chain.
+     */
+    toString: function toString() {
+        var me = "Worker " + this.name;
+        if (this.previous) {
+            return this.previous + " -> " + me;
+        } else {
+            return me;
+        }
+    }
+};
+
+module.exports = GenericWorker;
+
+},{}],53:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+var utils = require('../utils');
+var ConvertWorker = require('./ConvertWorker');
+var GenericWorker = require('./GenericWorker');
+var base64 = require('../base64');
+var support = require("../support");
+var external = require("../external");
+
+var NodejsStreamOutputAdapter = null;
+if (support.nodestream) {
+    try {
+        NodejsStreamOutputAdapter = require('../nodejs/NodejsStreamOutputAdapter');
+    } catch (e) {}
+}
+
+/**
+ * Apply the final transformation of the data. If the user wants a Blob for
+ * example, it's easier to work with an U8intArray and finally do the
+ * ArrayBuffer/Blob conversion.
+ * @param {String} type the name of the final type
+ * @param {String|Uint8Array|Buffer} content the content to transform
+ * @param {String} mimeType the mime type of the content, if applicable.
+ * @return {String|Uint8Array|ArrayBuffer|Buffer|Blob} the content in the right format.
+ */
+function transformZipOutput(type, content, mimeType) {
+    switch (type) {
+        case "blob":
+            return utils.newBlob(utils.transformTo("arraybuffer", content), mimeType);
+        case "base64":
+            return base64.encode(content);
+        default:
+            return utils.transformTo(type, content);
+    }
+}
+
+/**
+ * Concatenate an array of data of the given type.
+ * @param {String} type the type of the data in the given array.
+ * @param {Array} dataArray the array containing the data chunks to concatenate
+ * @return {String|Uint8Array|Buffer} the concatenated data
+ * @throws Error if the asked type is unsupported
+ */
+function concat(type, dataArray) {
+    var i,
+        index = 0,
+        res = null,
+        totalLength = 0;
+    for (i = 0; i < dataArray.length; i++) {
+        totalLength += dataArray[i].length;
+    }
+    switch (type) {
+        case "string":
+            return dataArray.join("");
+        case "array":
+            return Array.prototype.concat.apply([], dataArray);
+        case "uint8array":
+            res = new Uint8Array(totalLength);
+            for (i = 0; i < dataArray.length; i++) {
+                res.set(dataArray[i], index);
+                index += dataArray[i].length;
+            }
+            return res;
+        case "nodebuffer":
+            return Buffer.concat(dataArray);
+        default:
+            throw new Error("concat : unsupported type '" + type + "'");
+    }
+}
+
+/**
+ * Listen a StreamHelper, accumulate its content and concatenate it into a
+ * complete block.
+ * @param {StreamHelper} helper the helper to use.
+ * @param {Function} updateCallback a callback called on each update. Called
+ * with one arg :
+ * - the metadata linked to the update received.
+ * @return Promise the promise for the accumulation.
+ */
+function _accumulate(helper, updateCallback) {
+    return new external.Promise(function (resolve, reject) {
+        var dataArray = [];
+        var chunkType = helper._internalType,
+            resultType = helper._outputType,
+            mimeType = helper._mimeType;
+        helper.on('data', function (data, meta) {
+            dataArray.push(data);
+            if (updateCallback) {
+                updateCallback(meta);
+            }
+        }).on('error', function (err) {
+            dataArray = [];
+            reject(err);
+        }).on('end', function () {
+            try {
+                var result = transformZipOutput(resultType, concat(chunkType, dataArray), mimeType);
+                resolve(result);
+            } catch (e) {
+                reject(e);
+            }
+            dataArray = [];
+        }).resume();
+    });
+}
+
+/**
+ * An helper to easily use workers outside of JSZip.
+ * @constructor
+ * @param {Worker} worker the worker to wrap
+ * @param {String} outputType the type of data expected by the use
+ * @param {String} mimeType the mime type of the content, if applicable.
+ */
+function StreamHelper(worker, outputType, mimeType) {
+    var internalType = outputType;
+    switch (outputType) {
+        case "blob":
+        case "arraybuffer":
+            internalType = "uint8array";
+            break;
+        case "base64":
+            internalType = "string";
+            break;
+    }
+
+    try {
+        // the type used internally
+        this._internalType = internalType;
+        // the type used to output results
+        this._outputType = outputType;
+        // the mime type
+        this._mimeType = mimeType;
+        utils.checkSupport(internalType);
+        this._worker = worker.pipe(new ConvertWorker(internalType));
+        // the last workers can be rewired without issues but we need to
+        // prevent any updates on previous workers.
+        worker.lock();
+    } catch (e) {
+        this._worker = new GenericWorker("error");
+        this._worker.error(e);
+    }
+}
+
+StreamHelper.prototype = {
+    /**
+     * Listen a StreamHelper, accumulate its content and concatenate it into a
+     * complete block.
+     * @param {Function} updateCb the update callback.
+     * @return Promise the promise for the accumulation.
+     */
+    accumulate: function accumulate(updateCb) {
+        return _accumulate(this, updateCb);
+    },
+    /**
+     * Add a listener on an event triggered on a stream.
+     * @param {String} evt the name of the event
+     * @param {Function} fn the listener
+     * @return {StreamHelper} the current helper.
+     */
+    on: function on(evt, fn) {
+        var self = this;
+
+        if (evt === "data") {
+            this._worker.on(evt, function (chunk) {
+                fn.call(self, chunk.data, chunk.meta);
+            });
+        } else {
+            this._worker.on(evt, function () {
+                utils.delay(fn, arguments, self);
+            });
+        }
+        return this;
+    },
+    /**
+     * Resume the flow of chunks.
+     * @return {StreamHelper} the current helper.
+     */
+    resume: function resume() {
+        utils.delay(this._worker.resume, [], this._worker);
+        return this;
+    },
+    /**
+     * Pause the flow of chunks.
+     * @return {StreamHelper} the current helper.
+     */
+    pause: function pause() {
+        this._worker.pause();
+        return this;
+    },
+    /**
+     * Return a nodejs stream for this helper.
+     * @param {Function} updateCb the update callback.
+     * @return {NodejsStreamOutputAdapter} the nodejs stream.
+     */
+    toNodejsStream: function toNodejsStream(updateCb) {
+        utils.checkSupport("nodestream");
+        if (this._outputType !== "nodebuffer") {
+            // an object stream containing blob/arraybuffer/uint8array/string
+            // is strange and I don't know if it would be useful.
+            // I you find this comment and have a good usecase, please open a
+            // bug report !
+            throw new Error(this._outputType + " is not supported by this method");
+        }
+
+        return new NodejsStreamOutputAdapter(this, {
+            objectMode: this._outputType !== "nodebuffer"
+        }, updateCb);
+    }
+};
+
+module.exports = StreamHelper;
+
+}).call(this,require("buffer").Buffer)
+},{"../base64":25,"../external":30,"../nodejs/NodejsStreamOutputAdapter":37,"../support":54,"../utils":56,"./ConvertWorker":48,"./GenericWorker":52,"buffer":7}],54:[function(require,module,exports){
+(function (Buffer){
+'use strict';
+
+exports.base64 = true;
+exports.array = true;
+exports.string = true;
+exports.arraybuffer = typeof ArrayBuffer !== "undefined" && typeof Uint8Array !== "undefined";
+exports.nodebuffer = typeof Buffer !== "undefined";
+// contains true if JSZip can read/generate Uint8Array, false otherwise.
+exports.uint8array = typeof Uint8Array !== "undefined";
+
+if (typeof ArrayBuffer === "undefined") {
+    exports.blob = false;
+} else {
+    var buffer = new ArrayBuffer(0);
+    try {
+        exports.blob = new Blob([buffer], {
+            type: "application/zip"
+        }).size === 0;
+    } catch (e) {
+        try {
+            var Builder = self.BlobBuilder || self.WebKitBlobBuilder || self.MozBlobBuilder || self.MSBlobBuilder;
+            var builder = new Builder();
+            builder.append(buffer);
+            exports.blob = builder.getBlob('application/zip').size === 0;
+        } catch (e) {
+            exports.blob = false;
+        }
+    }
+}
+
+try {
+    exports.nodestream = !!require('readable-stream').Readable;
+} catch (e) {
+    exports.nodestream = false;
+}
+
+}).call(this,require("buffer").Buffer)
+},{"buffer":7,"readable-stream":40}],55:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
 var support = require('./support');
-var nodeBuffer = require('./nodeBuffer');
+var nodejsUtils = require('./nodejsUtils');
+var GenericWorker = require('./stream/GenericWorker');
 
 /**
  * The following functions come from pako, from pako/lib/utils/strings
@@ -7239,7 +9691,7 @@ var buf2string = function buf2string(buf) {
  */
 exports.utf8encode = function utf8encode(str) {
     if (support.nodebuffer) {
-        return nodeBuffer(str, "utf-8");
+        return nodejsUtils.newBufferFrom(str, "utf-8");
     }
 
     return string2buf(str);
@@ -7258,62 +9710,147 @@ exports.utf8decode = function utf8decode(buf) {
 
     buf = utils.transformTo(support.uint8array ? "uint8array" : "array", buf);
 
-    // return buf2string(buf);
-    // Chrome prefers to work with "small" chunks of data
-    // for the method buf2string.
-    // Firefox and Chrome has their own shortcut, IE doesn't seem to really care.
-    var result = [],
-        k = 0,
-        len = buf.length,
-        chunk = 65536;
-    while (k < len) {
-        var nextBoundary = utf8border(buf, Math.min(k + chunk, len));
-        if (support.uint8array) {
-            result.push(buf2string(buf.subarray(k, nextBoundary)));
-        } else {
-            result.push(buf2string(buf.slice(k, nextBoundary)));
-        }
-        k = nextBoundary;
-    }
-    return result.join("");
+    return buf2string(buf);
 };
-// vim: set shiftwidth=4 softtabstop=4:
 
-},{"./nodeBuffer":30,"./support":36,"./utils":40}],40:[function(require,module,exports){
+/**
+ * A worker to decode utf8 encoded binary chunks into string chunks.
+ * @constructor
+ */
+function Utf8DecodeWorker() {
+    GenericWorker.call(this, "utf-8 decode");
+    // the last bytes if a chunk didn't end with a complete codepoint.
+    this.leftOver = null;
+}
+utils.inherits(Utf8DecodeWorker, GenericWorker);
+
+/**
+ * @see GenericWorker.processChunk
+ */
+Utf8DecodeWorker.prototype.processChunk = function (chunk) {
+
+    var data = utils.transformTo(support.uint8array ? "uint8array" : "array", chunk.data);
+
+    // 1st step, re-use what's left of the previous chunk
+    if (this.leftOver && this.leftOver.length) {
+        if (support.uint8array) {
+            var previousData = data;
+            data = new Uint8Array(previousData.length + this.leftOver.length);
+            data.set(this.leftOver, 0);
+            data.set(previousData, this.leftOver.length);
+        } else {
+            data = this.leftOver.concat(data);
+        }
+        this.leftOver = null;
+    }
+
+    var nextBoundary = utf8border(data);
+    var usableData = data;
+    if (nextBoundary !== data.length) {
+        if (support.uint8array) {
+            usableData = data.subarray(0, nextBoundary);
+            this.leftOver = data.subarray(nextBoundary, data.length);
+        } else {
+            usableData = data.slice(0, nextBoundary);
+            this.leftOver = data.slice(nextBoundary, data.length);
+        }
+    }
+
+    this.push({
+        data: exports.utf8decode(usableData),
+        meta: chunk.meta
+    });
+};
+
+/**
+ * @see GenericWorker.flush
+ */
+Utf8DecodeWorker.prototype.flush = function () {
+    if (this.leftOver && this.leftOver.length) {
+        this.push({
+            data: exports.utf8decode(this.leftOver),
+            meta: {}
+        });
+        this.leftOver = null;
+    }
+};
+exports.Utf8DecodeWorker = Utf8DecodeWorker;
+
+/**
+ * A worker to endcode string chunks into utf8 encoded binary chunks.
+ * @constructor
+ */
+function Utf8EncodeWorker() {
+    GenericWorker.call(this, "utf-8 encode");
+}
+utils.inherits(Utf8EncodeWorker, GenericWorker);
+
+/**
+ * @see GenericWorker.processChunk
+ */
+Utf8EncodeWorker.prototype.processChunk = function (chunk) {
+    this.push({
+        data: exports.utf8encode(chunk.data),
+        meta: chunk.meta
+    });
+};
+exports.Utf8EncodeWorker = Utf8EncodeWorker;
+
+},{"./nodejsUtils":38,"./stream/GenericWorker":52,"./support":54,"./utils":56}],56:[function(require,module,exports){
 'use strict';
 
 var support = require('./support');
-var compressions = require('./compressions');
-var nodeBuffer = require('./nodeBuffer');
+var base64 = require('./base64');
+var nodejsUtils = require('./nodejsUtils');
+var setImmediate = require('set-immediate-shim');
+var external = require("./external");
+
 /**
- * Convert a string to a "binary string" : a string containing only char codes between 0 and 255.
- * @param {string} str the string to transform.
- * @return {String} the binary string.
+ * Convert a string that pass as a "binary string": it should represent a byte
+ * array but may have > 255 char codes. Be sure to take only the first byte
+ * and returns the byte array.
+ * @param {String} str the string to transform.
+ * @return {Array|Uint8Array} the string in a binary format.
  */
-exports.string2binary = function (str) {
-    var result = "";
-    for (var i = 0; i < str.length; i++) {
-        result += String.fromCharCode(str.charCodeAt(i) & 0xff);
+function string2binary(str) {
+    var result = null;
+    if (support.uint8array) {
+        result = new Uint8Array(str.length);
+    } else {
+        result = new Array(str.length);
     }
-    return result;
-};
-exports.arrayBuffer2Blob = function (buffer, mimeType) {
+    return stringToArrayLike(str, result);
+}
+
+/**
+ * Create a new blob with the given content and the given type.
+ * @param {String|ArrayBuffer} part the content to put in the blob. DO NOT use
+ * an Uint8Array because the stock browser of android 4 won't accept it (it
+ * will be silently converted to a string, "[object Uint8Array]").
+ *
+ * Use only ONE part to build the blob to avoid a memory leak in IE11 / Edge:
+ * when a large amount of Array is used to create the Blob, the amount of
+ * memory consumed is nearly 100 times the original data amount.
+ *
+ * @param {String} type the mime type of the blob.
+ * @return {Blob} the created blob.
+ */
+exports.newBlob = function (part, type) {
     exports.checkSupport("blob");
-    mimeType = mimeType || 'application/zip';
 
     try {
         // Blob constructor
-        return new Blob([buffer], {
-            type: mimeType
+        return new Blob([part], {
+            type: type
         });
     } catch (e) {
 
         try {
             // deprecated, browser only, old way
-            var Builder = window.BlobBuilder || window.WebKitBlobBuilder || window.MozBlobBuilder || window.MSBlobBuilder;
+            var Builder = self.BlobBuilder || self.WebKitBlobBuilder || self.MozBlobBuilder || self.MSBlobBuilder;
             var builder = new Builder();
-            builder.append(buffer);
-            return builder.getBlob(mimeType);
+            builder.append(part);
+            return builder.getBlob(type);
         } catch (e) {
 
             // well, fuck ?!
@@ -7344,6 +9881,77 @@ function stringToArrayLike(str, array) {
 }
 
 /**
+ * An helper for the function arrayLikeToString.
+ * This contains static informations and functions that
+ * can be optimized by the browser JIT compiler.
+ */
+var arrayToStringHelper = {
+    /**
+     * Transform an array of int into a string, chunk by chunk.
+     * See the performances notes on arrayLikeToString.
+     * @param {Array|ArrayBuffer|Uint8Array|Buffer} array the array to transform.
+     * @param {String} type the type of the array.
+     * @param {Integer} chunk the chunk size.
+     * @return {String} the resulting string.
+     * @throws Error if the chunk is too big for the stack.
+     */
+    stringifyByChunk: function stringifyByChunk(array, type, chunk) {
+        var result = [],
+            k = 0,
+            len = array.length;
+        // shortcut
+        if (len <= chunk) {
+            return String.fromCharCode.apply(null, array);
+        }
+        while (k < len) {
+            if (type === "array" || type === "nodebuffer") {
+                result.push(String.fromCharCode.apply(null, array.slice(k, Math.min(k + chunk, len))));
+            } else {
+                result.push(String.fromCharCode.apply(null, array.subarray(k, Math.min(k + chunk, len))));
+            }
+            k += chunk;
+        }
+        return result.join("");
+    },
+    /**
+     * Call String.fromCharCode on every item in the array.
+     * This is the naive implementation, which generate A LOT of intermediate string.
+     * This should be used when everything else fail.
+     * @param {Array|ArrayBuffer|Uint8Array|Buffer} array the array to transform.
+     * @return {String} the result.
+     */
+    stringifyByChar: function stringifyByChar(array) {
+        var resultStr = "";
+        for (var i = 0; i < array.length; i++) {
+            resultStr += String.fromCharCode(array[i]);
+        }
+        return resultStr;
+    },
+    applyCanBeUsed: {
+        /**
+         * true if the browser accepts to use String.fromCharCode on Uint8Array
+         */
+        uint8array: function () {
+            try {
+                return support.uint8array && String.fromCharCode.apply(null, new Uint8Array(1)).length === 1;
+            } catch (e) {
+                return false;
+            }
+        }(),
+        /**
+         * true if the browser accepts to use String.fromCharCode on nodejs Buffer.
+         */
+        nodebuffer: function () {
+            try {
+                return support.nodebuffer && String.fromCharCode.apply(null, nodejsUtils.allocBuffer(1)).length === 1;
+            } catch (e) {
+                return false;
+            }
+        }()
+    }
+};
+
+/**
  * Transform an array-like object to a string.
  * @param {Array|ArrayBuffer|Uint8Array|Buffer} array the array to transform.
  * @return {String} the result.
@@ -7358,47 +9966,29 @@ function arrayLikeToString(array) {
     // result += String.fromCharCode(array[i]); generate too many strings !
     //
     // This code is inspired by http://jsperf.com/arraybuffer-to-string-apply-performance/2
-    var chunk = 65536;
-    var result = [],
-        len = array.length,
+    // TODO : we now have workers that split the work. Do we still need that ?
+    var chunk = 65536,
         type = exports.getTypeOf(array),
-        k = 0,
         canUseApply = true;
-    try {
-        switch (type) {
-            case "uint8array":
-                String.fromCharCode.apply(null, new Uint8Array(0));
-                break;
-            case "nodebuffer":
-                String.fromCharCode.apply(null, nodeBuffer(0));
-                break;
-        }
-    } catch (e) {
-        canUseApply = false;
+    if (type === "uint8array") {
+        canUseApply = arrayToStringHelper.applyCanBeUsed.uint8array;
+    } else if (type === "nodebuffer") {
+        canUseApply = arrayToStringHelper.applyCanBeUsed.nodebuffer;
     }
 
-    // no apply : slow and painful algorithm
-    // default browser on android 4.*
-    if (!canUseApply) {
-        var resultStr = "";
-        for (var i = 0; i < array.length; i++) {
-            resultStr += String.fromCharCode(array[i]);
-        }
-        return resultStr;
-    }
-    while (k < len && chunk > 1) {
-        try {
-            if (type === "array" || type === "nodebuffer") {
-                result.push(String.fromCharCode.apply(null, array.slice(k, Math.min(k + chunk, len))));
-            } else {
-                result.push(String.fromCharCode.apply(null, array.subarray(k, Math.min(k + chunk, len))));
+    if (canUseApply) {
+        while (chunk > 1) {
+            try {
+                return arrayToStringHelper.stringifyByChunk(array, type, chunk);
+            } catch (e) {
+                chunk = Math.floor(chunk / 2);
             }
-            k += chunk;
-        } catch (e) {
-            chunk = Math.floor(chunk / 2);
         }
     }
-    return result.join("");
+
+    // no apply or chunk error : slow and painful algorithm
+    // default browser on android 4.*
+    return arrayToStringHelper.stringifyByChar(array);
 }
 
 exports.applyFromCharCode = arrayLikeToString;
@@ -7432,7 +10022,7 @@ transform["string"] = {
         return stringToArrayLike(input, new Uint8Array(input.length));
     },
     "nodebuffer": function nodebuffer(input) {
-        return stringToArrayLike(input, nodeBuffer(input.length));
+        return stringToArrayLike(input, nodejsUtils.allocBuffer(input.length));
     }
 };
 
@@ -7447,7 +10037,7 @@ transform["array"] = {
         return new Uint8Array(input);
     },
     "nodebuffer": function nodebuffer(input) {
-        return nodeBuffer(input);
+        return nodejsUtils.newBufferFrom(input);
     }
 };
 
@@ -7464,7 +10054,7 @@ transform["arraybuffer"] = {
         return new Uint8Array(input);
     },
     "nodebuffer": function nodebuffer(input) {
-        return nodeBuffer(new Uint8Array(input));
+        return nodejsUtils.newBufferFrom(new Uint8Array(input));
     }
 };
 
@@ -7479,7 +10069,7 @@ transform["uint8array"] = {
     },
     "uint8array": identity,
     "nodebuffer": function nodebuffer(input) {
-        return nodeBuffer(input);
+        return nodejsUtils.newBufferFrom(input);
     }
 };
 
@@ -7534,7 +10124,7 @@ exports.getTypeOf = function (input) {
     if (Object.prototype.toString.call(input) === "[object Array]") {
         return "array";
     }
-    if (support.nodebuffer && nodeBuffer.test(input)) {
+    if (support.nodebuffer && nodejsUtils.isBuffer(input)) {
         return "nodebuffer";
     }
     if (support.uint8array && input instanceof Uint8Array) {
@@ -7553,9 +10143,10 @@ exports.getTypeOf = function (input) {
 exports.checkSupport = function (type) {
     var supported = support[type.toLowerCase()];
     if (!supported) {
-        throw new Error(type + " is not supported by this browser");
+        throw new Error(type + " is not supported by this platform");
     }
 };
+
 exports.MAX_VALUE_16BITS = 65535;
 exports.MAX_VALUE_32BITS = -1; // well, "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF" is parsed as -1
 
@@ -7576,29 +10167,26 @@ exports.pretty = function (str) {
 };
 
 /**
- * Find a compression registered in JSZip.
- * @param {string} compressionMethod the method magic to find.
- * @return {Object|null} the JSZip compression object, null if none found.
+ * Defer the call of a function.
+ * @param {Function} callback the function to call asynchronously.
+ * @param {Array} args the arguments to give to the callback.
  */
-exports.findCompression = function (compressionMethod) {
-    for (var method in compressions) {
-        if (!compressions.hasOwnProperty(method)) {
-            continue;
-        }
-        if (compressions[method].magic === compressionMethod) {
-            return compressions[method];
-        }
-    }
-    return null;
+exports.delay = function (callback, args, self) {
+    setImmediate(function () {
+        callback.apply(self || null, args || []);
+    });
 };
+
 /**
-* Cross-window, cross-Node-context regular expression detection
-* @param  {Object}  object Anything
-* @return {Boolean}        true if the object is a regular expression,
-* false otherwise
-*/
-exports.isRegExp = function (object) {
-    return Object.prototype.toString.call(object) === "[object RegExp]";
+ * Extends a prototype with an other, without calling a constructor with
+ * side effects. Inspired by nodejs' `utils.inherits`
+ * @param {Function} ctor the constructor to augment
+ * @param {Function} superCtor the parent constructor to use
+ */
+exports.inherits = function (ctor, superCtor) {
+    var Obj = function Obj() {};
+    Obj.prototype = superCtor.prototype;
+    ctor.prototype = new Obj();
 };
 
 /**
@@ -7622,42 +10210,94 @@ exports.extend = function () {
     return result;
 };
 
-},{"./compressions":22,"./nodeBuffer":30,"./support":36}],41:[function(require,module,exports){
+/**
+ * Transform arbitrary content into a Promise.
+ * @param {String} name a name for the content being processed.
+ * @param {Object} inputData the content to process.
+ * @param {Boolean} isBinary true if the content is not an unicode string
+ * @param {Boolean} isOptimizedBinaryString true if the string content only has one byte per character.
+ * @param {Boolean} isBase64 true if the string content is encoded with base64.
+ * @return {Promise} a promise in a format usable by JSZip.
+ */
+exports.prepareContent = function (name, inputData, isBinary, isOptimizedBinaryString, isBase64) {
+
+    // if inputData is already a promise, this flatten it.
+    var promise = external.Promise.resolve(inputData).then(function (data) {
+
+        var isBlob = support.blob && (data instanceof Blob || ['[object File]', '[object Blob]'].indexOf(Object.prototype.toString.call(data)) !== -1);
+
+        if (isBlob && typeof FileReader !== "undefined") {
+            return new external.Promise(function (resolve, reject) {
+                var reader = new FileReader();
+
+                reader.onload = function (e) {
+                    resolve(e.target.result);
+                };
+                reader.onerror = function (e) {
+                    reject(e.target.error);
+                };
+                reader.readAsArrayBuffer(data);
+            });
+        } else {
+            return data;
+        }
+    });
+
+    return promise.then(function (data) {
+        var dataType = exports.getTypeOf(data);
+
+        if (!dataType) {
+            return external.Promise.reject(new Error("Can't read the data of '" + name + "'. Is it " + "in a supported JavaScript type (String, Blob, ArrayBuffer, etc) ?"));
+        }
+        // special case : it's way easier to work with Uint8Array than with ArrayBuffer
+        if (dataType === "arraybuffer") {
+            data = exports.transformTo("uint8array", data);
+        } else if (dataType === "string") {
+            if (isBase64) {
+                data = base64.decode(data);
+            } else if (isBinary) {
+                // optimizedBinaryString === true means that the file has already been filtered with a 0xFF mask
+                if (isOptimizedBinaryString !== true) {
+                    // this is a string, not in a base64 format.
+                    // Be sure that this is a correct "binary string"
+                    data = string2binary(data);
+                }
+            }
+        }
+        return data;
+    });
+};
+
+},{"./base64":25,"./external":30,"./nodejsUtils":38,"./support":54,"set-immediate-shim":187}],57:[function(require,module,exports){
 'use strict';
 
-var StringReader = require('./stringReader');
-var NodeBufferReader = require('./nodeBufferReader');
-var Uint8ArrayReader = require('./uint8ArrayReader');
-var ArrayReader = require('./arrayReader');
+var readerFor = require('./reader/readerFor');
 var utils = require('./utils');
 var sig = require('./signature');
 var ZipEntry = require('./zipEntry');
+var utf8 = require('./utf8');
 var support = require('./support');
-var jszipProto = require('./object');
 //  class ZipEntries {{{
 /**
  * All the entries in the zip file.
  * @constructor
- * @param {String|ArrayBuffer|Uint8Array} data the binary stream to load.
  * @param {Object} loadOptions Options for loading the stream.
  */
-function ZipEntries(data, loadOptions) {
+function ZipEntries(loadOptions) {
     this.files = [];
     this.loadOptions = loadOptions;
-    if (data) {
-        this.load(data);
-    }
 }
 ZipEntries.prototype = {
     /**
-     * Check that the reader is on the speficied signature.
+     * Check that the reader is on the specified signature.
      * @param {string} expectedSignature the expected signature.
      * @throws {Error} if it is an other signature.
      */
     checkSignature: function checkSignature(expectedSignature) {
-        var signature = this.reader.readString(4);
-        if (signature !== expectedSignature) {
-            throw new Error("Corrupted zip or bug : unexpected signature " + "(" + utils.pretty(signature) + ", expected " + utils.pretty(expectedSignature) + ")");
+        if (!this.reader.readAndCheckSignature(expectedSignature)) {
+            this.reader.index -= 4;
+            var signature = this.reader.readString(4);
+            throw new Error("Corrupted zip or bug: unexpected signature " + "(" + utils.pretty(signature) + ", expected " + utils.pretty(expectedSignature) + ")");
         }
     },
     /**
@@ -7704,8 +10344,9 @@ ZipEntries.prototype = {
      */
     readBlockZip64EndOfCentral: function readBlockZip64EndOfCentral() {
         this.zip64EndOfCentralSize = this.reader.readInt(8);
-        this.versionMadeBy = this.reader.readString(2);
-        this.versionNeeded = this.reader.readInt(2);
+        this.reader.skip(4);
+        // this.versionMadeBy = this.reader.readString(2);
+        // this.versionNeeded = this.reader.readInt(2);
         this.diskNumber = this.reader.readInt(4);
         this.diskWithCentralDirStart = this.reader.readInt(4);
         this.centralDirRecordsOnThisDisk = this.reader.readInt(8);
@@ -7722,7 +10363,7 @@ ZipEntries.prototype = {
         while (index < extraDataSize) {
             extraFieldId = this.reader.readInt(2);
             extraFieldLength = this.reader.readInt(4);
-            extraFieldValue = this.reader.readString(extraFieldLength);
+            extraFieldValue = this.reader.readData(extraFieldLength);
             this.zip64ExtensibleData[extraFieldId] = {
                 id: extraFieldId,
                 length: extraFieldLength,
@@ -7762,7 +10403,7 @@ ZipEntries.prototype = {
         var file;
 
         this.reader.setIndex(this.centralDirOffset);
-        while (this.reader.readString(4) === sig.CENTRAL_FILE_HEADER) {
+        while (this.reader.readAndCheckSignature(sig.CENTRAL_FILE_HEADER)) {
             file = new ZipEntry({
                 zip64: this.zip64
             }, this.loadOptions);
@@ -7796,9 +10437,9 @@ ZipEntries.prototype = {
             var isGarbage = !this.isSignature(0, sig.LOCAL_FILE_HEADER);
 
             if (isGarbage) {
-                throw new Error("Can't find end of central directory : is this a zip file ? " + "If it is, see http://stuk.github.io/jszip/documentation/howto/read_zip.html");
+                throw new Error("Can't find end of central directory : is this a zip file ? " + "If it is, see https://stuk.github.io/jszip/documentation/howto/read_zip.html");
             } else {
-                throw new Error("Corrupted zip : can't find end of central directory");
+                throw new Error("Corrupted zip: can't find end of central directory");
             }
         }
         this.reader.setIndex(offset);
@@ -7821,7 +10462,7 @@ ZipEntries.prototype = {
 
             /*
             Warning : the zip64 extension is supported, but ONLY if the 64bits integer read from
-            the zip file can fit into a 32bits integer. This cannot be solved : Javascript represents
+            the zip file can fit into a 32bits integer. This cannot be solved : JavaScript represents
             all numbers as 64-bit double precision IEEE 754 floating point numbers.
             So, we have 53bits for integers and bitwise operations treat everything as 32bits.
             see https://developer.mozilla.org/en-US/docs/JavaScript/Reference/Operators/Bitwise_Operators
@@ -7831,7 +10472,7 @@ ZipEntries.prototype = {
             // should look for a zip64 EOCD locator
             offset = this.reader.lastIndexOfSignature(sig.ZIP64_CENTRAL_DIRECTORY_LOCATOR);
             if (offset < 0) {
-                throw new Error("Corrupted zip : can't find the ZIP64 end of central directory locator");
+                throw new Error("Corrupted zip: can't find the ZIP64 end of central directory locator");
             }
             this.reader.setIndex(offset);
             this.checkSignature(sig.ZIP64_CENTRAL_DIRECTORY_LOCATOR);
@@ -7842,7 +10483,7 @@ ZipEntries.prototype = {
                 // console.warn("ZIP64 end of central directory not where expected.");
                 this.relativeOffsetEndOfZip64CentralDir = this.reader.lastIndexOfSignature(sig.ZIP64_CENTRAL_DIRECTORY_END);
                 if (this.relativeOffsetEndOfZip64CentralDir < 0) {
-                    throw new Error("Corrupted zip : can't find the ZIP64 end of central directory");
+                    throw new Error("Corrupted zip: can't find the ZIP64 end of central directory");
                 }
             }
             this.reader.setIndex(this.relativeOffsetEndOfZip64CentralDir);
@@ -7873,19 +10514,7 @@ ZipEntries.prototype = {
         }
     },
     prepareReader: function prepareReader(data) {
-        var type = utils.getTypeOf(data);
-        utils.checkSupport(type);
-        if (type === "string" && !support.uint8array) {
-            this.reader = new StringReader(data, this.loadOptions.optimizedBinaryString);
-        } else if (type === "nodebuffer") {
-            this.reader = new NodeBufferReader(data);
-        } else if (support.uint8array) {
-            this.reader = new Uint8ArrayReader(utils.transformTo("uint8array", data));
-        } else if (support.array) {
-            this.reader = new ArrayReader(utils.transformTo("array", data));
-        } else {
-            throw new Error("Unexpected error: unsupported type '" + type + "'");
-        }
+        this.reader = readerFor(data);
     },
     /**
      * Read a zip file and create ZipEntries.
@@ -7901,17 +10530,36 @@ ZipEntries.prototype = {
 // }}} end of ZipEntries
 module.exports = ZipEntries;
 
-},{"./arrayReader":19,"./nodeBufferReader":31,"./object":32,"./signature":33,"./stringReader":34,"./support":36,"./uint8ArrayReader":37,"./utils":40,"./zipEntry":42}],42:[function(require,module,exports){
+},{"./reader/readerFor":46,"./signature":47,"./support":54,"./utf8":55,"./utils":56,"./zipEntry":58}],58:[function(require,module,exports){
 'use strict';
 
-var StringReader = require('./stringReader');
+var readerFor = require('./reader/readerFor');
 var utils = require('./utils');
 var CompressedObject = require('./compressedObject');
-var jszipProto = require('./object');
+var crc32fn = require('./crc32');
+var utf8 = require('./utf8');
+var compressions = require('./compressions');
 var support = require('./support');
 
 var MADE_BY_DOS = 0x00;
 var MADE_BY_UNIX = 0x03;
+
+/**
+ * Find a compression registered in JSZip.
+ * @param {string} compressionMethod the method magic to find.
+ * @return {Object|null} the JSZip compression object, null if none found.
+ */
+var findCompression = function findCompression(compressionMethod) {
+    for (var method in compressions) {
+        if (!compressions.hasOwnProperty(method)) {
+            continue;
+        }
+        if (compressions[method].magic === compressionMethod) {
+            return compressions[method];
+        }
+    }
+    return null;
+};
 
 // class ZipEntry {{{
 /**
@@ -7942,45 +10590,6 @@ ZipEntry.prototype = {
         return (this.bitFlag & 0x0800) === 0x0800;
     },
     /**
-     * Prepare the function used to generate the compressed content from this ZipFile.
-     * @param {DataReader} reader the reader to use.
-     * @param {number} from the offset from where we should read the data.
-     * @param {number} length the length of the data to read.
-     * @return {Function} the callback to get the compressed content (the type depends of the DataReader class).
-     */
-    prepareCompressedContent: function prepareCompressedContent(reader, from, length) {
-        return function () {
-            var previousIndex = reader.index;
-            reader.setIndex(from);
-            var compressedFileData = reader.readData(length);
-            reader.setIndex(previousIndex);
-
-            return compressedFileData;
-        };
-    },
-    /**
-     * Prepare the function used to generate the uncompressed content from this ZipFile.
-     * @param {DataReader} reader the reader to use.
-     * @param {number} from the offset from where we should read the data.
-     * @param {number} length the length of the data to read.
-     * @param {JSZip.compression} compression the compression used on this file.
-     * @param {number} uncompressedSize the uncompressed size to expect.
-     * @return {Function} the callback to get the uncompressed content (the type depends of the DataReader class).
-     */
-    prepareContent: function prepareContent(reader, from, length, compression, uncompressedSize) {
-        return function () {
-
-            var compressedFileData = utils.transformTo(compression.uncompressInputType, this.getCompressedContent());
-            var uncompressedFileData = compression.uncompress(compressedFileData);
-
-            if (uncompressedFileData.length !== uncompressedSize) {
-                throw new Error("Bug : uncompressed data size mismatch");
-            }
-
-            return uncompressedFileData;
-        };
-    },
-    /**
      * Read the local part of a zip file and add the info in this object.
      * @param {DataReader} reader the reader to use.
      */
@@ -8006,33 +10615,20 @@ ZipEntry.prototype = {
         // Unfortunately, this lead also to some issues : http://seclists.org/fulldisclosure/2009/Sep/394
         this.fileNameLength = reader.readInt(2);
         localExtraFieldsLength = reader.readInt(2); // can't be sure this will be the same as the central dir
+        // the fileName is stored as binary data, the handleUTF8 method will take care of the encoding.
         this.fileName = reader.readData(this.fileNameLength);
         reader.skip(localExtraFieldsLength);
 
-        if (this.compressedSize == -1 || this.uncompressedSize == -1) {
-            throw new Error("Bug or corrupted zip : didn't get enough informations from the central directory " + "(compressedSize == -1 || uncompressedSize == -1)");
+        if (this.compressedSize === -1 || this.uncompressedSize === -1) {
+            throw new Error("Bug or corrupted zip : didn't get enough informations from the central directory " + "(compressedSize === -1 || uncompressedSize === -1)");
         }
 
-        compression = utils.findCompression(this.compressionMethod);
+        compression = findCompression(this.compressionMethod);
         if (compression === null) {
             // no compression found
             throw new Error("Corrupted zip : compression " + utils.pretty(this.compressionMethod) + " unknown (inner file : " + utils.transformTo("string", this.fileName) + ")");
         }
-        this.decompressed = new CompressedObject();
-        this.decompressed.compressedSize = this.compressedSize;
-        this.decompressed.uncompressedSize = this.uncompressedSize;
-        this.decompressed.crc32 = this.crc32;
-        this.decompressed.compressionMethod = this.compressionMethod;
-        this.decompressed.getCompressedContent = this.prepareCompressedContent(reader, reader.index, this.compressedSize, compression);
-        this.decompressed.getContent = this.prepareContent(reader, reader.index, this.compressedSize, compression, this.uncompressedSize);
-
-        // we need to compute the crc32...
-        if (this.loadOptions.checkCRC32) {
-            this.decompressed = utils.transformTo("string", this.decompressed.getContent());
-            if (jszipProto.crc32(this.decompressed) !== this.crc32) {
-                throw new Error("Corrupted zip : CRC32 mismatch");
-            }
-        }
+        this.decompressed = new CompressedObject(this.compressedSize, this.uncompressedSize, this.crc32, compression, reader.readData(this.compressedSize));
     },
 
     /**
@@ -8041,14 +10637,15 @@ ZipEntry.prototype = {
      */
     readCentralPart: function readCentralPart(reader) {
         this.versionMadeBy = reader.readInt(2);
-        this.versionNeeded = reader.readInt(2);
+        reader.skip(2);
+        // this.versionNeeded = reader.readInt(2);
         this.bitFlag = reader.readInt(2);
         this.compressionMethod = reader.readString(2);
         this.date = reader.readDate();
         this.crc32 = reader.readInt(4);
         this.compressedSize = reader.readInt(4);
         this.uncompressedSize = reader.readInt(4);
-        this.fileNameLength = reader.readInt(2);
+        var fileNameLength = reader.readInt(2);
         this.extraFieldsLength = reader.readInt(2);
         this.fileCommentLength = reader.readInt(2);
         this.diskNumberStart = reader.readInt(2);
@@ -8060,7 +10657,8 @@ ZipEntry.prototype = {
             throw new Error("Encrypted zip are not supported");
         }
 
-        this.fileName = reader.readData(this.fileNameLength);
+        // will be read in the local part, see the comments there
+        reader.skip(fileNameLength);
         this.readExtraFields(reader);
         this.parseZIP64ExtraField(reader);
         this.fileComment = reader.readData(this.fileCommentLength);
@@ -8106,7 +10704,7 @@ ZipEntry.prototype = {
         }
 
         // should be something, preparing the extra reader
-        var extraReader = new StringReader(this.extraFields[0x0001].value);
+        var extraReader = readerFor(this.extraFields[0x0001].value);
 
         // I really hope that these 64bits integer can fit in 32 bits integer, because js
         // won't let us have more.
@@ -8128,17 +10726,19 @@ ZipEntry.prototype = {
      * @param {DataReader} reader the reader to use.
      */
     readExtraFields: function readExtraFields(reader) {
-        var start = reader.index,
+        var end = reader.index + this.extraFieldsLength,
             extraFieldId,
             extraFieldLength,
             extraFieldValue;
 
-        this.extraFields = this.extraFields || {};
+        if (!this.extraFields) {
+            this.extraFields = {};
+        }
 
-        while (reader.index < start + this.extraFieldsLength) {
+        while (reader.index < end) {
             extraFieldId = reader.readInt(2);
             extraFieldLength = reader.readInt(2);
-            extraFieldValue = reader.readString(extraFieldLength);
+            extraFieldValue = reader.readData(extraFieldLength);
 
             this.extraFields[extraFieldId] = {
                 id: extraFieldId,
@@ -8153,13 +10753,14 @@ ZipEntry.prototype = {
     handleUTF8: function handleUTF8() {
         var decodeParamType = support.uint8array ? "uint8array" : "array";
         if (this.useUTF8()) {
-            this.fileNameStr = jszipProto.utf8decode(this.fileName);
-            this.fileCommentStr = jszipProto.utf8decode(this.fileComment);
+            this.fileNameStr = utf8.utf8decode(this.fileName);
+            this.fileCommentStr = utf8.utf8decode(this.fileComment);
         } else {
             var upath = this.findExtraFieldUnicodePath();
             if (upath !== null) {
                 this.fileNameStr = upath;
             } else {
+                // ASCII text or unsupported code page
                 var fileNameByteArray = utils.transformTo(decodeParamType, this.fileName);
                 this.fileNameStr = this.loadOptions.decodeFileName(fileNameByteArray);
             }
@@ -8168,6 +10769,7 @@ ZipEntry.prototype = {
             if (ucomment !== null) {
                 this.fileCommentStr = ucomment;
             } else {
+                // ASCII text or unsupported code page
                 var commentByteArray = utils.transformTo(decodeParamType, this.fileComment);
                 this.fileCommentStr = this.loadOptions.decodeFileName(commentByteArray);
             }
@@ -8181,7 +10783,7 @@ ZipEntry.prototype = {
     findExtraFieldUnicodePath: function findExtraFieldUnicodePath() {
         var upathField = this.extraFields[0x7075];
         if (upathField) {
-            var extraReader = new StringReader(upathField.value);
+            var extraReader = readerFor(upathField.value);
 
             // wrong version
             if (extraReader.readInt(1) !== 1) {
@@ -8189,11 +10791,11 @@ ZipEntry.prototype = {
             }
 
             // the crc of the filename changed, this field is out of date.
-            if (jszipProto.crc32(this.fileName) !== extraReader.readInt(4)) {
+            if (crc32fn(this.fileName) !== extraReader.readInt(4)) {
                 return null;
             }
 
-            return jszipProto.utf8decode(extraReader.readString(upathField.length - 5));
+            return utf8.utf8decode(extraReader.readData(upathField.length - 5));
         }
         return null;
     },
@@ -8205,7 +10807,7 @@ ZipEntry.prototype = {
     findExtraFieldUnicodeComment: function findExtraFieldUnicodeComment() {
         var ucommentField = this.extraFields[0x6375];
         if (ucommentField) {
-            var extraReader = new StringReader(ucommentField.value);
+            var extraReader = readerFor(ucommentField.value);
 
             // wrong version
             if (extraReader.readInt(1) !== 1) {
@@ -8213,18 +10815,426 @@ ZipEntry.prototype = {
             }
 
             // the crc of the comment changed, this field is out of date.
-            if (jszipProto.crc32(this.fileComment) !== extraReader.readInt(4)) {
+            if (crc32fn(this.fileComment) !== extraReader.readInt(4)) {
                 return null;
             }
 
-            return jszipProto.utf8decode(extraReader.readString(ucommentField.length - 5));
+            return utf8.utf8decode(extraReader.readData(ucommentField.length - 5));
         }
         return null;
     }
 };
 module.exports = ZipEntry;
 
-},{"./compressedObject":21,"./object":32,"./stringReader":34,"./support":36,"./utils":40}],43:[function(require,module,exports){
+},{"./compressedObject":26,"./compressions":27,"./crc32":28,"./reader/readerFor":46,"./support":54,"./utf8":55,"./utils":56}],59:[function(require,module,exports){
+'use strict';
+
+var StreamHelper = require('./stream/StreamHelper');
+var DataWorker = require('./stream/DataWorker');
+var utf8 = require('./utf8');
+var CompressedObject = require('./compressedObject');
+var GenericWorker = require('./stream/GenericWorker');
+
+/**
+ * A simple object representing a file in the zip file.
+ * @constructor
+ * @param {string} name the name of the file
+ * @param {String|ArrayBuffer|Uint8Array|Buffer} data the data
+ * @param {Object} options the options of the file
+ */
+var ZipObject = function ZipObject(name, data, options) {
+    this.name = name;
+    this.dir = options.dir;
+    this.date = options.date;
+    this.comment = options.comment;
+    this.unixPermissions = options.unixPermissions;
+    this.dosPermissions = options.dosPermissions;
+
+    this._data = data;
+    this._dataBinary = options.binary;
+    // keep only the compression
+    this.options = {
+        compression: options.compression,
+        compressionOptions: options.compressionOptions
+    };
+};
+
+ZipObject.prototype = {
+    /**
+     * Create an internal stream for the content of this object.
+     * @param {String} type the type of each chunk.
+     * @return StreamHelper the stream.
+     */
+    internalStream: function internalStream(type) {
+        var result = null,
+            outputType = "string";
+        try {
+            if (!type) {
+                throw new Error("No output type specified.");
+            }
+            outputType = type.toLowerCase();
+            var askUnicodeString = outputType === "string" || outputType === "text";
+            if (outputType === "binarystring" || outputType === "text") {
+                outputType = "string";
+            }
+            result = this._decompressWorker();
+
+            var isUnicodeString = !this._dataBinary;
+
+            if (isUnicodeString && !askUnicodeString) {
+                result = result.pipe(new utf8.Utf8EncodeWorker());
+            }
+            if (!isUnicodeString && askUnicodeString) {
+                result = result.pipe(new utf8.Utf8DecodeWorker());
+            }
+        } catch (e) {
+            result = new GenericWorker("error");
+            result.error(e);
+        }
+
+        return new StreamHelper(result, outputType, "");
+    },
+
+    /**
+     * Prepare the content in the asked type.
+     * @param {String} type the type of the result.
+     * @param {Function} onUpdate a function to call on each internal update.
+     * @return Promise the promise of the result.
+     */
+    async: function async(type, onUpdate) {
+        return this.internalStream(type).accumulate(onUpdate);
+    },
+
+    /**
+     * Prepare the content as a nodejs stream.
+     * @param {String} type the type of each chunk.
+     * @param {Function} onUpdate a function to call on each internal update.
+     * @return Stream the stream.
+     */
+    nodeStream: function nodeStream(type, onUpdate) {
+        return this.internalStream(type || "nodebuffer").toNodejsStream(onUpdate);
+    },
+
+    /**
+     * Return a worker for the compressed content.
+     * @private
+     * @param {Object} compression the compression object to use.
+     * @param {Object} compressionOptions the options to use when compressing.
+     * @return Worker the worker.
+     */
+    _compressWorker: function _compressWorker(compression, compressionOptions) {
+        if (this._data instanceof CompressedObject && this._data.compression.magic === compression.magic) {
+            return this._data.getCompressedWorker();
+        } else {
+            var result = this._decompressWorker();
+            if (!this._dataBinary) {
+                result = result.pipe(new utf8.Utf8EncodeWorker());
+            }
+            return CompressedObject.createWorkerFrom(result, compression, compressionOptions);
+        }
+    },
+    /**
+     * Return a worker for the decompressed content.
+     * @private
+     * @return Worker the worker.
+     */
+    _decompressWorker: function _decompressWorker() {
+        if (this._data instanceof CompressedObject) {
+            return this._data.getContentWorker();
+        } else if (this._data instanceof GenericWorker) {
+            return this._data;
+        } else {
+            return new DataWorker(this._data);
+        }
+    }
+};
+
+var removedMethods = ["asText", "asBinary", "asNodeBuffer", "asUint8Array", "asArrayBuffer"];
+var removedFn = function removedFn() {
+    throw new Error("This method has been removed in JSZip 3.0, please check the upgrade guide.");
+};
+
+for (var i = 0; i < removedMethods.length; i++) {
+    ZipObject.prototype[removedMethods[i]] = removedFn;
+}
+module.exports = ZipObject;
+
+},{"./compressedObject":26,"./stream/DataWorker":51,"./stream/GenericWorker":52,"./stream/StreamHelper":53,"./utf8":55}],60:[function(require,module,exports){
+'use strict';
+
+var immediate = require('immediate');
+
+/* istanbul ignore next */
+function INTERNAL() {}
+
+var handlers = {};
+
+var REJECTED = ['REJECTED'];
+var FULFILLED = ['FULFILLED'];
+var PENDING = ['PENDING'];
+
+module.exports = Promise;
+
+function Promise(resolver) {
+  if (typeof resolver !== 'function') {
+    throw new TypeError('resolver must be a function');
+  }
+  this.state = PENDING;
+  this.queue = [];
+  this.outcome = void 0;
+  if (resolver !== INTERNAL) {
+    safelyResolveThenable(this, resolver);
+  }
+}
+
+Promise.prototype["finally"] = function (callback) {
+  if (typeof callback !== 'function') {
+    return this;
+  }
+  var p = this.constructor;
+  return this.then(resolve, reject);
+
+  function resolve(value) {
+    function yes() {
+      return value;
+    }
+    return p.resolve(callback()).then(yes);
+  }
+  function reject(reason) {
+    function no() {
+      throw reason;
+    }
+    return p.resolve(callback()).then(no);
+  }
+};
+Promise.prototype["catch"] = function (onRejected) {
+  return this.then(null, onRejected);
+};
+Promise.prototype.then = function (onFulfilled, onRejected) {
+  if (typeof onFulfilled !== 'function' && this.state === FULFILLED || typeof onRejected !== 'function' && this.state === REJECTED) {
+    return this;
+  }
+  var promise = new this.constructor(INTERNAL);
+  if (this.state !== PENDING) {
+    var resolver = this.state === FULFILLED ? onFulfilled : onRejected;
+    unwrap(promise, resolver, this.outcome);
+  } else {
+    this.queue.push(new QueueItem(promise, onFulfilled, onRejected));
+  }
+
+  return promise;
+};
+function QueueItem(promise, onFulfilled, onRejected) {
+  this.promise = promise;
+  if (typeof onFulfilled === 'function') {
+    this.onFulfilled = onFulfilled;
+    this.callFulfilled = this.otherCallFulfilled;
+  }
+  if (typeof onRejected === 'function') {
+    this.onRejected = onRejected;
+    this.callRejected = this.otherCallRejected;
+  }
+}
+QueueItem.prototype.callFulfilled = function (value) {
+  handlers.resolve(this.promise, value);
+};
+QueueItem.prototype.otherCallFulfilled = function (value) {
+  unwrap(this.promise, this.onFulfilled, value);
+};
+QueueItem.prototype.callRejected = function (value) {
+  handlers.reject(this.promise, value);
+};
+QueueItem.prototype.otherCallRejected = function (value) {
+  unwrap(this.promise, this.onRejected, value);
+};
+
+function unwrap(promise, func, value) {
+  immediate(function () {
+    var returnValue;
+    try {
+      returnValue = func(value);
+    } catch (e) {
+      return handlers.reject(promise, e);
+    }
+    if (returnValue === promise) {
+      handlers.reject(promise, new TypeError('Cannot resolve promise with itself'));
+    } else {
+      handlers.resolve(promise, returnValue);
+    }
+  });
+}
+
+handlers.resolve = function (self, value) {
+  var result = tryCatch(getThen, value);
+  if (result.status === 'error') {
+    return handlers.reject(self, result.value);
+  }
+  var thenable = result.value;
+
+  if (thenable) {
+    safelyResolveThenable(self, thenable);
+  } else {
+    self.state = FULFILLED;
+    self.outcome = value;
+    var i = -1;
+    var len = self.queue.length;
+    while (++i < len) {
+      self.queue[i].callFulfilled(value);
+    }
+  }
+  return self;
+};
+handlers.reject = function (self, error) {
+  self.state = REJECTED;
+  self.outcome = error;
+  var i = -1;
+  var len = self.queue.length;
+  while (++i < len) {
+    self.queue[i].callRejected(error);
+  }
+  return self;
+};
+
+function getThen(obj) {
+  // Make sure we only access the accessor once as required by the spec
+  var then = obj && obj.then;
+  if (obj && (typeof obj === 'object' || typeof obj === 'function') && typeof then === 'function') {
+    return function appyThen() {
+      then.apply(obj, arguments);
+    };
+  }
+}
+
+function safelyResolveThenable(self, thenable) {
+  // Either fulfill, reject or reject with error
+  var called = false;
+  function onError(value) {
+    if (called) {
+      return;
+    }
+    called = true;
+    handlers.reject(self, value);
+  }
+
+  function onSuccess(value) {
+    if (called) {
+      return;
+    }
+    called = true;
+    handlers.resolve(self, value);
+  }
+
+  function tryToUnwrap() {
+    thenable(onSuccess, onError);
+  }
+
+  var result = tryCatch(tryToUnwrap);
+  if (result.status === 'error') {
+    onError(result.value);
+  }
+}
+
+function tryCatch(func, value) {
+  var out = {};
+  try {
+    out.value = func(value);
+    out.status = 'success';
+  } catch (e) {
+    out.status = 'error';
+    out.value = e;
+  }
+  return out;
+}
+
+Promise.resolve = resolve;
+function resolve(value) {
+  if (value instanceof this) {
+    return value;
+  }
+  return handlers.resolve(new this(INTERNAL), value);
+}
+
+Promise.reject = reject;
+function reject(reason) {
+  var promise = new this(INTERNAL);
+  return handlers.reject(promise, reason);
+}
+
+Promise.all = all;
+function all(iterable) {
+  var self = this;
+  if (Object.prototype.toString.call(iterable) !== '[object Array]') {
+    return this.reject(new TypeError('must be an array'));
+  }
+
+  var len = iterable.length;
+  var called = false;
+  if (!len) {
+    return this.resolve([]);
+  }
+
+  var values = new Array(len);
+  var resolved = 0;
+  var i = -1;
+  var promise = new this(INTERNAL);
+
+  while (++i < len) {
+    allResolver(iterable[i], i);
+  }
+  return promise;
+  function allResolver(value, i) {
+    self.resolve(value).then(resolveFromAll, function (error) {
+      if (!called) {
+        called = true;
+        handlers.reject(promise, error);
+      }
+    });
+    function resolveFromAll(outValue) {
+      values[i] = outValue;
+      if (++resolved === len && !called) {
+        called = true;
+        handlers.resolve(promise, values);
+      }
+    }
+  }
+}
+
+Promise.race = race;
+function race(iterable) {
+  var self = this;
+  if (Object.prototype.toString.call(iterable) !== '[object Array]') {
+    return this.reject(new TypeError('must be an array'));
+  }
+
+  var len = iterable.length;
+  var called = false;
+  if (!len) {
+    return this.resolve([]);
+  }
+
+  var i = -1;
+  var promise = new this(INTERNAL);
+
+  while (++i < len) {
+    resolver(iterable[i]);
+  }
+  return promise;
+  function resolver(value) {
+    self.resolve(value).then(function (response) {
+      if (!called) {
+        called = true;
+        handlers.resolve(promise, response);
+      }
+    }, function (error) {
+      if (!called) {
+        called = true;
+        handlers.reject(promise, error);
+      }
+    });
+  }
+}
+
+},{"immediate":18}],61:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -8574,10 +11584,10 @@ var round = createRound('round');
 module.exports = round;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],44:[function(require,module,exports){
+},{}],62:[function(require,module,exports){
 (function(){function d(c){for(var d=0,e=c.length-1,f=void 0,g=void 0,h=void 0,i=b(d,e);;){if(e<=d)return c[i];if(e==d+1)return c[d]>c[e]&&a(c,d,e),c[i];for(f=b(d,e),c[f]>c[e]&&a(c,f,e),c[d]>c[e]&&a(c,d,e),c[f]>c[d]&&a(c,f,d),a(c,f,d+1),g=d+1,h=e;;){do g++;while(c[d]>c[g]);do h--;while(c[h]>c[d]);if(h<g)break;a(c,g,h)}a(c,d,h),h<=i&&(d=g),h>=i&&(e=h-1)}}var a=function(a,b,c){var d;return d=[a[c],a[b]],a[b]=d[0],a[c]=d[1],d},b=function(a,b){return~~((a+b)/2)};'undefined'!=typeof module&&module.exports?module.exports=d:window.median=d})();
 
-},{}],45:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 'use strict';
 
 function _interopDefault(ex) {
@@ -8600,16 +11610,16 @@ function max(input) {
     throw new TypeError('input must not be empty');
   }
 
-  var max = input[0];
+  var maxValue = input[0];
   for (var i = 1; i < input.length; i++) {
-    if (input[i] > max) max = input[i];
+    if (input[i] > maxValue) maxValue = input[i];
   }
-  return max;
+  return maxValue;
 }
 
 module.exports = max;
 
-},{"is-any-array":17}],46:[function(require,module,exports){
+},{"is-any-array":21}],64:[function(require,module,exports){
 'use strict';
 
 function _interopDefault(ex) {
@@ -8638,7 +11648,7 @@ function median(input) {
 
 module.exports = median;
 
-},{"is-any-array":17,"median-quickselect":44}],47:[function(require,module,exports){
+},{"is-any-array":21,"median-quickselect":62}],65:[function(require,module,exports){
 'use strict';
 
 function _interopDefault(ex) {
@@ -8661,16 +11671,16 @@ function min(input) {
     throw new TypeError('input must not be empty');
   }
 
-  var min = input[0];
+  var minValue = input[0];
   for (var i = 1; i < input.length; i++) {
-    if (input[i] < min) min = input[i];
+    if (input[i] < minValue) minValue = input[i];
   }
-  return min;
+  return minValue;
 }
 
 module.exports = min;
 
-},{"is-any-array":17}],48:[function(require,module,exports){
+},{"is-any-array":21}],66:[function(require,module,exports){
 'use strict';
 
 function _interopDefault(ex) {
@@ -8725,7 +11735,7 @@ function rescale(input, options = {}) {
 
 module.exports = rescale;
 
-},{"is-any-array":17,"ml-array-max":45,"ml-array-min":47}],49:[function(require,module,exports){
+},{"is-any-array":21,"ml-array-max":63,"ml-array-min":65}],67:[function(require,module,exports){
 'use strict';
 
 var Stat = require('ml-stat').array;
@@ -8949,7 +11959,7 @@ module.exports = {
     scale: scale
 };
 
-},{"ml-stat":112}],50:[function(require,module,exports){
+},{"ml-stat":127}],68:[function(require,module,exports){
 'use strict';
 
 /**
@@ -9213,7 +12223,7 @@ function integral(x0, x1, slope, intercept) {
 exports.getEquallySpacedData = getEquallySpacedData;
 exports.integral = integral;
 
-},{}],51:[function(require,module,exports){
+},{}],69:[function(require,module,exports){
 'use strict';
 
 module.exports = exports = require('./ArrayUtils');
@@ -9221,7 +12231,7 @@ module.exports = exports = require('./ArrayUtils');
 exports.getEquallySpacedData = require('./getEquallySpaced').getEquallySpacedData;
 exports.SNV = require('./snv').SNV;
 
-},{"./ArrayUtils":49,"./getEquallySpaced":50,"./snv":52}],52:[function(require,module,exports){
+},{"./ArrayUtils":67,"./getEquallySpaced":68,"./snv":70}],70:[function(require,module,exports){
 'use strict';
 
 exports.SNV = SNV;
@@ -9243,7 +12253,7 @@ function SNV(data) {
     return result;
 }
 
-},{"ml-stat":112}],53:[function(require,module,exports){
+},{"ml-stat":127}],71:[function(require,module,exports){
 "use strict";
 
 /**
@@ -9772,7 +12782,7 @@ var LM = {
 
 module.exports = LM;
 
-},{"./algebra":54,"ml-matrix":92}],54:[function(require,module,exports){
+},{"./algebra":72,"ml-matrix":110}],72:[function(require,module,exports){
 /**
  * Created by acastillo on 8/24/15.
  */
@@ -10006,14 +13016,14 @@ module.exports = {
     eye: eye
 };
 
-},{"ml-matrix":92}],55:[function(require,module,exports){
+},{"ml-matrix":110}],73:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./LM');
 module.exports.Matrix = require('ml-matrix');
 module.exports.Matrix.algebra = require('./algebra');
 
-},{"./LM":53,"./algebra":54,"ml-matrix":92}],56:[function(require,module,exports){
+},{"./LM":71,"./algebra":72,"ml-matrix":110}],74:[function(require,module,exports){
 'use strict';
 
 /**
@@ -10097,7 +13107,7 @@ function DisjointSetNode(value) {
     this.rank = 0;
 }
 
-},{}],57:[function(require,module,exports){
+},{}],75:[function(require,module,exports){
 'use strict';
 
 function squaredEuclidean(p, q) {
@@ -10115,7 +13125,7 @@ function euclidean(p, q) {
 module.exports = euclidean;
 euclidean.squared = squaredEuclidean;
 
-},{}],58:[function(require,module,exports){
+},{}],76:[function(require,module,exports){
 'use strict';
 
 /**
@@ -10149,7 +13159,7 @@ function distanceMatrix(data, distanceFn) {
 
 module.exports = distanceMatrix;
 
-},{}],59:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 'use strict';
 
 var FFT = require('./fftlib');
@@ -10456,7 +13466,7 @@ var FFTUtils = {
 
 module.exports = FFTUtils;
 
-},{"./fftlib":60}],60:[function(require,module,exports){
+},{"./fftlib":78}],78:[function(require,module,exports){
 'use strict';
 
 /**
@@ -10701,13 +13711,13 @@ var FFT = function () {
   return FFT;
 }.call(undefined);
 
-},{}],61:[function(require,module,exports){
+},{}],79:[function(require,module,exports){
 'use strict';
 
 exports.FFTUtils = require("./FFTUtils");
 exports.FFT = require('./fftlib');
 
-},{"./FFTUtils":59,"./fftlib":60}],62:[function(require,module,exports){
+},{"./FFTUtils":77,"./fftlib":78}],80:[function(require,module,exports){
 'use strict';
 
 var SG = require('ml-savitzky-golay-generalized');
@@ -10751,15 +13761,14 @@ var defaultOptions = {
 function gsd(x, yIn, options) {
   options = Object.assign({}, defaultOptions, options);
   var sgOptions = options.sgOptions;
-  var y = [].concat(yIn);
+  var y = yIn.slice();
 
+  var maxDx = 0;
+  var minDx = Number.MAX_VALUE;
   if (!('noiseLevel' in options)) {
     // We have to know if x is equally spaced
-    var maxDx = 0;
 
-    var minDx = Number.MAX_VALUE;
-
-    var tmp;
+    var tmp = void 0;
     for (var i = 0; i < x.length - 1; ++i) {
       tmp = Math.abs(x[i + 1] - x[i]);
       if (tmp < minDx) {
@@ -10980,7 +13989,7 @@ function getNoiseLevel(y) {
   for (var _i5 = 0; _i5 < length; ++_i5) {
     averageDeviations[_i5] = Math.abs(y[_i5] - mean);
   }
-  averageDeviations.sort();
+  averageDeviations.sort((a, b) => a - b);
   if (length % 2 === 1) {
     stddev = averageDeviations[(length - 1) / 2] / 0.6745;
   } else {
@@ -10991,10 +14000,14 @@ function getNoiseLevel(y) {
 }
 
 function realTopDetection(peakList, x, y) {
-  var alpha, beta, gamma, p, currentPoint;
+  var alpha = void 0,
+      beta = void 0,
+      gamma = void 0,
+      p = void 0,
+      currentPoint = void 0;
   for (var j = 0; j < peakList.length; j++) {
     currentPoint = peakList[j].index; // peakList[j][2];
-    // The detected peak could be moved 1 or 2 unit to left or right.
+    // The detected peak could be moved 1 or 2 units to left or right.
     if (y[currentPoint - 1] >= y[currentPoint - 2] && y[currentPoint - 1] >= y[currentPoint]) {
       currentPoint--;
     } else {
@@ -11011,7 +14024,7 @@ function realTopDetection(peakList, x, y) {
       }
     }
     // interpolation to a sin() function
-    if (y[currentPoint - 1] > 0 && y[currentPoint + 1] > 0 && y[currentPoint] >= y[currentPoint - 1] && y[currentPoint] >= y[currentPoint + 1]) {
+    if (y[currentPoint - 1] > 0 && y[currentPoint + 1] > 0 && y[currentPoint] >= y[currentPoint - 1] && y[currentPoint] >= y[currentPoint + 1] && (y[currentPoint] !== y[currentPoint - 1] || y[currentPoint] !== y[currentPoint + 1])) {
       alpha = 20 * Math.log10(y[currentPoint - 1]);
       beta = 20 * Math.log10(y[currentPoint]);
       gamma = 20 * Math.log10(y[currentPoint + 1]);
@@ -11026,7 +14039,7 @@ function realTopDetection(peakList, x, y) {
 
 module.exports = gsd;
 
-},{"ml-savitzky-golay-generalized":108}],63:[function(require,module,exports){
+},{"ml-savitzky-golay-generalized":123}],81:[function(require,module,exports){
 'use strict';
 
 module.exports.gsd = require('./gsd');
@@ -11037,7 +14050,7 @@ module.exports.post = {
   broadenPeaks: require('./post/broadenPeaks')
 };
 
-},{"./gsd":62,"./post/broadenPeaks":64,"./post/joinBroadPeaks":65,"./post/optimizePeaks":66}],64:[function(require,module,exports){
+},{"./gsd":80,"./post/broadenPeaks":82,"./post/joinBroadPeaks":83,"./post/optimizePeaks":84}],82:[function(require,module,exports){
 'use strict';
 
 /**
@@ -11079,7 +14092,7 @@ module.exports = function broadenPeaks(peakList, options = {}) {
   return peakList;
 };
 
-},{}],65:[function(require,module,exports){
+},{}],83:[function(require,module,exports){
 'use strict';
 
 var Opt = require('ml-optimize-lorentzian');
@@ -11103,7 +14116,7 @@ module.exports = function joinBroadPeaks(peakList, options = {}) {
       broadLines.push(peakList.splice(i, 1)[0]);
     }
   }
-  // Push a feak peak
+  // Push a feke peak
   broadLines.push({ x: Number.MAX_VALUE });
 
   var candidates = [[broadLines[0].x, broadLines[0].y]];
@@ -11153,7 +14166,7 @@ module.exports = function joinBroadPeaks(peakList, options = {}) {
   return peakList;
 };
 
-},{"ml-optimize-lorentzian":104}],66:[function(require,module,exports){
+},{"ml-optimize-lorentzian":122}],84:[function(require,module,exports){
 /**
  * Created by acastillo on 9/6/15.
  */
@@ -11196,8 +14209,8 @@ function sampleFunction(from, to, x, y, lastIndex) {
 }
 
 module.exports = function optimizePeaks(peakList, x, y, n, fnType) {
-  var i;
-  var j;
+  var i = void 0;
+  var j = void 0;
 
   var lastIndex = [0];
   var groups = groupPeaks(peakList, n);
@@ -11206,7 +14219,9 @@ module.exports = function optimizePeaks(peakList, x, y, n, fnType) {
   if (fnType === 'gaussian') {
     factor = 1.17741;
   } // From https://en.wikipedia.org/wiki/Gaussian_function#Properties
-  var sampling, error, opts;
+  var sampling = void 0,
+      error = void 0,
+      opts = void 0;
   for (i = 0; i < groups.length; i++) {
     var peaks = groups[i].group;
     if (peaks.length > 1) {
@@ -11271,9 +14286,11 @@ module.exports = function optimizePeaks(peakList, x, y, n, fnType) {
 function groupPeaks(peakList, nL) {
   var group = [];
   var groups = [];
-  var i, j;
+  var i = void 0,
+      j = void 0;
   var limits = [peakList[0].x, nL * peakList[0].width];
-  var upperLimit, lowerLimit;
+  var upperLimit = void 0,
+      lowerLimit = void 0;
   // Merge forward
   for (i = 0; i < peakList.length; i++) {
     // If the 2 things overlaps
@@ -11322,7 +14339,7 @@ function groupPeaks(peakList, nL) {
   return groups;
 }
 
-},{"ml-optimize-lorentzian":104}],67:[function(require,module,exports){
+},{"ml-optimize-lorentzian":122}],85:[function(require,module,exports){
 'use strict';
 
 var newArray = require('new-array');
@@ -11626,7 +14643,7 @@ function chooseShrinkCapacity(size, minLoad, maxLoad) {
     return nextPrime(Math.max(size + 1, 4 * size / (minLoad + 3 * maxLoad) | 0));
 }
 
-},{"./primeFinder":68,"new-array":127}],68:[function(require,module,exports){
+},{"./primeFinder":86,"new-array":143}],86:[function(require,module,exports){
 'use strict';
 
 var binarySearch = require('binary-search');
@@ -11690,7 +14707,7 @@ function nextPrime(value) {
 exports.nextPrime = nextPrime;
 exports.largestPrime = largestPrime;
 
-},{"binary-search":3,"num-sort":135}],69:[function(require,module,exports){
+},{"binary-search":3,"num-sort":153}],87:[function(require,module,exports){
 'use strict';
 
 var Heap = require('heap');
@@ -11773,7 +14790,7 @@ Cluster.prototype.traverse = function (cb) {
 
 module.exports = Cluster;
 
-},{"heap":12}],70:[function(require,module,exports){
+},{"heap":15}],88:[function(require,module,exports){
 'use strict';
 
 var Cluster = require('./Cluster');
@@ -11790,7 +14807,7 @@ util.inherits(ClusterLeaf, Cluster);
 
 module.exports = ClusterLeaf;
 
-},{"./Cluster":69,"util":182}],71:[function(require,module,exports){
+},{"./Cluster":87,"util":200}],89:[function(require,module,exports){
 'use strict';
 
 var euclidean = require('ml-distance-euclidean');
@@ -12033,7 +15050,7 @@ function agnes(data, options) {
 
 module.exports = agnes;
 
-},{"./Cluster":69,"./ClusterLeaf":70,"ml-distance-euclidean":57,"ml-distance-matrix":58}],72:[function(require,module,exports){
+},{"./Cluster":87,"./ClusterLeaf":88,"ml-distance-euclidean":75,"ml-distance-matrix":76}],90:[function(require,module,exports){
 'use strict';
 
 var euclidean = require('ml-distance-euclidean');
@@ -12337,7 +15354,7 @@ function diana(data, options) {
 
 module.exports = diana;
 
-},{"./Cluster":69,"./ClusterLeaf":70,"ml-distance-euclidean":57}],73:[function(require,module,exports){
+},{"./Cluster":87,"./ClusterLeaf":88,"ml-distance-euclidean":75}],91:[function(require,module,exports){
 'use strict';
 
 exports.agnes = require('./agnes');
@@ -12346,7 +15363,7 @@ exports.diana = require('./diana');
 //exports.cure = require('./cure');
 //exports.chameleon = require('./chameleon');
 
-},{"./agnes":71,"./diana":72}],74:[function(require,module,exports){
+},{"./agnes":89,"./diana":90}],92:[function(require,module,exports){
 'use strict';
 
 var FFT = require('./fftlib');
@@ -12654,11 +15671,11 @@ var FFTUtils = {
 
 module.exports = FFTUtils;
 
-},{"./fftlib":75}],75:[function(require,module,exports){
-arguments[4][60][0].apply(exports,arguments)
-},{"dup":60}],76:[function(require,module,exports){
-arguments[4][61][0].apply(exports,arguments)
-},{"./FFTUtils":74,"./fftlib":75,"dup":61}],77:[function(require,module,exports){
+},{"./fftlib":93}],93:[function(require,module,exports){
+arguments[4][78][0].apply(exports,arguments)
+},{"dup":78}],94:[function(require,module,exports){
+arguments[4][79][0].apply(exports,arguments)
+},{"./FFTUtils":92,"./fftlib":93,"dup":79}],95:[function(require,module,exports){
 "use strict";
 'use strict;';
 /**
@@ -12816,7 +15833,7 @@ module.exports = {
     matrix2Array: matrix2Array
 };
 
-},{"ml-fft":76}],78:[function(require,module,exports){
+},{"ml-fft":94}],96:[function(require,module,exports){
 'use strict';
 
 var DisjointSet = require('ml-disjoint-set');
@@ -12903,7 +15920,7 @@ function ccLabeling(mask, width, height, options) {
 
 module.exports = ccLabeling;
 
-},{"ml-disjoint-set":56}],79:[function(require,module,exports){
+},{"ml-disjoint-set":74}],97:[function(require,module,exports){
 'use strict';
 /**
  * Created by acastillo on 7/7/16.
@@ -13071,7 +16088,7 @@ module.exports = {
     findPeaks2DMax: findPeaks2DMax
 };
 
-},{"./ccLabeling":78,"ml-matrix-convolution":77,"ml-stat":112}],80:[function(require,module,exports){
+},{"./ccLabeling":96,"ml-matrix-convolution":95,"ml-stat":127}],98:[function(require,module,exports){
 'use strict';
 
 var Stat = require('ml-stat').array;
@@ -13293,7 +16310,7 @@ module.exports = {
     scale: scale
 };
 
-},{"ml-stat":112}],81:[function(require,module,exports){
+},{"ml-stat":127}],99:[function(require,module,exports){
 'use strict';
 
 /**
@@ -13545,7 +16562,7 @@ function integral(x0, x1, slope, intercept) {
 exports.getEquallySpacedData = getEquallySpacedData;
 exports.integral = integral;
 
-},{}],82:[function(require,module,exports){
+},{}],100:[function(require,module,exports){
 'use strict';
 
 module.exports = exports = require('./ArrayUtils');
@@ -13553,9 +16570,9 @@ module.exports = exports = require('./ArrayUtils');
 exports.getEquallySpacedData = require('./getEquallySpaced').getEquallySpacedData;
 exports.SNV = require('./snv').SNV;
 
-},{"./ArrayUtils":80,"./getEquallySpaced":81,"./snv":83}],83:[function(require,module,exports){
-arguments[4][52][0].apply(exports,arguments)
-},{"dup":52,"ml-stat":112}],84:[function(require,module,exports){
+},{"./ArrayUtils":98,"./getEquallySpaced":99,"./snv":101}],101:[function(require,module,exports){
+arguments[4][70][0].apply(exports,arguments)
+},{"dup":70,"ml-stat":127}],102:[function(require,module,exports){
 'use strict';
 
 module.exports = abstractMatrix;
@@ -15354,7 +18371,7 @@ function abstractMatrix(superCtor) {
     return Matrix;
 }
 
-},{"./dc/lu":87,"./dc/svd":89,"./util":95,"./views/column":97,"./views/flipColumn":98,"./views/flipRow":99,"./views/row":100,"./views/selection":101,"./views/sub":102,"./views/transpose":103,"ml-array-utils":82}],85:[function(require,module,exports){
+},{"./dc/lu":105,"./dc/svd":107,"./util":113,"./views/column":115,"./views/flipColumn":116,"./views/flipRow":117,"./views/row":118,"./views/selection":119,"./views/sub":120,"./views/transpose":121,"ml-array-utils":100}],103:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -15450,7 +18467,7 @@ CholeskyDecomposition.prototype = {
 
 module.exports = CholeskyDecomposition;
 
-},{"../matrix":93}],86:[function(require,module,exports){
+},{"../matrix":111}],104:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -16246,7 +19263,7 @@ function cdiv(xr, xi, yr, yi) {
 
 module.exports = EigenvalueDecomposition;
 
-},{"../matrix":93,"./util":90}],87:[function(require,module,exports){
+},{"../matrix":111,"./util":108}],105:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -16431,7 +19448,7 @@ LuDecomposition.prototype = {
 
 module.exports = LuDecomposition;
 
-},{"../matrix":93}],88:[function(require,module,exports){
+},{"../matrix":111}],106:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix').Matrix;
@@ -16592,7 +19609,7 @@ QrDecomposition.prototype = {
 
 module.exports = QrDecomposition;
 
-},{"../matrix":93,"./util":90}],89:[function(require,module,exports){
+},{"../matrix":111,"./util":108}],107:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('../matrix');
@@ -17116,7 +20133,7 @@ SingularValueDecomposition.prototype = {
 
 module.exports = SingularValueDecomposition;
 
-},{"../matrix":93,"./util":90}],90:[function(require,module,exports){
+},{"../matrix":111,"./util":108}],108:[function(require,module,exports){
 'use strict';
 
 exports.hypotenuse = function hypotenuse(a, b) {
@@ -17155,7 +20172,7 @@ exports.getFilled2DArray = function (rows, columns, value) {
     return array;
 };
 
-},{}],91:[function(require,module,exports){
+},{}],109:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix').Matrix;
@@ -17219,13 +20236,13 @@ module.exports = {
     solve: solve
 };
 
-},{"./dc/cholesky":85,"./dc/evd":86,"./dc/lu":87,"./dc/qr":88,"./dc/svd":89,"./matrix":93}],92:[function(require,module,exports){
+},{"./dc/cholesky":103,"./dc/evd":104,"./dc/lu":105,"./dc/qr":106,"./dc/svd":107,"./matrix":111}],110:[function(require,module,exports){
 'use strict';
 
 module.exports = require('./matrix').Matrix;
 module.exports.Decompositions = module.exports.DC = require('./decompositions');
 
-},{"./decompositions":91,"./matrix":93}],93:[function(require,module,exports){
+},{"./decompositions":109,"./matrix":111}],111:[function(require,module,exports){
 'use strict';
 
 require('./symbol-species');
@@ -17370,14 +20387,14 @@ class Matrix extends abstractMatrix(Array) {
 exports.Matrix = Matrix;
 Matrix.abstractMatrix = abstractMatrix;
 
-},{"./abstractMatrix":84,"./symbol-species":94,"./util":95}],94:[function(require,module,exports){
+},{"./abstractMatrix":102,"./symbol-species":112,"./util":113}],112:[function(require,module,exports){
 'use strict';
 
 if (!Symbol.species) {
     Symbol.species = Symbol.for('@@species');
 }
 
-},{}],95:[function(require,module,exports){
+},{}],113:[function(require,module,exports){
 'use strict';
 
 var Matrix = require('./matrix');
@@ -17520,7 +20537,7 @@ exports.sumAll = function sumAll(matrix) {
     return v;
 };
 
-},{"./matrix":93}],96:[function(require,module,exports){
+},{"./matrix":111}],114:[function(require,module,exports){
 'use strict';
 
 var abstractMatrix = require('../abstractMatrix');
@@ -17541,7 +20558,7 @@ class BaseView extends abstractMatrix() {
 
 module.exports = BaseView;
 
-},{"../abstractMatrix":84,"../matrix":93}],97:[function(require,module,exports){
+},{"../abstractMatrix":102,"../matrix":111}],115:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -17564,7 +20581,7 @@ class MatrixColumnView extends BaseView {
 
 module.exports = MatrixColumnView;
 
-},{"./base":96}],98:[function(require,module,exports){
+},{"./base":114}],116:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -17586,7 +20603,7 @@ class MatrixFlipColumnView extends BaseView {
 
 module.exports = MatrixFlipColumnView;
 
-},{"./base":96}],99:[function(require,module,exports){
+},{"./base":114}],117:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -17608,7 +20625,7 @@ class MatrixFlipRowView extends BaseView {
 
 module.exports = MatrixFlipRowView;
 
-},{"./base":96}],100:[function(require,module,exports){
+},{"./base":114}],118:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -17631,7 +20648,7 @@ class MatrixRowView extends BaseView {
 
 module.exports = MatrixRowView;
 
-},{"./base":96}],101:[function(require,module,exports){
+},{"./base":114}],119:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -17657,7 +20674,7 @@ class MatrixSelectionView extends BaseView {
 
 module.exports = MatrixSelectionView;
 
-},{"../util":95,"./base":96}],102:[function(require,module,exports){
+},{"../util":113,"./base":114}],120:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -17683,7 +20700,7 @@ class MatrixSubView extends BaseView {
 
 module.exports = MatrixSubView;
 
-},{"../util":95,"./base":96}],103:[function(require,module,exports){
+},{"../util":113,"./base":114}],121:[function(require,module,exports){
 'use strict';
 
 var BaseView = require('./base');
@@ -17705,7 +20722,7 @@ class MatrixTransposeView extends BaseView {
 
 module.exports = MatrixTransposeView;
 
-},{"./base":96}],104:[function(require,module,exports){
+},{"./base":114}],122:[function(require,module,exports){
 'use strict';
 
 var LM = require('ml-curve-fitting');
@@ -18166,1026 +21183,7 @@ module.exports.singleLorentzian = singleLorentzian;
 module.exports.optimizeGaussianTrain = optimizeGaussianTrain;
 module.exports.optimizeLorentzianTrain = optimizeLorentzianTrain;
 
-},{"ml-curve-fitting":55,"ml-matrix":92}],105:[function(require,module,exports){
-'use strict';
-
-function compareNumbers(a, b) {
-    return a - b;
-}
-
-/**
- * Computes the sum of the given values
- * @param {Array} values
- * @returns {number}
- */
-exports.sum = function sum(values) {
-    var sum = 0;
-    for (var i = 0; i < values.length; i++) {
-        sum += values[i];
-    }
-    return sum;
-};
-
-/**
- * Computes the maximum of the given values
- * @param {Array} values
- * @returns {number}
- */
-exports.max = function max(values) {
-    var max = -Infinity;
-    var l = values.length;
-    for (var i = 0; i < l; i++) {
-        if (values[i] > max) max = values[i];
-    }
-    return max;
-};
-
-/**
- * Computes the minimum of the given values
- * @param {Array} values
- * @returns {number}
- */
-exports.min = function min(values) {
-    var min = Infinity;
-    var l = values.length;
-    for (var i = 0; i < l; i++) {
-        if (values[i] < min) min = values[i];
-    }
-    return min;
-};
-
-/**
- * Computes the min and max of the given values
- * @param {Array} values
- * @returns {{min: number, max: number}}
- */
-exports.minMax = function minMax(values) {
-    var min = Infinity;
-    var max = -Infinity;
-    var l = values.length;
-    for (var i = 0; i < l; i++) {
-        if (values[i] < min) min = values[i];
-        if (values[i] > max) max = values[i];
-    }
-    return {
-        min: min,
-        max: max
-    };
-};
-
-/**
- * Computes the arithmetic mean of the given values
- * @param {Array} values
- * @returns {number}
- */
-exports.arithmeticMean = function arithmeticMean(values) {
-    var sum = 0;
-    var l = values.length;
-    for (var i = 0; i < l; i++) {
-        sum += values[i];
-    }
-    return sum / l;
-};
-
-/**
- * {@link arithmeticMean}
- */
-exports.mean = exports.arithmeticMean;
-
-/**
- * Computes the geometric mean of the given values
- * @param {Array} values
- * @returns {number}
- */
-exports.geometricMean = function geometricMean(values) {
-    var mul = 1;
-    var l = values.length;
-    for (var i = 0; i < l; i++) {
-        mul *= values[i];
-    }
-    return Math.pow(mul, 1 / l);
-};
-
-/**
- * Computes the mean of the log of the given values
- * If the return value is exponentiated, it gives the same result as the
- * geometric mean.
- * @param {Array} values
- * @returns {number}
- */
-exports.logMean = function logMean(values) {
-    var lnsum = 0;
-    var l = values.length;
-    for (var i = 0; i < l; i++) {
-        lnsum += Math.log(values[i]);
-    }
-    return lnsum / l;
-};
-
-/**
- * Computes the weighted grand mean for a list of means and sample sizes
- * @param {Array} means - Mean values for each set of samples
- * @param {Array} samples - Number of original values for each set of samples
- * @returns {number}
- */
-exports.grandMean = function grandMean(means, samples) {
-    var sum = 0;
-    var n = 0;
-    var l = means.length;
-    for (var i = 0; i < l; i++) {
-        sum += samples[i] * means[i];
-        n += samples[i];
-    }
-    return sum / n;
-};
-
-/**
- * Computes the truncated mean of the given values using a given percentage
- * @param {Array} values
- * @param {number} percent - The percentage of values to keep (range: [0,1])
- * @param {boolean} [alreadySorted=false]
- * @returns {number}
- */
-exports.truncatedMean = function truncatedMean(values, percent, alreadySorted) {
-    if (alreadySorted === undefined) alreadySorted = false;
-    if (!alreadySorted) {
-        values = values.slice().sort(compareNumbers);
-    }
-    var l = values.length;
-    var k = Math.floor(l * percent);
-    var sum = 0;
-    for (var i = k; i < l - k; i++) {
-        sum += values[i];
-    }
-    return sum / (l - 2 * k);
-};
-
-/**
- * Computes the harmonic mean of the given values
- * @param {Array} values
- * @returns {number}
- */
-exports.harmonicMean = function harmonicMean(values) {
-    var sum = 0;
-    var l = values.length;
-    for (var i = 0; i < l; i++) {
-        if (values[i] === 0) {
-            throw new RangeError('value at index ' + i + 'is zero');
-        }
-        sum += 1 / values[i];
-    }
-    return l / sum;
-};
-
-/**
- * Computes the contraharmonic mean of the given values
- * @param {Array} values
- * @returns {number}
- */
-exports.contraHarmonicMean = function contraHarmonicMean(values) {
-    var r1 = 0;
-    var r2 = 0;
-    var l = values.length;
-    for (var i = 0; i < l; i++) {
-        r1 += values[i] * values[i];
-        r2 += values[i];
-    }
-    if (r2 < 0) {
-        throw new RangeError('sum of values is negative');
-    }
-    return r1 / r2;
-};
-
-/**
- * Computes the median of the given values
- * @param {Array} values
- * @param {boolean} [alreadySorted=false]
- * @returns {number}
- */
-exports.median = function median(values, alreadySorted) {
-    if (alreadySorted === undefined) alreadySorted = false;
-    if (!alreadySorted) {
-        values = values.slice().sort(compareNumbers);
-    }
-    var l = values.length;
-    var half = Math.floor(l / 2);
-    if (l % 2 === 0) {
-        return (values[half - 1] + values[half]) * 0.5;
-    } else {
-        return values[half];
-    }
-};
-
-/**
- * Computes the variance of the given values
- * @param {Array} values
- * @param {boolean} [unbiased=true] - if true, divide by (n-1); if false, divide by n.
- * @returns {number}
- */
-exports.variance = function variance(values, unbiased) {
-    if (unbiased === undefined) unbiased = true;
-    var theMean = exports.mean(values);
-    var theVariance = 0;
-    var l = values.length;
-
-    for (var i = 0; i < l; i++) {
-        var x = values[i] - theMean;
-        theVariance += x * x;
-    }
-
-    if (unbiased) {
-        return theVariance / (l - 1);
-    } else {
-        return theVariance / l;
-    }
-};
-
-/**
- * Computes the standard deviation of the given values
- * @param {Array} values
- * @param {boolean} [unbiased=true] - if true, divide by (n-1); if false, divide by n.
- * @returns {number}
- */
-exports.standardDeviation = function standardDeviation(values, unbiased) {
-    return Math.sqrt(exports.variance(values, unbiased));
-};
-
-exports.standardError = function standardError(values) {
-    return exports.standardDeviation(values) / Math.sqrt(values.length);
-};
-
-exports.quartiles = function quartiles(values, alreadySorted) {
-    if (typeof alreadySorted === 'undefined') alreadySorted = false;
-    if (!alreadySorted) {
-        values = values.slice();
-        values.sort(compareNumbers);
-    }
-
-    var quart = values.length / 4;
-    var q1 = values[Math.ceil(quart) - 1];
-    var q2 = exports.median(values, true);
-    var q3 = values[Math.ceil(quart * 3) - 1];
-
-    return { q1: q1, q2: q2, q3: q3 };
-};
-
-exports.pooledStandardDeviation = function pooledStandardDeviation(samples, unbiased) {
-    return Math.sqrt(exports.pooledVariance(samples, unbiased));
-};
-
-exports.pooledVariance = function pooledVariance(samples, unbiased) {
-    if (typeof unbiased === 'undefined') unbiased = true;
-    var sum = 0;
-    var length = 0,
-        l = samples.length;
-    for (var i = 0; i < l; i++) {
-        var values = samples[i];
-        var vari = exports.variance(values);
-
-        sum += (values.length - 1) * vari;
-
-        if (unbiased) length += values.length - 1;else length += values.length;
-    }
-    return sum / length;
-};
-
-exports.mode = function mode(values) {
-    var l = values.length,
-        itemCount = new Array(l),
-        i;
-    for (i = 0; i < l; i++) {
-        itemCount[i] = 0;
-    }
-    var itemArray = new Array(l);
-    var count = 0;
-
-    for (i = 0; i < l; i++) {
-        var index = itemArray.indexOf(values[i]);
-        if (index >= 0) itemCount[index]++;else {
-            itemArray[count] = values[i];
-            itemCount[count] = 1;
-            count++;
-        }
-    }
-
-    var maxValue = 0,
-        maxIndex = 0;
-    for (i = 0; i < count; i++) {
-        if (itemCount[i] > maxValue) {
-            maxValue = itemCount[i];
-            maxIndex = i;
-        }
-    }
-
-    return itemArray[maxIndex];
-};
-
-exports.covariance = function covariance(vector1, vector2, unbiased) {
-    if (typeof unbiased === 'undefined') unbiased = true;
-    var mean1 = exports.mean(vector1);
-    var mean2 = exports.mean(vector2);
-
-    if (vector1.length !== vector2.length) throw "Vectors do not have the same dimensions";
-
-    var cov = 0,
-        l = vector1.length;
-    for (var i = 0; i < l; i++) {
-        var x = vector1[i] - mean1;
-        var y = vector2[i] - mean2;
-        cov += x * y;
-    }
-
-    if (unbiased) return cov / (l - 1);else return cov / l;
-};
-
-exports.skewness = function skewness(values, unbiased) {
-    if (typeof unbiased === 'undefined') unbiased = true;
-    var theMean = exports.mean(values);
-
-    var s2 = 0,
-        s3 = 0,
-        l = values.length;
-    for (var i = 0; i < l; i++) {
-        var dev = values[i] - theMean;
-        s2 += dev * dev;
-        s3 += dev * dev * dev;
-    }
-    var m2 = s2 / l;
-    var m3 = s3 / l;
-
-    var g = m3 / Math.pow(m2, 3 / 2.0);
-    if (unbiased) {
-        var a = Math.sqrt(l * (l - 1));
-        var b = l - 2;
-        return a / b * g;
-    } else {
-        return g;
-    }
-};
-
-exports.kurtosis = function kurtosis(values, unbiased) {
-    if (typeof unbiased === 'undefined') unbiased = true;
-    var theMean = exports.mean(values);
-    var n = values.length,
-        s2 = 0,
-        s4 = 0;
-
-    for (var i = 0; i < n; i++) {
-        var dev = values[i] - theMean;
-        s2 += dev * dev;
-        s4 += dev * dev * dev * dev;
-    }
-    var m2 = s2 / n;
-    var m4 = s4 / n;
-
-    if (unbiased) {
-        var v = s2 / (n - 1);
-        var a = n * (n + 1) / ((n - 1) * (n - 2) * (n - 3));
-        var b = s4 / (v * v);
-        var c = (n - 1) * (n - 1) / ((n - 2) * (n - 3));
-
-        return a * b - 3 * c;
-    } else {
-        return m4 / (m2 * m2) - 3;
-    }
-};
-
-exports.entropy = function entropy(values, eps) {
-    if (typeof eps === 'undefined') eps = 0;
-    var sum = 0,
-        l = values.length;
-    for (var i = 0; i < l; i++) {
-        sum += values[i] * Math.log(values[i] + eps);
-    }return -sum;
-};
-
-exports.weightedMean = function weightedMean(values, weights) {
-    var sum = 0,
-        l = values.length;
-    for (var i = 0; i < l; i++) {
-        sum += values[i] * weights[i];
-    }return sum;
-};
-
-exports.weightedStandardDeviation = function weightedStandardDeviation(values, weights) {
-    return Math.sqrt(exports.weightedVariance(values, weights));
-};
-
-exports.weightedVariance = function weightedVariance(values, weights) {
-    var theMean = exports.weightedMean(values, weights);
-    var vari = 0,
-        l = values.length;
-    var a = 0,
-        b = 0;
-
-    for (var i = 0; i < l; i++) {
-        var z = values[i] - theMean;
-        var w = weights[i];
-
-        vari += w * (z * z);
-        b += w;
-        a += w * w;
-    }
-
-    return vari * (b / (b * b - a));
-};
-
-exports.center = function center(values, inPlace) {
-    if (typeof inPlace === 'undefined') inPlace = false;
-
-    var result = values;
-    if (!inPlace) result = values.slice();
-
-    var theMean = exports.mean(result),
-        l = result.length;
-    for (var i = 0; i < l; i++) {
-        result[i] -= theMean;
-    }
-};
-
-exports.standardize = function standardize(values, standardDev, inPlace) {
-    if (typeof standardDev === 'undefined') standardDev = exports.standardDeviation(values);
-    if (typeof inPlace === 'undefined') inPlace = false;
-    var l = values.length;
-    var result = inPlace ? values : new Array(l);
-    for (var i = 0; i < l; i++) {
-        result[i] = values[i] / standardDev;
-    }return result;
-};
-
-exports.cumulativeSum = function cumulativeSum(array) {
-    var l = array.length;
-    var result = new Array(l);
-    result[0] = array[0];
-    for (var i = 1; i < l; i++) {
-        result[i] = result[i - 1] + array[i];
-    }return result;
-};
-
-},{}],106:[function(require,module,exports){
-'use strict';
-
-exports.array = require('./array');
-exports.matrix = require('./matrix');
-
-},{"./array":105,"./matrix":107}],107:[function(require,module,exports){
-'use strict';
-
-var arrayStat = require('./array');
-
-// https://github.com/accord-net/framework/blob/development/Sources/Accord.Statistics/Tools.cs
-
-function entropy(matrix, eps) {
-    if (typeof eps === 'undefined') {
-        eps = 0;
-    }
-    var sum = 0,
-        l1 = matrix.length,
-        l2 = matrix[0].length;
-    for (var i = 0; i < l1; i++) {
-        for (var j = 0; j < l2; j++) {
-            sum += matrix[i][j] * Math.log(matrix[i][j] + eps);
-        }
-    }
-    return -sum;
-}
-
-function mean(matrix, dimension) {
-    if (typeof dimension === 'undefined') {
-        dimension = 0;
-    }
-    var rows = matrix.length,
-        cols = matrix[0].length,
-        theMean,
-        N,
-        i,
-        j;
-
-    if (dimension === -1) {
-        theMean = [0];
-        N = rows * cols;
-        for (i = 0; i < rows; i++) {
-            for (j = 0; j < cols; j++) {
-                theMean[0] += matrix[i][j];
-            }
-        }
-        theMean[0] /= N;
-    } else if (dimension === 0) {
-        theMean = new Array(cols);
-        N = rows;
-        for (j = 0; j < cols; j++) {
-            theMean[j] = 0;
-            for (i = 0; i < rows; i++) {
-                theMean[j] += matrix[i][j];
-            }
-            theMean[j] /= N;
-        }
-    } else if (dimension === 1) {
-        theMean = new Array(rows);
-        N = cols;
-        for (j = 0; j < rows; j++) {
-            theMean[j] = 0;
-            for (i = 0; i < cols; i++) {
-                theMean[j] += matrix[j][i];
-            }
-            theMean[j] /= N;
-        }
-    } else {
-        throw new Error('Invalid dimension');
-    }
-    return theMean;
-}
-
-function standardDeviation(matrix, means, unbiased) {
-    var vari = variance(matrix, means, unbiased),
-        l = vari.length;
-    for (var i = 0; i < l; i++) {
-        vari[i] = Math.sqrt(vari[i]);
-    }
-    return vari;
-}
-
-function variance(matrix, means, unbiased) {
-    if (typeof unbiased === 'undefined') {
-        unbiased = true;
-    }
-    means = means || mean(matrix);
-    var rows = matrix.length;
-    if (rows === 0) return [];
-    var cols = matrix[0].length;
-    var vari = new Array(cols);
-
-    for (var j = 0; j < cols; j++) {
-        var sum1 = 0,
-            sum2 = 0,
-            x = 0;
-        for (var i = 0; i < rows; i++) {
-            x = matrix[i][j] - means[j];
-            sum1 += x;
-            sum2 += x * x;
-        }
-        if (unbiased) {
-            vari[j] = (sum2 - sum1 * sum1 / rows) / (rows - 1);
-        } else {
-            vari[j] = (sum2 - sum1 * sum1 / rows) / rows;
-        }
-    }
-    return vari;
-}
-
-function median(matrix) {
-    var rows = matrix.length,
-        cols = matrix[0].length;
-    var medians = new Array(cols);
-
-    for (var i = 0; i < cols; i++) {
-        var data = new Array(rows);
-        for (var j = 0; j < rows; j++) {
-            data[j] = matrix[j][i];
-        }
-        data.sort();
-        var N = data.length;
-        if (N % 2 === 0) {
-            medians[i] = (data[N / 2] + data[N / 2 - 1]) * 0.5;
-        } else {
-            medians[i] = data[Math.floor(N / 2)];
-        }
-    }
-    return medians;
-}
-
-function mode(matrix) {
-    var rows = matrix.length,
-        cols = matrix[0].length,
-        modes = new Array(cols),
-        i,
-        j;
-    for (i = 0; i < cols; i++) {
-        var itemCount = new Array(rows);
-        for (var k = 0; k < rows; k++) {
-            itemCount[k] = 0;
-        }
-        var itemArray = new Array(rows);
-        var count = 0;
-
-        for (j = 0; j < rows; j++) {
-            var index = itemArray.indexOf(matrix[j][i]);
-            if (index >= 0) {
-                itemCount[index]++;
-            } else {
-                itemArray[count] = matrix[j][i];
-                itemCount[count] = 1;
-                count++;
-            }
-        }
-
-        var maxValue = 0,
-            maxIndex = 0;
-        for (j = 0; j < count; j++) {
-            if (itemCount[j] > maxValue) {
-                maxValue = itemCount[j];
-                maxIndex = j;
-            }
-        }
-
-        modes[i] = itemArray[maxIndex];
-    }
-    return modes;
-}
-
-function skewness(matrix, unbiased) {
-    if (typeof unbiased === 'undefined') unbiased = true;
-    var means = mean(matrix);
-    var n = matrix.length,
-        l = means.length;
-    var skew = new Array(l);
-
-    for (var j = 0; j < l; j++) {
-        var s2 = 0,
-            s3 = 0;
-        for (var i = 0; i < n; i++) {
-            var dev = matrix[i][j] - means[j];
-            s2 += dev * dev;
-            s3 += dev * dev * dev;
-        }
-
-        var m2 = s2 / n;
-        var m3 = s3 / n;
-        var g = m3 / Math.pow(m2, 3 / 2);
-
-        if (unbiased) {
-            var a = Math.sqrt(n * (n - 1));
-            var b = n - 2;
-            skew[j] = a / b * g;
-        } else {
-            skew[j] = g;
-        }
-    }
-    return skew;
-}
-
-function kurtosis(matrix, unbiased) {
-    if (typeof unbiased === 'undefined') unbiased = true;
-    var means = mean(matrix);
-    var n = matrix.length,
-        m = matrix[0].length;
-    var kurt = new Array(m);
-
-    for (var j = 0; j < m; j++) {
-        var s2 = 0,
-            s4 = 0;
-        for (var i = 0; i < n; i++) {
-            var dev = matrix[i][j] - means[j];
-            s2 += dev * dev;
-            s4 += dev * dev * dev * dev;
-        }
-        var m2 = s2 / n;
-        var m4 = s4 / n;
-
-        if (unbiased) {
-            var v = s2 / (n - 1);
-            var a = n * (n + 1) / ((n - 1) * (n - 2) * (n - 3));
-            var b = s4 / (v * v);
-            var c = (n - 1) * (n - 1) / ((n - 2) * (n - 3));
-            kurt[j] = a * b - 3 * c;
-        } else {
-            kurt[j] = m4 / (m2 * m2) - 3;
-        }
-    }
-    return kurt;
-}
-
-function standardError(matrix) {
-    var samples = matrix.length;
-    var standardDeviations = standardDeviation(matrix),
-        l = standardDeviations.length;
-    var standardErrors = new Array(l);
-    var sqrtN = Math.sqrt(samples);
-
-    for (var i = 0; i < l; i++) {
-        standardErrors[i] = standardDeviations[i] / sqrtN;
-    }
-    return standardErrors;
-}
-
-function covariance(matrix, dimension) {
-    return scatter(matrix, undefined, dimension);
-}
-
-function scatter(matrix, divisor, dimension) {
-    if (typeof dimension === 'undefined') {
-        dimension = 0;
-    }
-    if (typeof divisor === 'undefined') {
-        if (dimension === 0) {
-            divisor = matrix.length - 1;
-        } else if (dimension === 1) {
-            divisor = matrix[0].length - 1;
-        }
-    }
-    var means = mean(matrix, dimension),
-        rows = matrix.length;
-    if (rows === 0) {
-        return [[]];
-    }
-    var cols = matrix[0].length,
-        cov,
-        i,
-        j,
-        s,
-        k;
-
-    if (dimension === 0) {
-        cov = new Array(cols);
-        for (i = 0; i < cols; i++) {
-            cov[i] = new Array(cols);
-        }
-        for (i = 0; i < cols; i++) {
-            for (j = i; j < cols; j++) {
-                s = 0;
-                for (k = 0; k < rows; k++) {
-                    s += (matrix[k][j] - means[j]) * (matrix[k][i] - means[i]);
-                }
-                s /= divisor;
-                cov[i][j] = s;
-                cov[j][i] = s;
-            }
-        }
-    } else if (dimension === 1) {
-        cov = new Array(rows);
-        for (i = 0; i < rows; i++) {
-            cov[i] = new Array(rows);
-        }
-        for (i = 0; i < rows; i++) {
-            for (j = i; j < rows; j++) {
-                s = 0;
-                for (k = 0; k < cols; k++) {
-                    s += (matrix[j][k] - means[j]) * (matrix[i][k] - means[i]);
-                }
-                s /= divisor;
-                cov[i][j] = s;
-                cov[j][i] = s;
-            }
-        }
-    } else {
-        throw new Error('Invalid dimension');
-    }
-
-    return cov;
-}
-
-function correlation(matrix) {
-    var means = mean(matrix),
-        standardDeviations = standardDeviation(matrix, true, means),
-        scores = zScores(matrix, means, standardDeviations),
-        rows = matrix.length,
-        cols = matrix[0].length,
-        i,
-        j;
-
-    var cor = new Array(cols);
-    for (i = 0; i < cols; i++) {
-        cor[i] = new Array(cols);
-    }
-    for (i = 0; i < cols; i++) {
-        for (j = i; j < cols; j++) {
-            var c = 0;
-            for (var k = 0, l = scores.length; k < l; k++) {
-                c += scores[k][j] * scores[k][i];
-            }
-            c /= rows - 1;
-            cor[i][j] = c;
-            cor[j][i] = c;
-        }
-    }
-    return cor;
-}
-
-function zScores(matrix, means, standardDeviations) {
-    means = means || mean(matrix);
-    if (typeof standardDeviations === 'undefined') standardDeviations = standardDeviation(matrix, true, means);
-    return standardize(center(matrix, means, false), standardDeviations, true);
-}
-
-function center(matrix, means, inPlace) {
-    means = means || mean(matrix);
-    var result = matrix,
-        l = matrix.length,
-        i,
-        j,
-        jj;
-
-    if (!inPlace) {
-        result = new Array(l);
-        for (i = 0; i < l; i++) {
-            result[i] = new Array(matrix[i].length);
-        }
-    }
-
-    for (i = 0; i < l; i++) {
-        var row = result[i];
-        for (j = 0, jj = row.length; j < jj; j++) {
-            row[j] = matrix[i][j] - means[j];
-        }
-    }
-    return result;
-}
-
-function standardize(matrix, standardDeviations, inPlace) {
-    if (typeof standardDeviations === 'undefined') standardDeviations = standardDeviation(matrix);
-    var result = matrix,
-        l = matrix.length,
-        i,
-        j,
-        jj;
-
-    if (!inPlace) {
-        result = new Array(l);
-        for (i = 0; i < l; i++) {
-            result[i] = new Array(matrix[i].length);
-        }
-    }
-
-    for (i = 0; i < l; i++) {
-        var resultRow = result[i];
-        var sourceRow = matrix[i];
-        for (j = 0, jj = resultRow.length; j < jj; j++) {
-            if (standardDeviations[j] !== 0 && !isNaN(standardDeviations[j])) {
-                resultRow[j] = sourceRow[j] / standardDeviations[j];
-            }
-        }
-    }
-    return result;
-}
-
-function weightedVariance(matrix, weights) {
-    var means = mean(matrix);
-    var rows = matrix.length;
-    if (rows === 0) return [];
-    var cols = matrix[0].length;
-    var vari = new Array(cols);
-
-    for (var j = 0; j < cols; j++) {
-        var sum = 0;
-        var a = 0,
-            b = 0;
-
-        for (var i = 0; i < rows; i++) {
-            var z = matrix[i][j] - means[j];
-            var w = weights[i];
-
-            sum += w * (z * z);
-            b += w;
-            a += w * w;
-        }
-
-        vari[j] = sum * (b / (b * b - a));
-    }
-
-    return vari;
-}
-
-function weightedMean(matrix, weights, dimension) {
-    if (typeof dimension === 'undefined') {
-        dimension = 0;
-    }
-    var rows = matrix.length;
-    if (rows === 0) return [];
-    var cols = matrix[0].length,
-        means,
-        i,
-        ii,
-        j,
-        w,
-        row;
-
-    if (dimension === 0) {
-        means = new Array(cols);
-        for (i = 0; i < cols; i++) {
-            means[i] = 0;
-        }
-        for (i = 0; i < rows; i++) {
-            row = matrix[i];
-            w = weights[i];
-            for (j = 0; j < cols; j++) {
-                means[j] += row[j] * w;
-            }
-        }
-    } else if (dimension === 1) {
-        means = new Array(rows);
-        for (i = 0; i < rows; i++) {
-            means[i] = 0;
-        }
-        for (j = 0; j < rows; j++) {
-            row = matrix[j];
-            w = weights[j];
-            for (i = 0; i < cols; i++) {
-                means[j] += row[i] * w;
-            }
-        }
-    } else {
-        throw new Error('Invalid dimension');
-    }
-
-    var weightSum = arrayStat.sum(weights);
-    if (weightSum !== 0) {
-        for (i = 0, ii = means.length; i < ii; i++) {
-            means[i] /= weightSum;
-        }
-    }
-    return means;
-}
-
-function weightedCovariance(matrix, weights, means, dimension) {
-    dimension = dimension || 0;
-    means = means || weightedMean(matrix, weights, dimension);
-    var s1 = 0,
-        s2 = 0;
-    for (var i = 0, ii = weights.length; i < ii; i++) {
-        s1 += weights[i];
-        s2 += weights[i] * weights[i];
-    }
-    var factor = s1 / (s1 * s1 - s2);
-    return weightedScatter(matrix, weights, means, factor, dimension);
-}
-
-function weightedScatter(matrix, weights, means, factor, dimension) {
-    dimension = dimension || 0;
-    means = means || weightedMean(matrix, weights, dimension);
-    if (typeof factor === 'undefined') {
-        factor = 1;
-    }
-    var rows = matrix.length;
-    if (rows === 0) {
-        return [[]];
-    }
-    var cols = matrix[0].length,
-        cov,
-        i,
-        j,
-        k,
-        s;
-
-    if (dimension === 0) {
-        cov = new Array(cols);
-        for (i = 0; i < cols; i++) {
-            cov[i] = new Array(cols);
-        }
-        for (i = 0; i < cols; i++) {
-            for (j = i; j < cols; j++) {
-                s = 0;
-                for (k = 0; k < rows; k++) {
-                    s += weights[k] * (matrix[k][j] - means[j]) * (matrix[k][i] - means[i]);
-                }
-                cov[i][j] = s * factor;
-                cov[j][i] = s * factor;
-            }
-        }
-    } else if (dimension === 1) {
-        cov = new Array(rows);
-        for (i = 0; i < rows; i++) {
-            cov[i] = new Array(rows);
-        }
-        for (i = 0; i < rows; i++) {
-            for (j = i; j < rows; j++) {
-                s = 0;
-                for (k = 0; k < cols; k++) {
-                    s += weights[k] * (matrix[j][k] - means[j]) * (matrix[i][k] - means[i]);
-                }
-                cov[i][j] = s * factor;
-                cov[j][i] = s * factor;
-            }
-        }
-    } else {
-        throw new Error('Invalid dimension');
-    }
-
-    return cov;
-}
-
-module.exports = {
-    entropy: entropy,
-    mean: mean,
-    standardDeviation: standardDeviation,
-    variance: variance,
-    median: median,
-    mode: mode,
-    skewness: skewness,
-    kurtosis: kurtosis,
-    standardError: standardError,
-    covariance: covariance,
-    scatter: scatter,
-    correlation: correlation,
-    zScores: zScores,
-    center: center,
-    standardize: standardize,
-    weightedVariance: weightedVariance,
-    weightedMean: weightedMean,
-    weightedCovariance: weightedCovariance,
-    weightedScatter: weightedScatter
-};
-
-},{"./array":105}],108:[function(require,module,exports){
+},{"ml-curve-fitting":73,"ml-matrix":110}],123:[function(require,module,exports){
 'use strict';
 
 //Code translate from Pascal source in http://pubs.acs.org/doi/pdf/10.1021/ac00205a007
@@ -19344,7 +21342,7 @@ function guessWindowSize(data, h){
 */
 module.exports = SavitzkyGolay;
 
-},{"extend":7,"ml-stat":106}],109:[function(require,module,exports){
+},{"extend":10,"ml-stat":127}],124:[function(require,module,exports){
 /**
  * Created by acastillo on 8/8/16.
  */
@@ -19449,7 +21447,7 @@ function fullClusterGeneratorVector(conn) {
     return clusterList;
 }
 
-},{}],110:[function(require,module,exports){
+},{}],125:[function(require,module,exports){
 'use strict';
 
 var HashTable = require('ml-hash-table');
@@ -19729,7 +21727,7 @@ function fillTemplateFunction(template, values) {
     return template;
 }
 
-},{"ml-hash-table":67}],111:[function(require,module,exports){
+},{"ml-hash-table":85}],126:[function(require,module,exports){
 'use strict';
 
 function compareNumbers(a, b) {
@@ -20215,9 +22213,13 @@ exports.cumulativeSum = function cumulativeSum(array) {
     }return result;
 };
 
-},{}],112:[function(require,module,exports){
-arguments[4][106][0].apply(exports,arguments)
-},{"./array":111,"./matrix":113,"dup":106}],113:[function(require,module,exports){
+},{}],127:[function(require,module,exports){
+'use strict';
+
+exports.array = require('./array');
+exports.matrix = require('./matrix');
+
+},{"./array":126,"./matrix":128}],128:[function(require,module,exports){
 'use strict';
 
 var arrayStat = require('./array');
@@ -20867,7 +22869,110 @@ exports.weightedScatter = function weightedScatter(matrix, weights, means, facto
     return cov;
 };
 
-},{"./array":111}],114:[function(require,module,exports){
+},{"./array":126}],129:[function(require,module,exports){
+'use strict';
+
+/* reader.toString() provides the following information
+    DIMENSIONS
+      point_number                   = size: 0
+      scan_number                    = size: 60
+      error_number                   = size: 1
+      _64_byte_string                = size: 64
+
+    GLOBAL ATTRIBUTES
+      dataset_completeness           = C1
+      ms_template_revision           = 1.0.1
+      netcdf_revision                = 4.2
+      languages                      = English
+      administrative_comments        =
+      netcdf_file_date_time_stamp    = 202003031432433600000
+      experiment_date_time_stamp     = 202003031432433600000
+      source_file_reference          = JC-012_cleavage test_Scan1_is1.datx 2020.03.03 14:32:43
+      source_file_format             = Advion ExpressIon Compact Mass Spectrometer Data System
+      source_file_date_time_stamp    = 202003031432433600000
+      experiment_title               =
+      experiment_type                = Continuum Mass Spectrum
+      test_ionization_mode           = Electrospray Ionization
+      test_ionization_polarity       = Positive Polarity
+      sample_state                   = Other State
+      test_separation_type           = No Chromatography
+      test_ms_inlet                  = Direct Inlet Probe
+      test_detector_type             = Electron Multiplier
+      test_resolution_type           = Constant Resolution
+      test_scan_function             = Mass Scan
+      test_scan_direction            = Up
+      test_scan_law                  = Linear
+      raw_data_mass_format           = Float
+      raw_data_time_format           = Double
+      raw_data_intensity_format      = Float
+      units                          = Seconds
+      global_mass_min                = 9.949999809265137
+      global_mass_max                = 1199.75
+      actual_run_time_length         = 133.46099853515625
+      starting_scan_number           = 1
+      actual_delay_time              = 0
+      raw_data_uniform_sampling_flag = 0
+
+    VARIABLES:
+      error_log                      = ["","","","","","","","","","","","","","","",""," (length: 64)
+      scan_index                     = [0,3096,6282,9865,13409,16765,20281,23603,27099,30 (length: 60)
+      point_count                    = [3096,3186,3583,3544,3356,3516,3322,3496,3351,3031 (length: 60)
+      flag_count                     = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0 (length: 60)
+      actual_scan_number             = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19 (length: 60)
+      a_d_coaddition_factor          = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 60)
+      a_d_sampling_rate              = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 60)
+      inter_scan_time                = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 60)
+      mass_range_min                 = [9.949999809265137,9.949999809265137,9.94999980926 (length: 60)
+      mass_range_max                 = [164.6999969482422,169.1999969482422,189.050003051 (length: 60)
+      scan_acquisition_time          = [0.08100000023841858,2.3420000076293945,4.60300016 (length: 60)
+      scan_duration                  = [2.261000007390976,2.261000156402588,2.25999975204 (length: 60)
+      resolution                     = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 60)
+      time_range_min                 = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 60)
+      time_range_max                 = [-9999,-9999,-9999,-9999,-9999,-9999,-9999,-9999,- (length: 60)
+      total_intensity                = [4498210816,4468554240,5001547264,5405233152,50000 (length: 60)
+      mass_values                    = [9.949999809265137,83.5,83.55000305175781,83.59999 (length: 199393)
+      intensity_values               = [0,818716,462148,0,735558,952901,0,165241,421829,0 (length: 199393)
+*/
+
+function advionGCMS(reader) {
+  var time = reader.getDataVariable('scan_acquisition_time');
+  var tic = reader.getDataVariable('total_intensity');
+
+  // variables to get the mass-intensity values
+  var scanIndex = reader.getDataVariable('scan_index');
+  var massValues = reader.getDataVariable('mass_values');
+  var intensityValues = reader.getDataVariable('intensity_values');
+  scanIndex.push(massValues.length);
+
+  var ms = new Array(time.length);
+  var index = 0;
+  for (var i = 0; i < ms.length; i++) {
+    var size = scanIndex[i + 1] - scanIndex[i];
+    ms[i] = [new Array(size), new Array(size)];
+
+    for (var j = 0; j < size; j++) {
+      ms[i][0][j] = massValues[index];
+      ms[i][1][j] = intensityValues[index++];
+    }
+  }
+
+  return {
+    times: time,
+    series: [{
+      name: 'tic',
+      dimension: 1,
+      data: tic
+    }, {
+      name: 'ms',
+      dimension: 2,
+      data: ms
+    }]
+  };
+}
+
+module.exports = advionGCMS;
+
+},{}],130:[function(require,module,exports){
 'use strict';
 
 /* reader.toString() provides the following information
@@ -20969,7 +23074,7 @@ function agilentGCMS(reader) {
 
 module.exports = agilentGCMS;
 
-},{}],115:[function(require,module,exports){
+},{}],131:[function(require,module,exports){
 'use strict';
 
 /* reader.toString() provides the following information
@@ -21062,7 +23167,7 @@ function agilentHPLC(reader) {
 
 module.exports = agilentHPLC;
 
-},{}],116:[function(require,module,exports){
+},{}],132:[function(require,module,exports){
 'use strict';
 
 function aiaTemplate(reader) {
@@ -21091,7 +23196,7 @@ function aiaTemplate(reader) {
 
 module.exports = aiaTemplate;
 
-},{}],117:[function(require,module,exports){
+},{}],133:[function(require,module,exports){
 'use strict';
 
 /* reader.toString() provides the following information
@@ -21195,7 +23300,7 @@ function finniganGCMS(reader) {
 
 module.exports = finniganGCMS;
 
-},{}],118:[function(require,module,exports){
+},{}],134:[function(require,module,exports){
 'use strict';
 
 /* reader.toString() provides the following information
@@ -21300,7 +23405,7 @@ function finniganGCMS(reader) {
 
 module.exports = finniganGCMS;
 
-},{}],119:[function(require,module,exports){
+},{}],135:[function(require,module,exports){
 'use strict';
 
 var NetCDFReader = require('netcdfjs');
@@ -21310,6 +23415,7 @@ var brukerGCMS = require('./brukerGCMS');
 var agilentHPLC = require('./agilentHPLC');
 var finniganGCMS = require('./finniganGCMS');
 var shimadzuGCMS = require('./shimadzuGCMS');
+var advionGCMS = require('./advionGCMS');
 var aiaTemplate = require('./aiaTemplate');
 
 /**
@@ -21324,7 +23430,7 @@ function netcdfGcms(data, options = {}) {
   var reader = new NetCDFReader(data);
   var globalAttributes = reader.globalAttributes;
 
-  var instrument_mfr = reader.getDataVariableAsString('instrument_mfr');
+  var instrument_mfr = reader.dataVariableExists('instrument_mfr') && reader.getDataVariableAsString('instrument_mfr');
   var dataset_origin = reader.attributeExists('dataset_origin');
   var mass_values = reader.dataVariableExists('mass_values');
   var detector_name = reader.getAttribute('detector_name');
@@ -21339,8 +23445,12 @@ function netcdfGcms(data, options = {}) {
     ans = finniganGCMS(reader);
   } else if (mass_values && instrument_mfr && instrument_mfr.match(/bruker/i)) {
     ans = brukerGCMS(reader);
+  } else if (mass_values && instrument_mfr && instrument_mfr.match(/bruker/i)) {
+    ans = brukerGCMS(reader);
   } else if (mass_values && source_file_format && source_file_format.match(/shimadzu/i)) {
     ans = shimadzuGCMS(reader);
+  } else if (mass_values && source_file_format && source_file_format.match(/advion/i)) {
+    ans = advionGCMS(reader);
   } else if (detector_name && detector_name.match(/(dad|tic)/i)) {
     // diode array agilent HPLC
     ans = agilentHPLC(reader);
@@ -21413,7 +23523,7 @@ module.exports.fromAgilentHPLC = fromAgilentHPLC;
 module.exports.fromFinniganGCMS = fromFinniganGCMS;
 module.exports.fromAiaTemplate = fromAiaTemplate;
 
-},{"./agilentGCMS":114,"./agilentHPLC":115,"./aiaTemplate":116,"./brukerGCMS":117,"./finniganGCMS":118,"./shimadzuGCMS":120,"netcdfjs":123}],120:[function(require,module,exports){
+},{"./advionGCMS":129,"./agilentGCMS":130,"./agilentHPLC":131,"./aiaTemplate":132,"./brukerGCMS":133,"./finniganGCMS":134,"./shimadzuGCMS":136,"netcdfjs":139}],136:[function(require,module,exports){
 'use strict';
 
 /* reader.toString() provides the following information
@@ -21525,7 +23635,7 @@ function shimadzuGCMS(reader) {
 
 module.exports = shimadzuGCMS;
 
-},{}],121:[function(require,module,exports){
+},{}],137:[function(require,module,exports){
 'use strict';
 
 var types = require('./types');
@@ -21588,7 +23698,7 @@ function record(buffer, variable, recordDimension) {
 module.exports.nonRecord = nonRecord;
 module.exports.record = record;
 
-},{"./types":125}],122:[function(require,module,exports){
+},{"./types":141}],138:[function(require,module,exports){
 'use strict';
 
 var utils = require('./utils');
@@ -21818,10 +23928,11 @@ function variablesList(buffer, recordId, version) {
 
 module.exports = header;
 
-},{"./types":125,"./utils":126}],123:[function(require,module,exports){
+},{"./types":141,"./utils":142}],139:[function(require,module,exports){
 'use strict';
 
-var IOBuffer = require('iobuffer');
+var _require = require('iobuffer'),
+    IOBuffer = _require.IOBuffer;
 
 var utils = require('./utils');
 var data = require('./data');
@@ -21895,25 +24006,23 @@ class NetCDFReader {
   /**
    * Returns the value of an attribute
    * @param {string} attributeName
-   * @return {string} Value of the attributeName or undefined
+   * @return {string} Value of the attributeName or null
    */
   getAttribute(attributeName) {
     var attribute = this.globalAttributes.find(val => val.name === attributeName);
-    if (attribute) return attribute.value.trim();
-    return undefined;
+    if (attribute) return attribute.value;
+    return null;
   }
 
   /**
    * Returns the value of a variable as a string
    * @param {string} variableName
-   * @return {string} Value of the variable as a string or undefined
+   * @return {string} Value of the variable as a string or null
    */
   getDataVariableAsString(variableName) {
-    try {
-      return this.getDataVariable(variableName).join('').trim();
-    } catch (e) {
-      return undefined;
-    }
+    var variable = this.getDataVariable(variableName);
+    if (variable) return variable.join('');
+    return null;
   }
 
   /**
@@ -21940,7 +24049,7 @@ class NetCDFReader {
    * @return {Array} - List with the variable values
    */
   getDataVariable(variableName) {
-    var variable;
+    var variable = void 0;
     if (typeof variableName === 'string') {
       // search the variable
       variable = this.header.variables.find(function (val) {
@@ -21990,7 +24099,7 @@ class NetCDFReader {
 
 module.exports = NetCDFReader;
 
-},{"./data":121,"./header":122,"./toString":124,"./utils":126,"iobuffer":16}],124:[function(require,module,exports){
+},{"./data":137,"./header":138,"./toString":140,"./utils":142,"iobuffer":20}],140:[function(require,module,exports){
 'use strict';
 
 function toString() {
@@ -22024,7 +24133,7 @@ function toString() {
 
 module.exports = toString;
 
-},{}],125:[function(require,module,exports){
+},{}],141:[function(require,module,exports){
 'use strict';
 
 var notNetcdf = require('./utils').notNetcdf;
@@ -22183,7 +24292,7 @@ module.exports.num2bytes = num2bytes;
 module.exports.str2num = str2num;
 module.exports.readType = readType;
 
-},{"./utils":126}],126:[function(require,module,exports){
+},{"./utils":142}],142:[function(require,module,exports){
 'use strict';
 
 /**
@@ -22233,7 +24342,7 @@ module.exports.notNetcdf = notNetcdf;
 module.exports.padding = padding;
 module.exports.readName = readName;
 
-},{}],127:[function(require,module,exports){
+},{}],143:[function(require,module,exports){
 "use strict";
 
 module.exports = newArray;
@@ -22247,7 +24356,95 @@ function newArray(n, value) {
   return array;
 }
 
-},{}],128:[function(require,module,exports){
+},{}],144:[function(require,module,exports){
+'use strict';
+
+var getSpectrumType = require('./getSpectrumType');
+var getNucleusFrom2DExperiment = require('./getNucleusFrom2DExperiment');
+
+function getMetadata(parsedJcamp) {
+  var metadata = {
+    dimension: parsedJcamp.twoD ? 2 : 1,
+    nucleus: [],
+    isFid: false,
+    isFt: false
+  };
+
+  var info = parsedJcamp.info;
+  maybeAdd(metadata, 'title', info['TITLE']);
+  maybeAdd(metadata, 'solvent', info['.SOLVENTNAME']);
+  maybeAdd(metadata, 'pulse', info['.PULSESEQUENCE'] || info['.PULPROG'] || info['$PULPROG']);
+  maybeAdd(metadata, 'experiment', getSpectrumType(metadata, info));
+  maybeAdd(metadata, 'temperature', parseFloat(info['$TE'] || info['.TE']));
+  maybeAdd(metadata, 'frequency', parseFloat(info['.OBSERVEFREQUENCY']));
+  maybeAdd(metadata, 'type', info['DATATYPE']);
+  maybeAdd(metadata, 'probe', info['$PROBHD']);
+  if (info['$FNTYPE'] !== undefined) {
+    maybeAdd(metadata, 'acquisitionMode', parseInt(info['$FNTYPE']));
+  }
+  maybeAdd(metadata, 'expno', parseInt(info['$EXPNO']));
+  if (metadata.type) {
+    if (metadata.type.toUpperCase().indexOf('FID') >= 0) metadata.isFid = true;else if (metadata.type.toUpperCase().indexOf('SPECTRUM') >= 0) {
+      metadata.isFt = true;
+    }
+  }
+
+  if (metadata.dimension === 1) {
+    var nucleus = info['.OBSERVENUCLEUS'];
+    if (nucleus) {
+      metadata.nucleus = [nucleus.replace(/[^A-Za-z0-9]/g, '')];
+    }
+  } else {
+    var _nucleus = info['.NUCLEUS'];
+    if (_nucleus) {
+      metadata.nucleus = _nucleus.split(',').map(nuc => nuc.trim());
+    }
+  }
+  if (metadata.nucleus.length === 0) {
+    metadata.nucleus = getNucleusFrom2DExperiment(metadata.experiment);
+  }
+
+  if (info['$DATE']) {
+    metadata.date = new Date(info['$DATE'] * 1000).toISOString();
+  }
+  return metadata;
+}
+
+module.exports = getMetadata;
+
+function maybeAdd(obj, name, value) {
+  if (value !== undefined) {
+    if (typeof value === 'string') {
+      if (value.startsWith('<') && value.endsWith('>')) {
+        value = value.substring(1, value.length - 2);
+      }
+      obj[name] = value.trim();
+    } else {
+      obj[name] = value;
+    }
+  }
+}
+
+},{"./getNucleusFrom2DExperiment":145,"./getSpectrumType":146}],145:[function(require,module,exports){
+'use strict';
+
+function getNucleusFrom2DExperiment(experiment) {
+  if (typeof experiment !== 'string') {
+    return [];
+  }
+  experiment = experiment.toLowerCase();
+  if (experiment.includes('jres')) {
+    return ['1H'];
+  }
+  if (experiment.includes('hmbc') || experiment.includes('hsqc')) {
+    return ['1H', '13C'];
+  }
+  return ['1H', '1H'];
+}
+
+module.exports = getNucleusFrom2DExperiment;
+
+},{}],146:[function(require,module,exports){
 'use strict';
 
 /**
@@ -22256,65 +24453,75 @@ function newArray(n, value) {
  * @return {string}
  */
 
-module.exports = function getSpectrumType(pulse) {
-    if (typeof pulse !== 'string') {
-        return '';
-    }
+module.exports = function getSpectrumType(meta = {}, info = {}) {
+  if (meta === null) meta = {};
+  if (typeof meta === 'string') {
+    meta = { pulse: meta };
+  }
+  var spectyp = (info['$SPECTYP'] || '').replace(/^<(.*)>$/, '$1').toLowerCase();
 
-    pulse = pulse.toLowerCase();
-    if (pulse.includes('zg')) {
-        return '1d';
-    }
+  if (spectyp) return spectyp;
 
-    if (pulse.includes('hsqct') || pulse.includes('invi') && (pulse.includes('ml') || pulse.includes('di'))) {
-        return 'hsqctocsy';
-    }
-
-    if (pulse.includes('hsqc') || pulse.includes('invi')) {
-        return 'hsqc';
-    }
-
-    if (pulse.includes('hmbc') || pulse.includes('inv4') && pulse.includes('lp')) {
-        return 'hmbc';
-    }
-
-    if (pulse.includes('cosy')) {
-        return 'cosy';
-    }
-
-    if (pulse.includes('jres')) {
-        return 'jres';
-    }
-
-    if (pulse.includes('tocsy') || pulse.includes('mlev') || pulse.includes('dipsi')) {
-        return 'tocsy';
-    }
-
-    if (pulse.includes('noesy')) {
-        return 'noesy';
-    }
-
-    if (pulse.includes('roesy')) {
-        return 'roesy';
-    }
-
-    if (pulse.includes('dept')) {
-        return 'dept';
-    }
-
-    if (pulse.includes('jmod') || pulse.includes('apt')) {
-        return 'aptjmod';
-    }
-
+  var pulse = meta.pulse;
+  if (typeof pulse !== 'string') {
     return '';
+  }
+
+  pulse = pulse.toLowerCase();
+  if (pulse.includes('zg')) {
+    return '1d';
+  }
+
+  if (pulse.includes('hsqct') || pulse.includes('invi') && (pulse.includes('ml') || pulse.includes('di'))) {
+    return 'hsqctocsy';
+  }
+
+  if (pulse.includes('hsqc') || pulse.includes('invi')) {
+    return 'hsqc';
+  }
+
+  if (pulse.includes('hmbc') || pulse.includes('inv4') && pulse.includes('lp')) {
+    return 'hmbc';
+  }
+
+  if (pulse.includes('cosy')) {
+    return 'cosy';
+  }
+
+  if (pulse.includes('jres')) {
+    return 'jres';
+  }
+
+  if (pulse.includes('tocsy') || pulse.includes('mlev') || pulse.includes('dipsi')) {
+    return 'tocsy';
+  }
+
+  if (pulse.includes('noesy')) {
+    return 'noesy';
+  }
+
+  if (pulse.includes('roesy')) {
+    return 'roesy';
+  }
+
+  if (pulse.includes('dept')) {
+    return 'dept';
+  }
+
+  if (pulse.includes('jmod') || pulse.includes('apt')) {
+    return 'aptjmod';
+  }
+
+  return '';
 };
 
-},{}],129:[function(require,module,exports){
+},{}],147:[function(require,module,exports){
 'use strict';
 
 var jcampconverter = require('jcampconverter');
 var SD = require('spectra-data');
 
+var getMetadata = require('./getMetadata');
 var getSpectrumType = require('./getSpectrumType');
 
 /**
@@ -22360,55 +24567,12 @@ exports.parseJcamp = function (jcampData, options) {
   options = Object.assign({}, defaultOptions, options);
 
   var jcampString = jcampData.toString();
-  var jcamp = jcampconverter.convert(jcampString, {
+  var parsedJcamp = jcampconverter.convert(jcampString, {
     keepRecordsRegExp: /.*/,
     withoutXY: true
   });
 
-  var metadata = {
-    dimension: jcamp.twoD ? 2 : 1,
-    nucleus: [],
-    isFid: false,
-    isFt: false
-  };
-
-  var info = jcamp.info;
-  maybeAdd(metadata, 'title', info['TITLE']);
-  maybeAdd(metadata, 'solvent', info['.SOLVENTNAME']);
-  maybeAdd(metadata, 'pulse', info['.PULSESEQUENCE'] || info['.PULPROG'] || info['$PULPROG']);
-  maybeAdd(metadata, 'experiment', getSpectrumType(metadata.pulse));
-  maybeAdd(metadata, 'temperature', parseFloat(info['$TE'] || info['.TE']));
-  maybeAdd(metadata, 'frequency', parseFloat(info['.OBSERVEFREQUENCY']));
-  maybeAdd(metadata, 'type', info['DATATYPE']);
-  maybeAdd(metadata, 'probe', info['$PROBHD']);
-  if (info['$FNTYPE'] !== undefined) {
-    maybeAdd(metadata, 'acquisitionMode', parseInt(info['$FNTYPE']));
-  }
-  maybeAdd(metadata, 'expno', parseInt(info['$EXPNO']));
-  if (metadata.type) {
-    if (metadata.type.toUpperCase().indexOf('FID') >= 0) metadata.isFid = true;else if (metadata.type.toUpperCase().indexOf('SPECTRUM') >= 0) {
-      metadata.isFt = true;
-    }
-  }
-
-  if (metadata.dimension === 1) {
-    var nucleus = info['.OBSERVENUCLEUS'];
-    if (nucleus) {
-      metadata.nucleus = [nucleus.replace(/[^A-Za-z0-9]/g, '')];
-    }
-  } else {
-    var _nucleus = info['.NUCLEUS'];
-    if (_nucleus) {
-      metadata.nucleus = _nucleus.split(',').map(nuc => nuc.trim());
-    }
-  }
-  if (metadata.nucleus.length === 0) {
-    metadata.nucleus = exports.getNucleusFrom2DExperiment(metadata.experiment);
-  }
-
-  if (info['$DATE']) {
-    metadata.date = new Date(info['$DATE'] * 1000).toISOString();
-  }
+  var metadata = getMetadata(parsedJcamp);
 
   if (options.computeRanges && metadata.isFt && metadata.dimension === 1 && metadata.nucleus[0] === '1H') {
     var rangesOptions = Object.assign({}, defaultRangesOptions, options.ranges);
@@ -22434,36 +24598,13 @@ exports.parseJcamp = function (jcampData, options) {
  * @param {string} experiment
  * @return {string[]}
  */
-exports.getNucleusFrom2DExperiment = function (experiment) {
-  if (typeof experiment !== 'string') {
-    return [];
-  }
-  experiment = experiment.toLowerCase();
-  if (experiment.includes('jres')) {
-    return ['1H'];
-  }
-  if (experiment.includes('hmbc') || experiment.includes('hsqc')) {
-    return ['1H', '13C'];
-  }
-  return ['1H', '1H'];
-};
+exports.getNucleusFrom2DExperiment = require('./getNucleusFrom2DExperiment');
+
+exports.getMetadata = require('./getMetadata');
 
 exports.getSpectrumType = getSpectrumType;
 
-function maybeAdd(obj, name, value) {
-  if (value !== undefined) {
-    if (typeof value === 'string') {
-      if (value.startsWith('<') && value.endsWith('>')) {
-        value = value.substring(1, value.length - 2);
-      }
-      obj[name] = value.trim();
-    } else {
-      obj[name] = value;
-    }
-  }
-}
-
-},{"./getSpectrumType":128,"jcampconverter":18,"spectra-data":168}],130:[function(require,module,exports){
+},{"./getMetadata":144,"./getNucleusFrom2DExperiment":145,"./getSpectrumType":146,"jcampconverter":24,"spectra-data":192}],148:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -22768,7 +24909,7 @@ class SpinSystem {
 }
 exports.default = SpinSystem;
 
-},{"ml-hclust":73,"ml-matrix":92,"ml-simple-clustering":109,"new-array":127}],131:[function(require,module,exports){
+},{"ml-hclust":91,"ml-matrix":110,"ml-simple-clustering":124,"new-array":143}],149:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -22806,7 +24947,7 @@ function _interopRequireDefault(obj) {
   return obj && obj.__esModule ? obj : { default: obj };
 }
 
-},{"./SpinSystem":130,"./simulate1D":133,"./simulate2D":134}],132:[function(require,module,exports){
+},{"./SpinSystem":148,"./simulate1D":151,"./simulate2D":152}],150:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -22857,7 +24998,7 @@ function getPauli(mult) {
   if (mult === 2) return pauli2;else return createPauli(mult);
 }
 
-},{"ml-sparse-matrix":110}],133:[function(require,module,exports){
+},{"ml-sparse-matrix":125}],151:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -22889,6 +25030,19 @@ function _interopRequireDefault(obj) {
 
 var smallValue = 1e-2;
 
+/**
+ * This function simulates a one dimensional nmr spectrum. This function returns an array containing the relative intensities of the spectrum in the specified simulation window (from-to).
+ * @param {object} spinSystem - The SpinSystem object to be simulated
+ * @param {object} options
+ * @param {number} options.frequency - The frequency in Mhz of the fake spectrometer that records the spectrum. 400 by default
+ * @param {number} options.from - The low limit of the ordinate variable. 0 by default
+ * @param {number} options.to - The upper limit of the ordinate variable. 10 by default|
+ * @param {number} options.lineWidth - The linewidth of the output spectrum, expresed in Hz. 1Hz by default
+ * @param {number} options.nbPoints - Number of points of the output spectrum. 1024 by default
+ * @param {number} options.maxClusterSize - Maximum number of atoms on each cluster that can be considered to be simulated together. It affects the the quality and speed of the simulation. 10 by default
+ * @param {number} options.output - ['y' or 'xy'] it specify the output format. if 'y' is specified, the output of the simulation will be a single vector containing the y data of the spectrum. if 'xy' is specified, the output of the simulation will be an object containing {x,[], y:[]}, the x, y of the spectrum. 'y' by default
+ * @return {object}
+ */
 function simulate1d(spinSystem, options) {
   var i, j;
   var _options$lineWidth = options.lineWidth,
@@ -22915,15 +25069,20 @@ function simulate1d(spinSystem, options) {
     chemicalShifts[i] = chemicalShifts[i] * frequencyMHz;
   }
 
-  var lineWidthPoints = nbPoints * lineWidth / Math.abs(to - from) / 2.355;
-  var lnPoints = lineWidthPoints * 20;
+  //Prepare pseudo voigt
+  var lineWidthPointsG = nbPoints * lineWidth / Math.abs(to - from) / 2.355;
+  var lineWidthPointsL = nbPoints * lineWidth / Math.abs(to - from) / 2;
+  var lnPoints = lineWidthPointsL * 40;
 
   var gaussianLength = lnPoints | 0;
   var gaussian = new Array(gaussianLength);
   var b = lnPoints / 2;
-  var c = lineWidthPoints * lineWidthPoints * 2;
+  var c = lineWidthPointsG * lineWidthPointsG * 2;
+  var l2 = lineWidthPointsL * lineWidthPointsL;
+  var g2pi = lineWidthPointsG * Math.sqrt(2 * Math.PI);
   for (i = 0; i < gaussianLength; i++) {
-    gaussian[i] = 1e9 * Math.exp(-((i - b) * (i - b)) / c);
+    var x2 = (i - b) * (i - b);
+    gaussian[i] = 10e9 * (Math.exp(-x2 / c) / g2pi + lineWidthPointsL / ((x2 + l2) * Math.PI));
   }
 
   var result = options.withNoise ? [...new Array(nbPoints)].map(() => Math.random() * noiseFactor) : new Array(nbPoints).fill(0);
@@ -23058,7 +25217,7 @@ function simulate1d(spinSystem, options) {
     var numFreq = frequencies.length;
     if (numFreq > 0) {
       weight = weight / sumI;
-      var diff = lineWidth / 32;
+      var diff = lineWidth / 64;
       var valFreq = frequencies[0];
       var inte = intensities[0];
       var count = 1;
@@ -23096,7 +25255,16 @@ function simulate1d(spinSystem, options) {
   }
   throw new RangeError('wrong output option');
 }
-
+/**
+ * Add a new peak to the current array
+ * @param {Array} result - Array of numbers
+ * @param {number} freq - center of the peak
+ * @param {*} height - peak height
+ * @param {*} from - start point of the peak
+ * @param {*} to - end point of the peak
+ * @param {*} nbPoints - number of points to add
+ * @param {*} gaussian - Shape to fill with
+ */
 function addPeak(result, freq, height, from, to, nbPoints, gaussian) {
   var center = nbPoints * (-freq - from) / (to - from) | 0;
   var lnPoints = gaussian.length;
@@ -23118,7 +25286,15 @@ function triuTimesAbs(A, val) {
     return v;
   });
 }
-
+/**
+ * Create a hamiltonian matrix for the given spinsystem
+ * @param {Array} chemicalShifts - An array containing the chemical shift in Hz
+ * @param {Array} couplingConstants - An array containing the coupling constants in Hz
+ * @param {Array} multiplicity - An array specifiying the multiplicities of each scalar coupling
+ * @param {Array} conMatrix - A one step connectivity matrix for the given spin system
+ * @param {Array} cluster - An binary array specifiying the spins to be considered for this hamiltonial
+ * @return {object}
+ */
 function getHamiltonian(chemicalShifts, couplingConstants, multiplicity, conMatrix, cluster) {
   var hamSize = 1;
   for (var i = 0; i < cluster.length; i++) {
@@ -23190,7 +25366,7 @@ function _getX(from, to, nbPoints) {
   return x;
 }
 
-},{"./pauli":132,"binary-search":3,"ml-matrix":92,"ml-sparse-matrix":110,"num-sort":135}],134:[function(require,module,exports){
+},{"./pauli":150,"binary-search":3,"ml-matrix":110,"ml-sparse-matrix":125,"num-sort":153}],152:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -23296,7 +25472,7 @@ function addPeak(matrix, peak) {
   }
 }
 
-},{"ml-matrix":92}],135:[function(require,module,exports){
+},{"ml-matrix":110}],153:[function(require,module,exports){
 'use strict';
 
 var numberIsNan = require('number-is-nan');
@@ -23319,14 +25495,14 @@ exports.desc = function (a, b) {
 	return b - a;
 };
 
-},{"number-is-nan":136}],136:[function(require,module,exports){
+},{"number-is-nan":154}],154:[function(require,module,exports){
 'use strict';
 
 module.exports = Number.isNaN || function (x) {
 	return x !== x;
 };
 
-},{}],137:[function(require,module,exports){
+},{}],155:[function(require,module,exports){
 // Top level file is just a mixin of submodules & constants
 'use strict';
 
@@ -23342,7 +25518,7 @@ assign(pako, deflate, inflate, constants);
 
 module.exports = pako;
 
-},{"./lib/deflate":138,"./lib/inflate":139,"./lib/utils/common":140,"./lib/zlib/constants":143}],138:[function(require,module,exports){
+},{"./lib/deflate":156,"./lib/inflate":157,"./lib/utils/common":158,"./lib/zlib/constants":161}],156:[function(require,module,exports){
 'use strict';
 
 var zlib_deflate = require('./zlib/deflate');
@@ -23730,7 +25906,7 @@ exports.deflate = deflate;
 exports.deflateRaw = deflateRaw;
 exports.gzip = gzip;
 
-},{"./utils/common":140,"./utils/strings":141,"./zlib/deflate":145,"./zlib/messages":150,"./zlib/zstream":152}],139:[function(require,module,exports){
+},{"./utils/common":158,"./utils/strings":159,"./zlib/deflate":163,"./zlib/messages":168,"./zlib/zstream":170}],157:[function(require,module,exports){
 'use strict';
 
 var zlib_inflate = require('./zlib/inflate');
@@ -24150,7 +26326,7 @@ exports.inflate = inflate;
 exports.inflateRaw = inflateRaw;
 exports.ungzip = inflate;
 
-},{"./utils/common":140,"./utils/strings":141,"./zlib/constants":143,"./zlib/gzheader":146,"./zlib/inflate":148,"./zlib/messages":150,"./zlib/zstream":152}],140:[function(require,module,exports){
+},{"./utils/common":158,"./utils/strings":159,"./zlib/constants":161,"./zlib/gzheader":164,"./zlib/inflate":166,"./zlib/messages":168,"./zlib/zstream":170}],158:[function(require,module,exports){
 'use strict';
 
 var TYPED_OK = typeof Uint8Array !== 'undefined' && typeof Uint16Array !== 'undefined' && typeof Int32Array !== 'undefined';
@@ -24257,7 +26433,7 @@ exports.setTyped = function (on) {
 
 exports.setTyped(TYPED_OK);
 
-},{}],141:[function(require,module,exports){
+},{}],159:[function(require,module,exports){
 // String encode/decode helpers
 'use strict';
 
@@ -24467,7 +26643,7 @@ exports.utf8border = function (buf, max) {
   return pos + _utf8len[buf[pos]] > max ? pos : max;
 };
 
-},{"./common":140}],142:[function(require,module,exports){
+},{"./common":158}],160:[function(require,module,exports){
 'use strict';
 
 // Note: adler32 takes 12% for level 0 and 2% for level 6.
@@ -24519,7 +26695,7 @@ function adler32(adler, buf, len, pos) {
 
 module.exports = adler32;
 
-},{}],143:[function(require,module,exports){
+},{}],161:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -24588,7 +26764,7 @@ module.exports = {
   //Z_NULL:                 null // Use -1 or null inline, depending on var type
 };
 
-},{}],144:[function(require,module,exports){
+},{}],162:[function(require,module,exports){
 'use strict';
 
 // Note: we can't get significant speed boost here.
@@ -24649,7 +26825,7 @@ function crc32(crc, buf, len, pos) {
 
 module.exports = crc32;
 
-},{}],145:[function(require,module,exports){
+},{}],163:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26475,7 +28651,7 @@ exports.deflatePrime = deflatePrime;
 exports.deflateTune = deflateTune;
 */
 
-},{"../utils/common":140,"./adler32":142,"./crc32":144,"./messages":150,"./trees":151}],146:[function(require,module,exports){
+},{"../utils/common":158,"./adler32":160,"./crc32":162,"./messages":168,"./trees":169}],164:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26535,7 +28711,7 @@ function GZheader() {
 
 module.exports = GZheader;
 
-},{}],147:[function(require,module,exports){
+},{}],165:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -26886,7 +29062,7 @@ module.exports = function inflate_fast(strm, start) {
   return;
 };
 
-},{}],148:[function(require,module,exports){
+},{}],166:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -28531,7 +30707,7 @@ exports.inflateSyncPoint = inflateSyncPoint;
 exports.inflateUndermine = inflateUndermine;
 */
 
-},{"../utils/common":140,"./adler32":142,"./crc32":144,"./inffast":147,"./inftrees":149}],149:[function(require,module,exports){
+},{"../utils/common":158,"./adler32":160,"./crc32":162,"./inffast":165,"./inftrees":167}],167:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -28862,7 +31038,7 @@ module.exports = function inflate_table(type, lens, lens_index, codes, table, ta
   return 0;
 };
 
-},{"../utils/common":140}],150:[function(require,module,exports){
+},{"../utils/common":158}],168:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -28896,7 +31072,7 @@ module.exports = {
   '-6': 'incompatible version' /* Z_VERSION_ERROR (-6) */
 };
 
-},{}],151:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -30096,7 +32272,7 @@ exports._tr_flush_block = _tr_flush_block;
 exports._tr_tally = _tr_tally;
 exports._tr_align = _tr_align;
 
-},{"../utils/common":140}],152:[function(require,module,exports){
+},{"../utils/common":158}],170:[function(require,module,exports){
 'use strict';
 
 // (C) 1995-2013 Jean-loup Gailly and Mark Adler
@@ -30145,7 +32321,52 @@ function ZStream() {
 
 module.exports = ZStream;
 
-},{}],153:[function(require,module,exports){
+},{}],171:[function(require,module,exports){
+(function (process){
+'use strict';
+
+if (!process.version || process.version.indexOf('v0.') === 0 || process.version.indexOf('v1.') === 0 && process.version.indexOf('v1.8.') !== 0) {
+  module.exports = { nextTick: nextTick };
+} else {
+  module.exports = process;
+}
+
+function nextTick(fn, arg1, arg2, arg3) {
+  if (typeof fn !== 'function') {
+    throw new TypeError('"callback" argument must be a function');
+  }
+  var len = arguments.length;
+  var args, i;
+  switch (len) {
+    case 0:
+    case 1:
+      return process.nextTick(fn);
+    case 2:
+      return process.nextTick(function afterTickOne() {
+        fn.call(null, arg1);
+      });
+    case 3:
+      return process.nextTick(function afterTickTwo() {
+        fn.call(null, arg1, arg2);
+      });
+    case 4:
+      return process.nextTick(function afterTickThree() {
+        fn.call(null, arg1, arg2, arg3);
+      });
+    default:
+      args = new Array(len - 1);
+      i = 0;
+      while (i < args.length) {
+        args[i++] = arguments[i];
+      }
+      return process.nextTick(function afterTick() {
+        fn.apply(null, args);
+      });
+  }
+}
+
+}).call(this,require('_process'))
+},{"_process":172}],172:[function(require,module,exports){
 'use strict';
 
 // shim for using process in browser
@@ -30334,7 +32555,2393 @@ process.umask = function () {
     return 0;
 };
 
-},{}],154:[function(require,module,exports){
+},{}],173:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./lib/_stream_duplex.js');
+
+},{"./lib/_stream_duplex.js":174}],174:[function(require,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// a duplex stream is just a stream that is both readable and writable.
+// Since JS doesn't have multiple prototypal inheritance, this class
+// prototypally inherits from Readable, and then parasitically from
+// Writable.
+
+'use strict';
+
+/*<replacement>*/
+
+var pna = require('process-nextick-args');
+/*</replacement>*/
+
+/*<replacement>*/
+var objectKeys = Object.keys || function (obj) {
+  var keys = [];
+  for (var key in obj) {
+    keys.push(key);
+  }return keys;
+};
+/*</replacement>*/
+
+module.exports = Duplex;
+
+/*<replacement>*/
+var util = require('core-util-is');
+util.inherits = require('inherits');
+/*</replacement>*/
+
+var Readable = require('./_stream_readable');
+var Writable = require('./_stream_writable');
+
+util.inherits(Duplex, Readable);
+
+{
+  // avoid scope creep, the keys array can then be collected
+  var keys = objectKeys(Writable.prototype);
+  for (var v = 0; v < keys.length; v++) {
+    var method = keys[v];
+    if (!Duplex.prototype[method]) Duplex.prototype[method] = Writable.prototype[method];
+  }
+}
+
+function Duplex(options) {
+  if (!(this instanceof Duplex)) return new Duplex(options);
+
+  Readable.call(this, options);
+  Writable.call(this, options);
+
+  if (options && options.readable === false) this.readable = false;
+
+  if (options && options.writable === false) this.writable = false;
+
+  this.allowHalfOpen = true;
+  if (options && options.allowHalfOpen === false) this.allowHalfOpen = false;
+
+  this.once('end', onend);
+}
+
+Object.defineProperty(Duplex.prototype, 'writableHighWaterMark', {
+  // making it explicit this property is not enumerable
+  // because otherwise some prototype manipulation in
+  // userland will fail
+  enumerable: false,
+  get: function get() {
+    return this._writableState.highWaterMark;
+  }
+});
+
+// the no-half-open enforcer
+function onend() {
+  // if we allow half-open state, or if the writable side ended,
+  // then we're ok.
+  if (this.allowHalfOpen || this._writableState.ended) return;
+
+  // no more data can be written.
+  // But allow more writes to happen in this tick.
+  pna.nextTick(onEndNT, this);
+}
+
+function onEndNT(self) {
+  self.end();
+}
+
+Object.defineProperty(Duplex.prototype, 'destroyed', {
+  get: function get() {
+    if (this._readableState === undefined || this._writableState === undefined) {
+      return false;
+    }
+    return this._readableState.destroyed && this._writableState.destroyed;
+  },
+  set: function set(value) {
+    // we ignore the value if the stream
+    // has not been initialized yet
+    if (this._readableState === undefined || this._writableState === undefined) {
+      return;
+    }
+
+    // backward compatibility, the user is explicitly
+    // managing destroyed
+    this._readableState.destroyed = value;
+    this._writableState.destroyed = value;
+  }
+});
+
+Duplex.prototype._destroy = function (err, cb) {
+  this.push(null);
+  this.end();
+
+  pna.nextTick(cb, err);
+};
+
+},{"./_stream_readable":176,"./_stream_writable":178,"core-util-is":8,"inherits":19,"process-nextick-args":171}],175:[function(require,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// a passthrough stream.
+// basically just the most minimal sort of Transform stream.
+// Every written chunk gets output as-is.
+
+'use strict';
+
+module.exports = PassThrough;
+
+var Transform = require('./_stream_transform');
+
+/*<replacement>*/
+var util = require('core-util-is');
+util.inherits = require('inherits');
+/*</replacement>*/
+
+util.inherits(PassThrough, Transform);
+
+function PassThrough(options) {
+  if (!(this instanceof PassThrough)) return new PassThrough(options);
+
+  Transform.call(this, options);
+}
+
+PassThrough.prototype._transform = function (chunk, encoding, cb) {
+  cb(null, chunk);
+};
+
+},{"./_stream_transform":177,"core-util-is":8,"inherits":19}],176:[function(require,module,exports){
+(function (process,global){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+'use strict';
+
+/*<replacement>*/
+
+var pna = require('process-nextick-args');
+/*</replacement>*/
+
+module.exports = Readable;
+
+/*<replacement>*/
+var isArray = require('isarray');
+/*</replacement>*/
+
+/*<replacement>*/
+var Duplex;
+/*</replacement>*/
+
+Readable.ReadableState = ReadableState;
+
+/*<replacement>*/
+var EE = require('events').EventEmitter;
+
+var EElistenerCount = function EElistenerCount(emitter, type) {
+  return emitter.listeners(type).length;
+};
+/*</replacement>*/
+
+/*<replacement>*/
+var Stream = require('./internal/streams/stream');
+/*</replacement>*/
+
+/*<replacement>*/
+
+var Buffer = require('safe-buffer').Buffer;
+var OurUint8Array = global.Uint8Array || function () {};
+function _uint8ArrayToBuffer(chunk) {
+  return Buffer.from(chunk);
+}
+function _isUint8Array(obj) {
+  return Buffer.isBuffer(obj) || obj instanceof OurUint8Array;
+}
+
+/*</replacement>*/
+
+/*<replacement>*/
+var util = require('core-util-is');
+util.inherits = require('inherits');
+/*</replacement>*/
+
+/*<replacement>*/
+var debugUtil = require('util');
+var debug = void 0;
+if (debugUtil && debugUtil.debuglog) {
+  debug = debugUtil.debuglog('stream');
+} else {
+  debug = function debug() {};
+}
+/*</replacement>*/
+
+var BufferList = require('./internal/streams/BufferList');
+var destroyImpl = require('./internal/streams/destroy');
+var StringDecoder;
+
+util.inherits(Readable, Stream);
+
+var kProxyEvents = ['error', 'close', 'destroy', 'pause', 'resume'];
+
+function prependListener(emitter, event, fn) {
+  // Sadly this is not cacheable as some libraries bundle their own
+  // event emitter implementation with them.
+  if (typeof emitter.prependListener === 'function') return emitter.prependListener(event, fn);
+
+  // This is a hack to make sure that our error handler is attached before any
+  // userland ones.  NEVER DO THIS. This is here only because this code needs
+  // to continue to work with older versions of Node.js that do not include
+  // the prependListener() method. The goal is to eventually remove this hack.
+  if (!emitter._events || !emitter._events[event]) emitter.on(event, fn);else if (isArray(emitter._events[event])) emitter._events[event].unshift(fn);else emitter._events[event] = [fn, emitter._events[event]];
+}
+
+function ReadableState(options, stream) {
+  Duplex = Duplex || require('./_stream_duplex');
+
+  options = options || {};
+
+  // Duplex streams are both readable and writable, but share
+  // the same options object.
+  // However, some cases require setting options to different
+  // values for the readable and the writable sides of the duplex stream.
+  // These options can be provided separately as readableXXX and writableXXX.
+  var isDuplex = stream instanceof Duplex;
+
+  // object stream flag. Used to make read(n) ignore n and to
+  // make all the buffer merging and length checks go away
+  this.objectMode = !!options.objectMode;
+
+  if (isDuplex) this.objectMode = this.objectMode || !!options.readableObjectMode;
+
+  // the point at which it stops calling _read() to fill the buffer
+  // Note: 0 is a valid value, means "don't call _read preemptively ever"
+  var hwm = options.highWaterMark;
+  var readableHwm = options.readableHighWaterMark;
+  var defaultHwm = this.objectMode ? 16 : 16 * 1024;
+
+  if (hwm || hwm === 0) this.highWaterMark = hwm;else if (isDuplex && (readableHwm || readableHwm === 0)) this.highWaterMark = readableHwm;else this.highWaterMark = defaultHwm;
+
+  // cast to ints.
+  this.highWaterMark = Math.floor(this.highWaterMark);
+
+  // A linked list is used to store data chunks instead of an array because the
+  // linked list can remove elements from the beginning faster than
+  // array.shift()
+  this.buffer = new BufferList();
+  this.length = 0;
+  this.pipes = null;
+  this.pipesCount = 0;
+  this.flowing = null;
+  this.ended = false;
+  this.endEmitted = false;
+  this.reading = false;
+
+  // a flag to be able to tell if the event 'readable'/'data' is emitted
+  // immediately, or on a later tick.  We set this to true at first, because
+  // any actions that shouldn't happen until "later" should generally also
+  // not happen before the first read call.
+  this.sync = true;
+
+  // whenever we return null, then we set a flag to say
+  // that we're awaiting a 'readable' event emission.
+  this.needReadable = false;
+  this.emittedReadable = false;
+  this.readableListening = false;
+  this.resumeScheduled = false;
+
+  // has it been destroyed
+  this.destroyed = false;
+
+  // Crypto is kind of old and crusty.  Historically, its default string
+  // encoding is 'binary' so we have to make this configurable.
+  // Everything else in the universe uses 'utf8', though.
+  this.defaultEncoding = options.defaultEncoding || 'utf8';
+
+  // the number of writers that are awaiting a drain event in .pipe()s
+  this.awaitDrain = 0;
+
+  // if true, a maybeReadMore has been scheduled
+  this.readingMore = false;
+
+  this.decoder = null;
+  this.encoding = null;
+  if (options.encoding) {
+    if (!StringDecoder) StringDecoder = require('string_decoder/').StringDecoder;
+    this.decoder = new StringDecoder(options.encoding);
+    this.encoding = options.encoding;
+  }
+}
+
+function Readable(options) {
+  Duplex = Duplex || require('./_stream_duplex');
+
+  if (!(this instanceof Readable)) return new Readable(options);
+
+  this._readableState = new ReadableState(options, this);
+
+  // legacy
+  this.readable = true;
+
+  if (options) {
+    if (typeof options.read === 'function') this._read = options.read;
+
+    if (typeof options.destroy === 'function') this._destroy = options.destroy;
+  }
+
+  Stream.call(this);
+}
+
+Object.defineProperty(Readable.prototype, 'destroyed', {
+  get: function get() {
+    if (this._readableState === undefined) {
+      return false;
+    }
+    return this._readableState.destroyed;
+  },
+  set: function set(value) {
+    // we ignore the value if the stream
+    // has not been initialized yet
+    if (!this._readableState) {
+      return;
+    }
+
+    // backward compatibility, the user is explicitly
+    // managing destroyed
+    this._readableState.destroyed = value;
+  }
+});
+
+Readable.prototype.destroy = destroyImpl.destroy;
+Readable.prototype._undestroy = destroyImpl.undestroy;
+Readable.prototype._destroy = function (err, cb) {
+  this.push(null);
+  cb(err);
+};
+
+// Manually shove something into the read() buffer.
+// This returns true if the highWaterMark has not been hit yet,
+// similar to how Writable.write() returns true if you should
+// write() some more.
+Readable.prototype.push = function (chunk, encoding) {
+  var state = this._readableState;
+  var skipChunkCheck;
+
+  if (!state.objectMode) {
+    if (typeof chunk === 'string') {
+      encoding = encoding || state.defaultEncoding;
+      if (encoding !== state.encoding) {
+        chunk = Buffer.from(chunk, encoding);
+        encoding = '';
+      }
+      skipChunkCheck = true;
+    }
+  } else {
+    skipChunkCheck = true;
+  }
+
+  return readableAddChunk(this, chunk, encoding, false, skipChunkCheck);
+};
+
+// Unshift should *always* be something directly out of read()
+Readable.prototype.unshift = function (chunk) {
+  return readableAddChunk(this, chunk, null, true, false);
+};
+
+function readableAddChunk(stream, chunk, encoding, addToFront, skipChunkCheck) {
+  var state = stream._readableState;
+  if (chunk === null) {
+    state.reading = false;
+    onEofChunk(stream, state);
+  } else {
+    var er;
+    if (!skipChunkCheck) er = chunkInvalid(state, chunk);
+    if (er) {
+      stream.emit('error', er);
+    } else if (state.objectMode || chunk && chunk.length > 0) {
+      if (typeof chunk !== 'string' && !state.objectMode && Object.getPrototypeOf(chunk) !== Buffer.prototype) {
+        chunk = _uint8ArrayToBuffer(chunk);
+      }
+
+      if (addToFront) {
+        if (state.endEmitted) stream.emit('error', new Error('stream.unshift() after end event'));else addChunk(stream, state, chunk, true);
+      } else if (state.ended) {
+        stream.emit('error', new Error('stream.push() after EOF'));
+      } else {
+        state.reading = false;
+        if (state.decoder && !encoding) {
+          chunk = state.decoder.write(chunk);
+          if (state.objectMode || chunk.length !== 0) addChunk(stream, state, chunk, false);else maybeReadMore(stream, state);
+        } else {
+          addChunk(stream, state, chunk, false);
+        }
+      }
+    } else if (!addToFront) {
+      state.reading = false;
+    }
+  }
+
+  return needMoreData(state);
+}
+
+function addChunk(stream, state, chunk, addToFront) {
+  if (state.flowing && state.length === 0 && !state.sync) {
+    stream.emit('data', chunk);
+    stream.read(0);
+  } else {
+    // update the buffer info.
+    state.length += state.objectMode ? 1 : chunk.length;
+    if (addToFront) state.buffer.unshift(chunk);else state.buffer.push(chunk);
+
+    if (state.needReadable) emitReadable(stream);
+  }
+  maybeReadMore(stream, state);
+}
+
+function chunkInvalid(state, chunk) {
+  var er;
+  if (!_isUint8Array(chunk) && typeof chunk !== 'string' && chunk !== undefined && !state.objectMode) {
+    er = new TypeError('Invalid non-string/buffer chunk');
+  }
+  return er;
+}
+
+// if it's past the high water mark, we can push in some more.
+// Also, if we have no data yet, we can stand some
+// more bytes.  This is to work around cases where hwm=0,
+// such as the repl.  Also, if the push() triggered a
+// readable event, and the user called read(largeNumber) such that
+// needReadable was set, then we ought to push more, so that another
+// 'readable' event will be triggered.
+function needMoreData(state) {
+  return !state.ended && (state.needReadable || state.length < state.highWaterMark || state.length === 0);
+}
+
+Readable.prototype.isPaused = function () {
+  return this._readableState.flowing === false;
+};
+
+// backwards compatibility.
+Readable.prototype.setEncoding = function (enc) {
+  if (!StringDecoder) StringDecoder = require('string_decoder/').StringDecoder;
+  this._readableState.decoder = new StringDecoder(enc);
+  this._readableState.encoding = enc;
+  return this;
+};
+
+// Don't raise the hwm > 8MB
+var MAX_HWM = 0x800000;
+function computeNewHighWaterMark(n) {
+  if (n >= MAX_HWM) {
+    n = MAX_HWM;
+  } else {
+    // Get the next highest power of 2 to prevent increasing hwm excessively in
+    // tiny amounts
+    n--;
+    n |= n >>> 1;
+    n |= n >>> 2;
+    n |= n >>> 4;
+    n |= n >>> 8;
+    n |= n >>> 16;
+    n++;
+  }
+  return n;
+}
+
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
+function howMuchToRead(n, state) {
+  if (n <= 0 || state.length === 0 && state.ended) return 0;
+  if (state.objectMode) return 1;
+  if (n !== n) {
+    // Only flow one buffer at a time
+    if (state.flowing && state.length) return state.buffer.head.data.length;else return state.length;
+  }
+  // If we're asking for more than the current hwm, then raise the hwm.
+  if (n > state.highWaterMark) state.highWaterMark = computeNewHighWaterMark(n);
+  if (n <= state.length) return n;
+  // Don't have enough
+  if (!state.ended) {
+    state.needReadable = true;
+    return 0;
+  }
+  return state.length;
+}
+
+// you can override either this method, or the async _read(n) below.
+Readable.prototype.read = function (n) {
+  debug('read', n);
+  n = parseInt(n, 10);
+  var state = this._readableState;
+  var nOrig = n;
+
+  if (n !== 0) state.emittedReadable = false;
+
+  // if we're doing read(0) to trigger a readable event, but we
+  // already have a bunch of data in the buffer, then just trigger
+  // the 'readable' event and move on.
+  if (n === 0 && state.needReadable && (state.length >= state.highWaterMark || state.ended)) {
+    debug('read: emitReadable', state.length, state.ended);
+    if (state.length === 0 && state.ended) endReadable(this);else emitReadable(this);
+    return null;
+  }
+
+  n = howMuchToRead(n, state);
+
+  // if we've ended, and we're now clear, then finish it up.
+  if (n === 0 && state.ended) {
+    if (state.length === 0) endReadable(this);
+    return null;
+  }
+
+  // All the actual chunk generation logic needs to be
+  // *below* the call to _read.  The reason is that in certain
+  // synthetic stream cases, such as passthrough streams, _read
+  // may be a completely synchronous operation which may change
+  // the state of the read buffer, providing enough data when
+  // before there was *not* enough.
+  //
+  // So, the steps are:
+  // 1. Figure out what the state of things will be after we do
+  // a read from the buffer.
+  //
+  // 2. If that resulting state will trigger a _read, then call _read.
+  // Note that this may be asynchronous, or synchronous.  Yes, it is
+  // deeply ugly to write APIs this way, but that still doesn't mean
+  // that the Readable class should behave improperly, as streams are
+  // designed to be sync/async agnostic.
+  // Take note if the _read call is sync or async (ie, if the read call
+  // has returned yet), so that we know whether or not it's safe to emit
+  // 'readable' etc.
+  //
+  // 3. Actually pull the requested chunks out of the buffer and return.
+
+  // if we need a readable event, then we need to do some reading.
+  var doRead = state.needReadable;
+  debug('need readable', doRead);
+
+  // if we currently have less than the highWaterMark, then also read some
+  if (state.length === 0 || state.length - n < state.highWaterMark) {
+    doRead = true;
+    debug('length less than watermark', doRead);
+  }
+
+  // however, if we've ended, then there's no point, and if we're already
+  // reading, then it's unnecessary.
+  if (state.ended || state.reading) {
+    doRead = false;
+    debug('reading or ended', doRead);
+  } else if (doRead) {
+    debug('do read');
+    state.reading = true;
+    state.sync = true;
+    // if the length is currently zero, then we *need* a readable event.
+    if (state.length === 0) state.needReadable = true;
+    // call internal read method
+    this._read(state.highWaterMark);
+    state.sync = false;
+    // If _read pushed data synchronously, then `reading` will be false,
+    // and we need to re-evaluate how much data we can return to the user.
+    if (!state.reading) n = howMuchToRead(nOrig, state);
+  }
+
+  var ret;
+  if (n > 0) ret = fromList(n, state);else ret = null;
+
+  if (ret === null) {
+    state.needReadable = true;
+    n = 0;
+  } else {
+    state.length -= n;
+  }
+
+  if (state.length === 0) {
+    // If we have nothing in the buffer, then we want to know
+    // as soon as we *do* get something into the buffer.
+    if (!state.ended) state.needReadable = true;
+
+    // If we tried to read() past the EOF, then emit end on the next tick.
+    if (nOrig !== n && state.ended) endReadable(this);
+  }
+
+  if (ret !== null) this.emit('data', ret);
+
+  return ret;
+};
+
+function onEofChunk(stream, state) {
+  if (state.ended) return;
+  if (state.decoder) {
+    var chunk = state.decoder.end();
+    if (chunk && chunk.length) {
+      state.buffer.push(chunk);
+      state.length += state.objectMode ? 1 : chunk.length;
+    }
+  }
+  state.ended = true;
+
+  // emit 'readable' now to make sure it gets picked up.
+  emitReadable(stream);
+}
+
+// Don't emit readable right away in sync mode, because this can trigger
+// another read() call => stack overflow.  This way, it might trigger
+// a nextTick recursion warning, but that's not so bad.
+function emitReadable(stream) {
+  var state = stream._readableState;
+  state.needReadable = false;
+  if (!state.emittedReadable) {
+    debug('emitReadable', state.flowing);
+    state.emittedReadable = true;
+    if (state.sync) pna.nextTick(emitReadable_, stream);else emitReadable_(stream);
+  }
+}
+
+function emitReadable_(stream) {
+  debug('emit readable');
+  stream.emit('readable');
+  flow(stream);
+}
+
+// at this point, the user has presumably seen the 'readable' event,
+// and called read() to consume some data.  that may have triggered
+// in turn another _read(n) call, in which case reading = true if
+// it's in progress.
+// However, if we're not ended, or reading, and the length < hwm,
+// then go ahead and try to read some more preemptively.
+function maybeReadMore(stream, state) {
+  if (!state.readingMore) {
+    state.readingMore = true;
+    pna.nextTick(maybeReadMore_, stream, state);
+  }
+}
+
+function maybeReadMore_(stream, state) {
+  var len = state.length;
+  while (!state.reading && !state.flowing && !state.ended && state.length < state.highWaterMark) {
+    debug('maybeReadMore read 0');
+    stream.read(0);
+    if (len === state.length)
+      // didn't get any data, stop spinning.
+      break;else len = state.length;
+  }
+  state.readingMore = false;
+}
+
+// abstract method.  to be overridden in specific implementation classes.
+// call cb(er, data) where data is <= n in length.
+// for virtual (non-string, non-buffer) streams, "length" is somewhat
+// arbitrary, and perhaps not very meaningful.
+Readable.prototype._read = function (n) {
+  this.emit('error', new Error('_read() is not implemented'));
+};
+
+Readable.prototype.pipe = function (dest, pipeOpts) {
+  var src = this;
+  var state = this._readableState;
+
+  switch (state.pipesCount) {
+    case 0:
+      state.pipes = dest;
+      break;
+    case 1:
+      state.pipes = [state.pipes, dest];
+      break;
+    default:
+      state.pipes.push(dest);
+      break;
+  }
+  state.pipesCount += 1;
+  debug('pipe count=%d opts=%j', state.pipesCount, pipeOpts);
+
+  var doEnd = (!pipeOpts || pipeOpts.end !== false) && dest !== process.stdout && dest !== process.stderr;
+
+  var endFn = doEnd ? onend : unpipe;
+  if (state.endEmitted) pna.nextTick(endFn);else src.once('end', endFn);
+
+  dest.on('unpipe', onunpipe);
+  function onunpipe(readable, unpipeInfo) {
+    debug('onunpipe');
+    if (readable === src) {
+      if (unpipeInfo && unpipeInfo.hasUnpiped === false) {
+        unpipeInfo.hasUnpiped = true;
+        cleanup();
+      }
+    }
+  }
+
+  function onend() {
+    debug('onend');
+    dest.end();
+  }
+
+  // when the dest drains, it reduces the awaitDrain counter
+  // on the source.  This would be more elegant with a .once()
+  // handler in flow(), but adding and removing repeatedly is
+  // too slow.
+  var ondrain = pipeOnDrain(src);
+  dest.on('drain', ondrain);
+
+  var cleanedUp = false;
+  function cleanup() {
+    debug('cleanup');
+    // cleanup event handlers once the pipe is broken
+    dest.removeListener('close', onclose);
+    dest.removeListener('finish', onfinish);
+    dest.removeListener('drain', ondrain);
+    dest.removeListener('error', onerror);
+    dest.removeListener('unpipe', onunpipe);
+    src.removeListener('end', onend);
+    src.removeListener('end', unpipe);
+    src.removeListener('data', ondata);
+
+    cleanedUp = true;
+
+    // if the reader is waiting for a drain event from this
+    // specific writer, then it would cause it to never start
+    // flowing again.
+    // So, if this is awaiting a drain, then we just call it now.
+    // If we don't know, then assume that we are waiting for one.
+    if (state.awaitDrain && (!dest._writableState || dest._writableState.needDrain)) ondrain();
+  }
+
+  // If the user pushes more data while we're writing to dest then we'll end up
+  // in ondata again. However, we only want to increase awaitDrain once because
+  // dest will only emit one 'drain' event for the multiple writes.
+  // => Introduce a guard on increasing awaitDrain.
+  var increasedAwaitDrain = false;
+  src.on('data', ondata);
+  function ondata(chunk) {
+    debug('ondata');
+    increasedAwaitDrain = false;
+    var ret = dest.write(chunk);
+    if (false === ret && !increasedAwaitDrain) {
+      // If the user unpiped during `dest.write()`, it is possible
+      // to get stuck in a permanently paused state if that write
+      // also returned false.
+      // => Check whether `dest` is still a piping destination.
+      if ((state.pipesCount === 1 && state.pipes === dest || state.pipesCount > 1 && indexOf(state.pipes, dest) !== -1) && !cleanedUp) {
+        debug('false write response, pause', src._readableState.awaitDrain);
+        src._readableState.awaitDrain++;
+        increasedAwaitDrain = true;
+      }
+      src.pause();
+    }
+  }
+
+  // if the dest has an error, then stop piping into it.
+  // however, don't suppress the throwing behavior for this.
+  function onerror(er) {
+    debug('onerror', er);
+    unpipe();
+    dest.removeListener('error', onerror);
+    if (EElistenerCount(dest, 'error') === 0) dest.emit('error', er);
+  }
+
+  // Make sure our error handler is attached before userland ones.
+  prependListener(dest, 'error', onerror);
+
+  // Both close and finish should trigger unpipe, but only once.
+  function onclose() {
+    dest.removeListener('finish', onfinish);
+    unpipe();
+  }
+  dest.once('close', onclose);
+  function onfinish() {
+    debug('onfinish');
+    dest.removeListener('close', onclose);
+    unpipe();
+  }
+  dest.once('finish', onfinish);
+
+  function unpipe() {
+    debug('unpipe');
+    src.unpipe(dest);
+  }
+
+  // tell the dest that it's being piped to
+  dest.emit('pipe', src);
+
+  // start the flow if it hasn't been started already.
+  if (!state.flowing) {
+    debug('pipe resume');
+    src.resume();
+  }
+
+  return dest;
+};
+
+function pipeOnDrain(src) {
+  return function () {
+    var state = src._readableState;
+    debug('pipeOnDrain', state.awaitDrain);
+    if (state.awaitDrain) state.awaitDrain--;
+    if (state.awaitDrain === 0 && EElistenerCount(src, 'data')) {
+      state.flowing = true;
+      flow(src);
+    }
+  };
+}
+
+Readable.prototype.unpipe = function (dest) {
+  var state = this._readableState;
+  var unpipeInfo = { hasUnpiped: false };
+
+  // if we're not piping anywhere, then do nothing.
+  if (state.pipesCount === 0) return this;
+
+  // just one destination.  most common case.
+  if (state.pipesCount === 1) {
+    // passed in one, but it's not the right one.
+    if (dest && dest !== state.pipes) return this;
+
+    if (!dest) dest = state.pipes;
+
+    // got a match.
+    state.pipes = null;
+    state.pipesCount = 0;
+    state.flowing = false;
+    if (dest) dest.emit('unpipe', this, unpipeInfo);
+    return this;
+  }
+
+  // slow case. multiple pipe destinations.
+
+  if (!dest) {
+    // remove all.
+    var dests = state.pipes;
+    var len = state.pipesCount;
+    state.pipes = null;
+    state.pipesCount = 0;
+    state.flowing = false;
+
+    for (var i = 0; i < len; i++) {
+      dests[i].emit('unpipe', this, unpipeInfo);
+    }return this;
+  }
+
+  // try to find the right one.
+  var index = indexOf(state.pipes, dest);
+  if (index === -1) return this;
+
+  state.pipes.splice(index, 1);
+  state.pipesCount -= 1;
+  if (state.pipesCount === 1) state.pipes = state.pipes[0];
+
+  dest.emit('unpipe', this, unpipeInfo);
+
+  return this;
+};
+
+// set up data events if they are asked for
+// Ensure readable listeners eventually get something
+Readable.prototype.on = function (ev, fn) {
+  var res = Stream.prototype.on.call(this, ev, fn);
+
+  if (ev === 'data') {
+    // Start flowing on next tick if stream isn't explicitly paused
+    if (this._readableState.flowing !== false) this.resume();
+  } else if (ev === 'readable') {
+    var state = this._readableState;
+    if (!state.endEmitted && !state.readableListening) {
+      state.readableListening = state.needReadable = true;
+      state.emittedReadable = false;
+      if (!state.reading) {
+        pna.nextTick(nReadingNextTick, this);
+      } else if (state.length) {
+        emitReadable(this);
+      }
+    }
+  }
+
+  return res;
+};
+Readable.prototype.addListener = Readable.prototype.on;
+
+function nReadingNextTick(self) {
+  debug('readable nexttick read 0');
+  self.read(0);
+}
+
+// pause() and resume() are remnants of the legacy readable stream API
+// If the user uses them, then switch into old mode.
+Readable.prototype.resume = function () {
+  var state = this._readableState;
+  if (!state.flowing) {
+    debug('resume');
+    state.flowing = true;
+    resume(this, state);
+  }
+  return this;
+};
+
+function resume(stream, state) {
+  if (!state.resumeScheduled) {
+    state.resumeScheduled = true;
+    pna.nextTick(resume_, stream, state);
+  }
+}
+
+function resume_(stream, state) {
+  if (!state.reading) {
+    debug('resume read 0');
+    stream.read(0);
+  }
+
+  state.resumeScheduled = false;
+  state.awaitDrain = 0;
+  stream.emit('resume');
+  flow(stream);
+  if (state.flowing && !state.reading) stream.read(0);
+}
+
+Readable.prototype.pause = function () {
+  debug('call pause flowing=%j', this._readableState.flowing);
+  if (false !== this._readableState.flowing) {
+    debug('pause');
+    this._readableState.flowing = false;
+    this.emit('pause');
+  }
+  return this;
+};
+
+function flow(stream) {
+  var state = stream._readableState;
+  debug('flow', state.flowing);
+  while (state.flowing && stream.read() !== null) {}
+}
+
+// wrap an old-style stream as the async data source.
+// This is *not* part of the readable stream interface.
+// It is an ugly unfortunate mess of history.
+Readable.prototype.wrap = function (stream) {
+  var _this = this;
+
+  var state = this._readableState;
+  var paused = false;
+
+  stream.on('end', function () {
+    debug('wrapped end');
+    if (state.decoder && !state.ended) {
+      var chunk = state.decoder.end();
+      if (chunk && chunk.length) _this.push(chunk);
+    }
+
+    _this.push(null);
+  });
+
+  stream.on('data', function (chunk) {
+    debug('wrapped data');
+    if (state.decoder) chunk = state.decoder.write(chunk);
+
+    // don't skip over falsy values in objectMode
+    if (state.objectMode && (chunk === null || chunk === undefined)) return;else if (!state.objectMode && (!chunk || !chunk.length)) return;
+
+    var ret = _this.push(chunk);
+    if (!ret) {
+      paused = true;
+      stream.pause();
+    }
+  });
+
+  // proxy all the other methods.
+  // important when wrapping filters and duplexes.
+  for (var i in stream) {
+    if (this[i] === undefined && typeof stream[i] === 'function') {
+      this[i] = function (method) {
+        return function () {
+          return stream[method].apply(stream, arguments);
+        };
+      }(i);
+    }
+  }
+
+  // proxy certain important events.
+  for (var n = 0; n < kProxyEvents.length; n++) {
+    stream.on(kProxyEvents[n], this.emit.bind(this, kProxyEvents[n]));
+  }
+
+  // when we try to consume some more bytes, simply unpause the
+  // underlying stream.
+  this._read = function (n) {
+    debug('wrapped _read', n);
+    if (paused) {
+      paused = false;
+      stream.resume();
+    }
+  };
+
+  return this;
+};
+
+Object.defineProperty(Readable.prototype, 'readableHighWaterMark', {
+  // making it explicit this property is not enumerable
+  // because otherwise some prototype manipulation in
+  // userland will fail
+  enumerable: false,
+  get: function get() {
+    return this._readableState.highWaterMark;
+  }
+});
+
+// exposed for testing purposes only.
+Readable._fromList = fromList;
+
+// Pluck off n bytes from an array of buffers.
+// Length is the combined lengths of all the buffers in the list.
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
+function fromList(n, state) {
+  // nothing buffered
+  if (state.length === 0) return null;
+
+  var ret;
+  if (state.objectMode) ret = state.buffer.shift();else if (!n || n >= state.length) {
+    // read it all, truncate the list
+    if (state.decoder) ret = state.buffer.join('');else if (state.buffer.length === 1) ret = state.buffer.head.data;else ret = state.buffer.concat(state.length);
+    state.buffer.clear();
+  } else {
+    // read part of list
+    ret = fromListPartial(n, state.buffer, state.decoder);
+  }
+
+  return ret;
+}
+
+// Extracts only enough buffered data to satisfy the amount requested.
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
+function fromListPartial(n, list, hasStrings) {
+  var ret;
+  if (n < list.head.data.length) {
+    // slice is the same for buffers and strings
+    ret = list.head.data.slice(0, n);
+    list.head.data = list.head.data.slice(n);
+  } else if (n === list.head.data.length) {
+    // first chunk is a perfect match
+    ret = list.shift();
+  } else {
+    // result spans more than one buffer
+    ret = hasStrings ? copyFromBufferString(n, list) : copyFromBuffer(n, list);
+  }
+  return ret;
+}
+
+// Copies a specified amount of characters from the list of buffered data
+// chunks.
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
+function copyFromBufferString(n, list) {
+  var p = list.head;
+  var c = 1;
+  var ret = p.data;
+  n -= ret.length;
+  while (p = p.next) {
+    var str = p.data;
+    var nb = n > str.length ? str.length : n;
+    if (nb === str.length) ret += str;else ret += str.slice(0, n);
+    n -= nb;
+    if (n === 0) {
+      if (nb === str.length) {
+        ++c;
+        if (p.next) list.head = p.next;else list.head = list.tail = null;
+      } else {
+        list.head = p;
+        p.data = str.slice(nb);
+      }
+      break;
+    }
+    ++c;
+  }
+  list.length -= c;
+  return ret;
+}
+
+// Copies a specified amount of bytes from the list of buffered data chunks.
+// This function is designed to be inlinable, so please take care when making
+// changes to the function body.
+function copyFromBuffer(n, list) {
+  var ret = Buffer.allocUnsafe(n);
+  var p = list.head;
+  var c = 1;
+  p.data.copy(ret);
+  n -= p.data.length;
+  while (p = p.next) {
+    var buf = p.data;
+    var nb = n > buf.length ? buf.length : n;
+    buf.copy(ret, ret.length - n, 0, nb);
+    n -= nb;
+    if (n === 0) {
+      if (nb === buf.length) {
+        ++c;
+        if (p.next) list.head = p.next;else list.head = list.tail = null;
+      } else {
+        list.head = p;
+        p.data = buf.slice(nb);
+      }
+      break;
+    }
+    ++c;
+  }
+  list.length -= c;
+  return ret;
+}
+
+function endReadable(stream) {
+  var state = stream._readableState;
+
+  // If we get here before consuming all the bytes, then that is a
+  // bug in node.  Should never happen.
+  if (state.length > 0) throw new Error('"endReadable()" called on non-empty stream');
+
+  if (!state.endEmitted) {
+    state.ended = true;
+    pna.nextTick(endReadableNT, state, stream);
+  }
+}
+
+function endReadableNT(state, stream) {
+  // Check that we didn't get one last unshift.
+  if (!state.endEmitted && state.length === 0) {
+    state.endEmitted = true;
+    stream.readable = false;
+    stream.emit('end');
+  }
+}
+
+function indexOf(xs, x) {
+  for (var i = 0, l = xs.length; i < l; i++) {
+    if (xs[i] === x) return i;
+  }
+  return -1;
+}
+
+}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
+},{"./_stream_duplex":174,"./internal/streams/BufferList":179,"./internal/streams/destroy":180,"./internal/streams/stream":181,"_process":172,"core-util-is":8,"events":9,"inherits":19,"isarray":23,"process-nextick-args":171,"safe-buffer":186,"string_decoder/":195,"util":4}],177:[function(require,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// a transform stream is a readable/writable stream where you do
+// something with the data.  Sometimes it's called a "filter",
+// but that's not a great name for it, since that implies a thing where
+// some bits pass through, and others are simply ignored.  (That would
+// be a valid example of a transform, of course.)
+//
+// While the output is causally related to the input, it's not a
+// necessarily symmetric or synchronous transformation.  For example,
+// a zlib stream might take multiple plain-text writes(), and then
+// emit a single compressed chunk some time in the future.
+//
+// Here's how this works:
+//
+// The Transform stream has all the aspects of the readable and writable
+// stream classes.  When you write(chunk), that calls _write(chunk,cb)
+// internally, and returns false if there's a lot of pending writes
+// buffered up.  When you call read(), that calls _read(n) until
+// there's enough pending readable data buffered up.
+//
+// In a transform stream, the written data is placed in a buffer.  When
+// _read(n) is called, it transforms the queued up data, calling the
+// buffered _write cb's as it consumes chunks.  If consuming a single
+// written chunk would result in multiple output chunks, then the first
+// outputted bit calls the readcb, and subsequent chunks just go into
+// the read buffer, and will cause it to emit 'readable' if necessary.
+//
+// This way, back-pressure is actually determined by the reading side,
+// since _read has to be called to start processing a new chunk.  However,
+// a pathological inflate type of transform can cause excessive buffering
+// here.  For example, imagine a stream where every byte of input is
+// interpreted as an integer from 0-255, and then results in that many
+// bytes of output.  Writing the 4 bytes {ff,ff,ff,ff} would result in
+// 1kb of data being output.  In this case, you could write a very small
+// amount of input, and end up with a very large amount of output.  In
+// such a pathological inflating mechanism, there'd be no way to tell
+// the system to stop doing the transform.  A single 4MB write could
+// cause the system to run out of memory.
+//
+// However, even in such a pathological case, only a single written chunk
+// would be consumed, and then the rest would wait (un-transformed) until
+// the results of the previous transformed chunk were consumed.
+
+'use strict';
+
+module.exports = Transform;
+
+var Duplex = require('./_stream_duplex');
+
+/*<replacement>*/
+var util = require('core-util-is');
+util.inherits = require('inherits');
+/*</replacement>*/
+
+util.inherits(Transform, Duplex);
+
+function afterTransform(er, data) {
+  var ts = this._transformState;
+  ts.transforming = false;
+
+  var cb = ts.writecb;
+
+  if (!cb) {
+    return this.emit('error', new Error('write callback called multiple times'));
+  }
+
+  ts.writechunk = null;
+  ts.writecb = null;
+
+  if (data != null) // single equals check for both `null` and `undefined`
+    this.push(data);
+
+  cb(er);
+
+  var rs = this._readableState;
+  rs.reading = false;
+  if (rs.needReadable || rs.length < rs.highWaterMark) {
+    this._read(rs.highWaterMark);
+  }
+}
+
+function Transform(options) {
+  if (!(this instanceof Transform)) return new Transform(options);
+
+  Duplex.call(this, options);
+
+  this._transformState = {
+    afterTransform: afterTransform.bind(this),
+    needTransform: false,
+    transforming: false,
+    writecb: null,
+    writechunk: null,
+    writeencoding: null
+  };
+
+  // start out asking for a readable event once data is transformed.
+  this._readableState.needReadable = true;
+
+  // we have implemented the _read method, and done the other things
+  // that Readable wants before the first _read call, so unset the
+  // sync guard flag.
+  this._readableState.sync = false;
+
+  if (options) {
+    if (typeof options.transform === 'function') this._transform = options.transform;
+
+    if (typeof options.flush === 'function') this._flush = options.flush;
+  }
+
+  // When the writable side finishes, then flush out anything remaining.
+  this.on('prefinish', prefinish);
+}
+
+function prefinish() {
+  var _this = this;
+
+  if (typeof this._flush === 'function') {
+    this._flush(function (er, data) {
+      done(_this, er, data);
+    });
+  } else {
+    done(this, null, null);
+  }
+}
+
+Transform.prototype.push = function (chunk, encoding) {
+  this._transformState.needTransform = false;
+  return Duplex.prototype.push.call(this, chunk, encoding);
+};
+
+// This is the part where you do stuff!
+// override this function in implementation classes.
+// 'chunk' is an input chunk.
+//
+// Call `push(newChunk)` to pass along transformed output
+// to the readable side.  You may call 'push' zero or more times.
+//
+// Call `cb(err)` when you are done with this chunk.  If you pass
+// an error, then that'll put the hurt on the whole operation.  If you
+// never call cb(), then you'll never get another chunk.
+Transform.prototype._transform = function (chunk, encoding, cb) {
+  throw new Error('_transform() is not implemented');
+};
+
+Transform.prototype._write = function (chunk, encoding, cb) {
+  var ts = this._transformState;
+  ts.writecb = cb;
+  ts.writechunk = chunk;
+  ts.writeencoding = encoding;
+  if (!ts.transforming) {
+    var rs = this._readableState;
+    if (ts.needTransform || rs.needReadable || rs.length < rs.highWaterMark) this._read(rs.highWaterMark);
+  }
+};
+
+// Doesn't matter what the args are here.
+// _transform does all the work.
+// That we got here means that the readable side wants more data.
+Transform.prototype._read = function (n) {
+  var ts = this._transformState;
+
+  if (ts.writechunk !== null && ts.writecb && !ts.transforming) {
+    ts.transforming = true;
+    this._transform(ts.writechunk, ts.writeencoding, ts.afterTransform);
+  } else {
+    // mark that we need a transform, so that any data that comes in
+    // will get processed, now that we've asked for it.
+    ts.needTransform = true;
+  }
+};
+
+Transform.prototype._destroy = function (err, cb) {
+  var _this2 = this;
+
+  Duplex.prototype._destroy.call(this, err, function (err2) {
+    cb(err2);
+    _this2.emit('close');
+  });
+};
+
+function done(stream, er, data) {
+  if (er) return stream.emit('error', er);
+
+  if (data != null) // single equals check for both `null` and `undefined`
+    stream.push(data);
+
+  // if there's nothing in the write buffer, then that means
+  // that nothing more will ever be provided
+  if (stream._writableState.length) throw new Error('Calling transform done when ws.length != 0');
+
+  if (stream._transformState.transforming) throw new Error('Calling transform done when still transforming');
+
+  return stream.push(null);
+}
+
+},{"./_stream_duplex":174,"core-util-is":8,"inherits":19}],178:[function(require,module,exports){
+(function (process,global,setImmediate){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+// A bit simpler than readable streams.
+// Implement an async ._write(chunk, encoding, cb), and it'll handle all
+// the drain event emission and buffering.
+
+'use strict';
+
+/*<replacement>*/
+
+var pna = require('process-nextick-args');
+/*</replacement>*/
+
+module.exports = Writable;
+
+/* <replacement> */
+function WriteReq(chunk, encoding, cb) {
+  this.chunk = chunk;
+  this.encoding = encoding;
+  this.callback = cb;
+  this.next = null;
+}
+
+// It seems a linked list but it is not
+// there will be only 2 of these for each stream
+function CorkedRequest(state) {
+  var _this = this;
+
+  this.next = null;
+  this.entry = null;
+  this.finish = function () {
+    onCorkedFinish(_this, state);
+  };
+}
+/* </replacement> */
+
+/*<replacement>*/
+var asyncWrite = !process.browser && ['v0.10', 'v0.9.'].indexOf(process.version.slice(0, 5)) > -1 ? setImmediate : pna.nextTick;
+/*</replacement>*/
+
+/*<replacement>*/
+var Duplex;
+/*</replacement>*/
+
+Writable.WritableState = WritableState;
+
+/*<replacement>*/
+var util = require('core-util-is');
+util.inherits = require('inherits');
+/*</replacement>*/
+
+/*<replacement>*/
+var internalUtil = {
+  deprecate: require('util-deprecate')
+};
+/*</replacement>*/
+
+/*<replacement>*/
+var Stream = require('./internal/streams/stream');
+/*</replacement>*/
+
+/*<replacement>*/
+
+var Buffer = require('safe-buffer').Buffer;
+var OurUint8Array = global.Uint8Array || function () {};
+function _uint8ArrayToBuffer(chunk) {
+  return Buffer.from(chunk);
+}
+function _isUint8Array(obj) {
+  return Buffer.isBuffer(obj) || obj instanceof OurUint8Array;
+}
+
+/*</replacement>*/
+
+var destroyImpl = require('./internal/streams/destroy');
+
+util.inherits(Writable, Stream);
+
+function nop() {}
+
+function WritableState(options, stream) {
+  Duplex = Duplex || require('./_stream_duplex');
+
+  options = options || {};
+
+  // Duplex streams are both readable and writable, but share
+  // the same options object.
+  // However, some cases require setting options to different
+  // values for the readable and the writable sides of the duplex stream.
+  // These options can be provided separately as readableXXX and writableXXX.
+  var isDuplex = stream instanceof Duplex;
+
+  // object stream flag to indicate whether or not this stream
+  // contains buffers or objects.
+  this.objectMode = !!options.objectMode;
+
+  if (isDuplex) this.objectMode = this.objectMode || !!options.writableObjectMode;
+
+  // the point at which write() starts returning false
+  // Note: 0 is a valid value, means that we always return false if
+  // the entire buffer is not flushed immediately on write()
+  var hwm = options.highWaterMark;
+  var writableHwm = options.writableHighWaterMark;
+  var defaultHwm = this.objectMode ? 16 : 16 * 1024;
+
+  if (hwm || hwm === 0) this.highWaterMark = hwm;else if (isDuplex && (writableHwm || writableHwm === 0)) this.highWaterMark = writableHwm;else this.highWaterMark = defaultHwm;
+
+  // cast to ints.
+  this.highWaterMark = Math.floor(this.highWaterMark);
+
+  // if _final has been called
+  this.finalCalled = false;
+
+  // drain event flag.
+  this.needDrain = false;
+  // at the start of calling end()
+  this.ending = false;
+  // when end() has been called, and returned
+  this.ended = false;
+  // when 'finish' is emitted
+  this.finished = false;
+
+  // has it been destroyed
+  this.destroyed = false;
+
+  // should we decode strings into buffers before passing to _write?
+  // this is here so that some node-core streams can optimize string
+  // handling at a lower level.
+  var noDecode = options.decodeStrings === false;
+  this.decodeStrings = !noDecode;
+
+  // Crypto is kind of old and crusty.  Historically, its default string
+  // encoding is 'binary' so we have to make this configurable.
+  // Everything else in the universe uses 'utf8', though.
+  this.defaultEncoding = options.defaultEncoding || 'utf8';
+
+  // not an actual buffer we keep track of, but a measurement
+  // of how much we're waiting to get pushed to some underlying
+  // socket or file.
+  this.length = 0;
+
+  // a flag to see when we're in the middle of a write.
+  this.writing = false;
+
+  // when true all writes will be buffered until .uncork() call
+  this.corked = 0;
+
+  // a flag to be able to tell if the onwrite cb is called immediately,
+  // or on a later tick.  We set this to true at first, because any
+  // actions that shouldn't happen until "later" should generally also
+  // not happen before the first write call.
+  this.sync = true;
+
+  // a flag to know if we're processing previously buffered items, which
+  // may call the _write() callback in the same tick, so that we don't
+  // end up in an overlapped onwrite situation.
+  this.bufferProcessing = false;
+
+  // the callback that's passed to _write(chunk,cb)
+  this.onwrite = function (er) {
+    onwrite(stream, er);
+  };
+
+  // the callback that the user supplies to write(chunk,encoding,cb)
+  this.writecb = null;
+
+  // the amount that is being written when _write is called.
+  this.writelen = 0;
+
+  this.bufferedRequest = null;
+  this.lastBufferedRequest = null;
+
+  // number of pending user-supplied write callbacks
+  // this must be 0 before 'finish' can be emitted
+  this.pendingcb = 0;
+
+  // emit prefinish if the only thing we're waiting for is _write cbs
+  // This is relevant for synchronous Transform streams
+  this.prefinished = false;
+
+  // True if the error was already emitted and should not be thrown again
+  this.errorEmitted = false;
+
+  // count buffered requests
+  this.bufferedRequestCount = 0;
+
+  // allocate the first CorkedRequest, there is always
+  // one allocated and free to use, and we maintain at most two
+  this.corkedRequestsFree = new CorkedRequest(this);
+}
+
+WritableState.prototype.getBuffer = function getBuffer() {
+  var current = this.bufferedRequest;
+  var out = [];
+  while (current) {
+    out.push(current);
+    current = current.next;
+  }
+  return out;
+};
+
+(function () {
+  try {
+    Object.defineProperty(WritableState.prototype, 'buffer', {
+      get: internalUtil.deprecate(function () {
+        return this.getBuffer();
+      }, '_writableState.buffer is deprecated. Use _writableState.getBuffer ' + 'instead.', 'DEP0003')
+    });
+  } catch (_) {}
+})();
+
+// Test _writableState for inheritance to account for Duplex streams,
+// whose prototype chain only points to Readable.
+var realHasInstance;
+if (typeof Symbol === 'function' && Symbol.hasInstance && typeof Function.prototype[Symbol.hasInstance] === 'function') {
+  realHasInstance = Function.prototype[Symbol.hasInstance];
+  Object.defineProperty(Writable, Symbol.hasInstance, {
+    value: function value(object) {
+      if (realHasInstance.call(this, object)) return true;
+      if (this !== Writable) return false;
+
+      return object && object._writableState instanceof WritableState;
+    }
+  });
+} else {
+  realHasInstance = function realHasInstance(object) {
+    return object instanceof this;
+  };
+}
+
+function Writable(options) {
+  Duplex = Duplex || require('./_stream_duplex');
+
+  // Writable ctor is applied to Duplexes, too.
+  // `realHasInstance` is necessary because using plain `instanceof`
+  // would return false, as no `_writableState` property is attached.
+
+  // Trying to use the custom `instanceof` for Writable here will also break the
+  // Node.js LazyTransform implementation, which has a non-trivial getter for
+  // `_writableState` that would lead to infinite recursion.
+  if (!realHasInstance.call(Writable, this) && !(this instanceof Duplex)) {
+    return new Writable(options);
+  }
+
+  this._writableState = new WritableState(options, this);
+
+  // legacy.
+  this.writable = true;
+
+  if (options) {
+    if (typeof options.write === 'function') this._write = options.write;
+
+    if (typeof options.writev === 'function') this._writev = options.writev;
+
+    if (typeof options.destroy === 'function') this._destroy = options.destroy;
+
+    if (typeof options.final === 'function') this._final = options.final;
+  }
+
+  Stream.call(this);
+}
+
+// Otherwise people can pipe Writable streams, which is just wrong.
+Writable.prototype.pipe = function () {
+  this.emit('error', new Error('Cannot pipe, not readable'));
+};
+
+function writeAfterEnd(stream, cb) {
+  var er = new Error('write after end');
+  // TODO: defer error events consistently everywhere, not just the cb
+  stream.emit('error', er);
+  pna.nextTick(cb, er);
+}
+
+// Checks that a user-supplied chunk is valid, especially for the particular
+// mode the stream is in. Currently this means that `null` is never accepted
+// and undefined/non-string values are only allowed in object mode.
+function validChunk(stream, state, chunk, cb) {
+  var valid = true;
+  var er = false;
+
+  if (chunk === null) {
+    er = new TypeError('May not write null values to stream');
+  } else if (typeof chunk !== 'string' && chunk !== undefined && !state.objectMode) {
+    er = new TypeError('Invalid non-string/buffer chunk');
+  }
+  if (er) {
+    stream.emit('error', er);
+    pna.nextTick(cb, er);
+    valid = false;
+  }
+  return valid;
+}
+
+Writable.prototype.write = function (chunk, encoding, cb) {
+  var state = this._writableState;
+  var ret = false;
+  var isBuf = !state.objectMode && _isUint8Array(chunk);
+
+  if (isBuf && !Buffer.isBuffer(chunk)) {
+    chunk = _uint8ArrayToBuffer(chunk);
+  }
+
+  if (typeof encoding === 'function') {
+    cb = encoding;
+    encoding = null;
+  }
+
+  if (isBuf) encoding = 'buffer';else if (!encoding) encoding = state.defaultEncoding;
+
+  if (typeof cb !== 'function') cb = nop;
+
+  if (state.ended) writeAfterEnd(this, cb);else if (isBuf || validChunk(this, state, chunk, cb)) {
+    state.pendingcb++;
+    ret = writeOrBuffer(this, state, isBuf, chunk, encoding, cb);
+  }
+
+  return ret;
+};
+
+Writable.prototype.cork = function () {
+  var state = this._writableState;
+
+  state.corked++;
+};
+
+Writable.prototype.uncork = function () {
+  var state = this._writableState;
+
+  if (state.corked) {
+    state.corked--;
+
+    if (!state.writing && !state.corked && !state.finished && !state.bufferProcessing && state.bufferedRequest) clearBuffer(this, state);
+  }
+};
+
+Writable.prototype.setDefaultEncoding = function setDefaultEncoding(encoding) {
+  // node::ParseEncoding() requires lower case.
+  if (typeof encoding === 'string') encoding = encoding.toLowerCase();
+  if (!(['hex', 'utf8', 'utf-8', 'ascii', 'binary', 'base64', 'ucs2', 'ucs-2', 'utf16le', 'utf-16le', 'raw'].indexOf((encoding + '').toLowerCase()) > -1)) throw new TypeError('Unknown encoding: ' + encoding);
+  this._writableState.defaultEncoding = encoding;
+  return this;
+};
+
+function decodeChunk(state, chunk, encoding) {
+  if (!state.objectMode && state.decodeStrings !== false && typeof chunk === 'string') {
+    chunk = Buffer.from(chunk, encoding);
+  }
+  return chunk;
+}
+
+Object.defineProperty(Writable.prototype, 'writableHighWaterMark', {
+  // making it explicit this property is not enumerable
+  // because otherwise some prototype manipulation in
+  // userland will fail
+  enumerable: false,
+  get: function get() {
+    return this._writableState.highWaterMark;
+  }
+});
+
+// if we're already writing something, then just put this
+// in the queue, and wait our turn.  Otherwise, call _write
+// If we return false, then we need a drain event, so set that flag.
+function writeOrBuffer(stream, state, isBuf, chunk, encoding, cb) {
+  if (!isBuf) {
+    var newChunk = decodeChunk(state, chunk, encoding);
+    if (chunk !== newChunk) {
+      isBuf = true;
+      encoding = 'buffer';
+      chunk = newChunk;
+    }
+  }
+  var len = state.objectMode ? 1 : chunk.length;
+
+  state.length += len;
+
+  var ret = state.length < state.highWaterMark;
+  // we must ensure that previous needDrain will not be reset to false.
+  if (!ret) state.needDrain = true;
+
+  if (state.writing || state.corked) {
+    var last = state.lastBufferedRequest;
+    state.lastBufferedRequest = {
+      chunk: chunk,
+      encoding: encoding,
+      isBuf: isBuf,
+      callback: cb,
+      next: null
+    };
+    if (last) {
+      last.next = state.lastBufferedRequest;
+    } else {
+      state.bufferedRequest = state.lastBufferedRequest;
+    }
+    state.bufferedRequestCount += 1;
+  } else {
+    doWrite(stream, state, false, len, chunk, encoding, cb);
+  }
+
+  return ret;
+}
+
+function doWrite(stream, state, writev, len, chunk, encoding, cb) {
+  state.writelen = len;
+  state.writecb = cb;
+  state.writing = true;
+  state.sync = true;
+  if (writev) stream._writev(chunk, state.onwrite);else stream._write(chunk, encoding, state.onwrite);
+  state.sync = false;
+}
+
+function onwriteError(stream, state, sync, er, cb) {
+  --state.pendingcb;
+
+  if (sync) {
+    // defer the callback if we are being called synchronously
+    // to avoid piling up things on the stack
+    pna.nextTick(cb, er);
+    // this can emit finish, and it will always happen
+    // after error
+    pna.nextTick(finishMaybe, stream, state);
+    stream._writableState.errorEmitted = true;
+    stream.emit('error', er);
+  } else {
+    // the caller expect this to happen before if
+    // it is async
+    cb(er);
+    stream._writableState.errorEmitted = true;
+    stream.emit('error', er);
+    // this can emit finish, but finish must
+    // always follow error
+    finishMaybe(stream, state);
+  }
+}
+
+function onwriteStateUpdate(state) {
+  state.writing = false;
+  state.writecb = null;
+  state.length -= state.writelen;
+  state.writelen = 0;
+}
+
+function onwrite(stream, er) {
+  var state = stream._writableState;
+  var sync = state.sync;
+  var cb = state.writecb;
+
+  onwriteStateUpdate(state);
+
+  if (er) onwriteError(stream, state, sync, er, cb);else {
+    // Check if we're actually ready to finish, but don't emit yet
+    var finished = needFinish(state);
+
+    if (!finished && !state.corked && !state.bufferProcessing && state.bufferedRequest) {
+      clearBuffer(stream, state);
+    }
+
+    if (sync) {
+      /*<replacement>*/
+      asyncWrite(afterWrite, stream, state, finished, cb);
+      /*</replacement>*/
+    } else {
+      afterWrite(stream, state, finished, cb);
+    }
+  }
+}
+
+function afterWrite(stream, state, finished, cb) {
+  if (!finished) onwriteDrain(stream, state);
+  state.pendingcb--;
+  cb();
+  finishMaybe(stream, state);
+}
+
+// Must force callback to be called on nextTick, so that we don't
+// emit 'drain' before the write() consumer gets the 'false' return
+// value, and has a chance to attach a 'drain' listener.
+function onwriteDrain(stream, state) {
+  if (state.length === 0 && state.needDrain) {
+    state.needDrain = false;
+    stream.emit('drain');
+  }
+}
+
+// if there's something in the buffer waiting, then process it
+function clearBuffer(stream, state) {
+  state.bufferProcessing = true;
+  var entry = state.bufferedRequest;
+
+  if (stream._writev && entry && entry.next) {
+    // Fast case, write everything using _writev()
+    var l = state.bufferedRequestCount;
+    var buffer = new Array(l);
+    var holder = state.corkedRequestsFree;
+    holder.entry = entry;
+
+    var count = 0;
+    var allBuffers = true;
+    while (entry) {
+      buffer[count] = entry;
+      if (!entry.isBuf) allBuffers = false;
+      entry = entry.next;
+      count += 1;
+    }
+    buffer.allBuffers = allBuffers;
+
+    doWrite(stream, state, true, state.length, buffer, '', holder.finish);
+
+    // doWrite is almost always async, defer these to save a bit of time
+    // as the hot path ends with doWrite
+    state.pendingcb++;
+    state.lastBufferedRequest = null;
+    if (holder.next) {
+      state.corkedRequestsFree = holder.next;
+      holder.next = null;
+    } else {
+      state.corkedRequestsFree = new CorkedRequest(state);
+    }
+    state.bufferedRequestCount = 0;
+  } else {
+    // Slow case, write chunks one-by-one
+    while (entry) {
+      var chunk = entry.chunk;
+      var encoding = entry.encoding;
+      var cb = entry.callback;
+      var len = state.objectMode ? 1 : chunk.length;
+
+      doWrite(stream, state, false, len, chunk, encoding, cb);
+      entry = entry.next;
+      state.bufferedRequestCount--;
+      // if we didn't call the onwrite immediately, then
+      // it means that we need to wait until it does.
+      // also, that means that the chunk and cb are currently
+      // being processed, so move the buffer counter past them.
+      if (state.writing) {
+        break;
+      }
+    }
+
+    if (entry === null) state.lastBufferedRequest = null;
+  }
+
+  state.bufferedRequest = entry;
+  state.bufferProcessing = false;
+}
+
+Writable.prototype._write = function (chunk, encoding, cb) {
+  cb(new Error('_write() is not implemented'));
+};
+
+Writable.prototype._writev = null;
+
+Writable.prototype.end = function (chunk, encoding, cb) {
+  var state = this._writableState;
+
+  if (typeof chunk === 'function') {
+    cb = chunk;
+    chunk = null;
+    encoding = null;
+  } else if (typeof encoding === 'function') {
+    cb = encoding;
+    encoding = null;
+  }
+
+  if (chunk !== null && chunk !== undefined) this.write(chunk, encoding);
+
+  // .end() fully uncorks
+  if (state.corked) {
+    state.corked = 1;
+    this.uncork();
+  }
+
+  // ignore unnecessary end() calls.
+  if (!state.ending && !state.finished) endWritable(this, state, cb);
+};
+
+function needFinish(state) {
+  return state.ending && state.length === 0 && state.bufferedRequest === null && !state.finished && !state.writing;
+}
+function callFinal(stream, state) {
+  stream._final(function (err) {
+    state.pendingcb--;
+    if (err) {
+      stream.emit('error', err);
+    }
+    state.prefinished = true;
+    stream.emit('prefinish');
+    finishMaybe(stream, state);
+  });
+}
+function prefinish(stream, state) {
+  if (!state.prefinished && !state.finalCalled) {
+    if (typeof stream._final === 'function') {
+      state.pendingcb++;
+      state.finalCalled = true;
+      pna.nextTick(callFinal, stream, state);
+    } else {
+      state.prefinished = true;
+      stream.emit('prefinish');
+    }
+  }
+}
+
+function finishMaybe(stream, state) {
+  var need = needFinish(state);
+  if (need) {
+    prefinish(stream, state);
+    if (state.pendingcb === 0) {
+      state.finished = true;
+      stream.emit('finish');
+    }
+  }
+  return need;
+}
+
+function endWritable(stream, state, cb) {
+  state.ending = true;
+  finishMaybe(stream, state);
+  if (cb) {
+    if (state.finished) pna.nextTick(cb);else stream.once('finish', cb);
+  }
+  state.ended = true;
+  stream.writable = false;
+}
+
+function onCorkedFinish(corkReq, state, err) {
+  var entry = corkReq.entry;
+  corkReq.entry = null;
+  while (entry) {
+    var cb = entry.callback;
+    state.pendingcb--;
+    cb(err);
+    entry = entry.next;
+  }
+  if (state.corkedRequestsFree) {
+    state.corkedRequestsFree.next = corkReq;
+  } else {
+    state.corkedRequestsFree = corkReq;
+  }
+}
+
+Object.defineProperty(Writable.prototype, 'destroyed', {
+  get: function get() {
+    if (this._writableState === undefined) {
+      return false;
+    }
+    return this._writableState.destroyed;
+  },
+  set: function set(value) {
+    // we ignore the value if the stream
+    // has not been initialized yet
+    if (!this._writableState) {
+      return;
+    }
+
+    // backward compatibility, the user is explicitly
+    // managing destroyed
+    this._writableState.destroyed = value;
+  }
+});
+
+Writable.prototype.destroy = destroyImpl.destroy;
+Writable.prototype._undestroy = destroyImpl.undestroy;
+Writable.prototype._destroy = function (err, cb) {
+  this.end();
+  cb(err);
+};
+
+}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {},require("timers").setImmediate)
+},{"./_stream_duplex":174,"./internal/streams/destroy":180,"./internal/streams/stream":181,"_process":172,"core-util-is":8,"inherits":19,"process-nextick-args":171,"safe-buffer":186,"timers":196,"util-deprecate":198}],179:[function(require,module,exports){
+'use strict';
+
+function _classCallCheck(instance, Constructor) {
+  if (!(instance instanceof Constructor)) {
+    throw new TypeError("Cannot call a class as a function");
+  }
+}
+
+var Buffer = require('safe-buffer').Buffer;
+var util = require('util');
+
+function copyBuffer(src, target, offset) {
+  src.copy(target, offset);
+}
+
+module.exports = function () {
+  function BufferList() {
+    _classCallCheck(this, BufferList);
+
+    this.head = null;
+    this.tail = null;
+    this.length = 0;
+  }
+
+  BufferList.prototype.push = function push(v) {
+    var entry = { data: v, next: null };
+    if (this.length > 0) this.tail.next = entry;else this.head = entry;
+    this.tail = entry;
+    ++this.length;
+  };
+
+  BufferList.prototype.unshift = function unshift(v) {
+    var entry = { data: v, next: this.head };
+    if (this.length === 0) this.tail = entry;
+    this.head = entry;
+    ++this.length;
+  };
+
+  BufferList.prototype.shift = function shift() {
+    if (this.length === 0) return;
+    var ret = this.head.data;
+    if (this.length === 1) this.head = this.tail = null;else this.head = this.head.next;
+    --this.length;
+    return ret;
+  };
+
+  BufferList.prototype.clear = function clear() {
+    this.head = this.tail = null;
+    this.length = 0;
+  };
+
+  BufferList.prototype.join = function join(s) {
+    if (this.length === 0) return '';
+    var p = this.head;
+    var ret = '' + p.data;
+    while (p = p.next) {
+      ret += s + p.data;
+    }return ret;
+  };
+
+  BufferList.prototype.concat = function concat(n) {
+    if (this.length === 0) return Buffer.alloc(0);
+    if (this.length === 1) return this.head.data;
+    var ret = Buffer.allocUnsafe(n >>> 0);
+    var p = this.head;
+    var i = 0;
+    while (p) {
+      copyBuffer(p.data, ret, i);
+      i += p.data.length;
+      p = p.next;
+    }
+    return ret;
+  };
+
+  return BufferList;
+}();
+
+if (util && util.inspect && util.inspect.custom) {
+  module.exports.prototype[util.inspect.custom] = function () {
+    var obj = util.inspect({ length: this.length });
+    return this.constructor.name + ' ' + obj;
+  };
+}
+
+},{"safe-buffer":186,"util":4}],180:[function(require,module,exports){
+'use strict';
+
+/*<replacement>*/
+
+var pna = require('process-nextick-args');
+/*</replacement>*/
+
+// undocumented cb() API, needed for core, not for public API
+function destroy(err, cb) {
+  var _this = this;
+
+  var readableDestroyed = this._readableState && this._readableState.destroyed;
+  var writableDestroyed = this._writableState && this._writableState.destroyed;
+
+  if (readableDestroyed || writableDestroyed) {
+    if (cb) {
+      cb(err);
+    } else if (err && (!this._writableState || !this._writableState.errorEmitted)) {
+      pna.nextTick(emitErrorNT, this, err);
+    }
+    return this;
+  }
+
+  // we set destroyed to true before firing error callbacks in order
+  // to make it re-entrance safe in case destroy() is called within callbacks
+
+  if (this._readableState) {
+    this._readableState.destroyed = true;
+  }
+
+  // if this is a duplex stream mark the writable part as destroyed as well
+  if (this._writableState) {
+    this._writableState.destroyed = true;
+  }
+
+  this._destroy(err || null, function (err) {
+    if (!cb && err) {
+      pna.nextTick(emitErrorNT, _this, err);
+      if (_this._writableState) {
+        _this._writableState.errorEmitted = true;
+      }
+    } else if (cb) {
+      cb(err);
+    }
+  });
+
+  return this;
+}
+
+function undestroy() {
+  if (this._readableState) {
+    this._readableState.destroyed = false;
+    this._readableState.reading = false;
+    this._readableState.ended = false;
+    this._readableState.endEmitted = false;
+  }
+
+  if (this._writableState) {
+    this._writableState.destroyed = false;
+    this._writableState.ended = false;
+    this._writableState.ending = false;
+    this._writableState.finished = false;
+    this._writableState.errorEmitted = false;
+  }
+}
+
+function emitErrorNT(self, err) {
+  self.emit('error', err);
+}
+
+module.exports = {
+  destroy: destroy,
+  undestroy: undestroy
+};
+
+},{"process-nextick-args":171}],181:[function(require,module,exports){
+'use strict';
+
+module.exports = require('events').EventEmitter;
+
+},{"events":9}],182:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./readable').PassThrough;
+
+},{"./readable":183}],183:[function(require,module,exports){
+'use strict';
+
+exports = module.exports = require('./lib/_stream_readable.js');
+exports.Stream = exports;
+exports.Readable = exports;
+exports.Writable = require('./lib/_stream_writable.js');
+exports.Duplex = require('./lib/_stream_duplex.js');
+exports.Transform = require('./lib/_stream_transform.js');
+exports.PassThrough = require('./lib/_stream_passthrough.js');
+
+},{"./lib/_stream_duplex.js":174,"./lib/_stream_passthrough.js":175,"./lib/_stream_readable.js":176,"./lib/_stream_transform.js":177,"./lib/_stream_writable.js":178}],184:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./readable').Transform;
+
+},{"./readable":183}],185:[function(require,module,exports){
+'use strict';
+
+module.exports = require('./lib/_stream_writable.js');
+
+},{"./lib/_stream_writable.js":178}],186:[function(require,module,exports){
+'use strict';
+
+/* eslint-disable node/no-deprecated-api */
+var buffer = require('buffer');
+var Buffer = buffer.Buffer;
+
+// alternative to using Object.keys for old browsers
+function copyProps(src, dst) {
+  for (var key in src) {
+    dst[key] = src[key];
+  }
+}
+if (Buffer.from && Buffer.alloc && Buffer.allocUnsafe && Buffer.allocUnsafeSlow) {
+  module.exports = buffer;
+} else {
+  // Copy properties from require('buffer')
+  copyProps(buffer, exports);
+  exports.Buffer = SafeBuffer;
+}
+
+function SafeBuffer(arg, encodingOrOffset, length) {
+  return Buffer(arg, encodingOrOffset, length);
+}
+
+// Copy static methods from Buffer
+copyProps(Buffer, SafeBuffer);
+
+SafeBuffer.from = function (arg, encodingOrOffset, length) {
+  if (typeof arg === 'number') {
+    throw new TypeError('Argument must not be a number');
+  }
+  return Buffer(arg, encodingOrOffset, length);
+};
+
+SafeBuffer.alloc = function (size, fill, encoding) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number');
+  }
+  var buf = Buffer(size);
+  if (fill !== undefined) {
+    if (typeof encoding === 'string') {
+      buf.fill(fill, encoding);
+    } else {
+      buf.fill(fill);
+    }
+  } else {
+    buf.fill(0);
+  }
+  return buf;
+};
+
+SafeBuffer.allocUnsafe = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number');
+  }
+  return Buffer(size);
+};
+
+SafeBuffer.allocUnsafeSlow = function (size) {
+  if (typeof size !== 'number') {
+    throw new TypeError('Argument must be a number');
+  }
+  return buffer.SlowBuffer(size);
+};
+
+},{"buffer":7}],187:[function(require,module,exports){
+(function (setImmediate){
+'use strict';
+
+module.exports = typeof setImmediate === 'function' ? setImmediate : function setImmediate() {
+	var args = [].slice.apply(arguments);
+	args.splice(1, 0, 0);
+	setTimeout.apply(null, args);
+};
+
+}).call(this,require("timers").setImmediate)
+},{"timers":196}],188:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -30547,7 +35154,7 @@ function pushAssignment(signal, parenthesis) {
   }
 }
 
-},{"spectra-nmr-utilities":179}],155:[function(require,module,exports){
+},{"spectra-nmr-utilities":193}],189:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -30576,7 +35183,7 @@ function _interopRequireDefault(obj) {
   return obj && obj.__esModule ? obj : { default: obj };
 }
 
-},{"./acs/acs.js":154,"./range/Ranges":156}],156:[function(require,module,exports){
+},{"./acs/acs.js":188,"./range/Ranges":190}],190:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -30878,7 +35485,7 @@ class Ranges extends Array {
 }
 exports.default = Ranges;
 
-},{"../acs/acs":154,"./peak2Vector":157,"lodash.round":43,"ml-stat":112,"spectra-nmr-utilities":179}],157:[function(require,module,exports){
+},{"../acs/acs":188,"./peak2Vector":191,"lodash.round":61,"ml-stat":127,"spectra-nmr-utilities":193}],191:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -30975,2475 +35582,395 @@ function peak2Vector(peaks, options = {}) {
   return { x: x, y: y };
 }
 
-},{}],158:[function(require,module,exports){
+},{}],192:[function(require,module,exports){
 'use strict';
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+Object.defineProperty(exports, '__esModule', { value: true });
 
-var _brukerconverter = require('brukerconverter');
-
-var _brukerconverter2 = _interopRequireDefault(_brukerconverter);
-
-var _nmrSimulation = require('nmr-simulation');
-
-var _SD = require('./SD');
-
-var _SD2 = _interopRequireDefault(_SD);
-
-var _Filters = require('./filters/Filters.js');
-
-var Filters = _interopRequireWildcard(_Filters);
-
-var _peaks2Ranges = require('./peakPicking/peaks2Ranges');
-
-var _peaks2Ranges2 = _interopRequireDefault(_peaks2Ranges);
-
-var _impurities = require('./peakPicking/impurities.js');
-
-var _impurities2 = _interopRequireDefault(_impurities);
-
-function _interopRequireWildcard(obj) {
-  if (obj && obj.__esModule) {
-    return obj;
-  } else {
-    var newObj = {};if (obj != null) {
-      for (var key in obj) {
-        if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key];
-      }
-    }newObj.default = obj;return newObj;
-  }
+function _interopDefault(ex) {
+  return ex && typeof ex === 'object' && 'default' in ex ? ex['default'] : ex;
 }
 
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
-}
+var ArrayUtils = _interopDefault(require('ml-array-utils'));
+var min = _interopDefault(require('ml-array-min'));
+var max = _interopDefault(require('ml-array-max'));
+var getMedian = _interopDefault(require('ml-array-median'));
+var rescale = _interopDefault(require('ml-array-rescale'));
+var JcampConverter = _interopDefault(require('jcampconverter'));
+var GSD = _interopDefault(require('ml-gsd'));
+var Brukerconverter = _interopDefault(require('brukerconverter'));
+var nmrSimulation = require('nmr-simulation');
+var fft = require('ml-fft');
+var fft__default = _interopDefault(fft);
+var spectraDataRanges = require('spectra-data-ranges');
+var round = _interopDefault(require('lodash.round'));
+var simpleClustering = _interopDefault(require('ml-simple-clustering'));
+var matrixPeakFinders = _interopDefault(require('ml-matrix-peaks-finder'));
+
+var version = "3.4.8";
 
 /**
- * @class NMR
- * @extends SD
+ * class encodes a integer vector as a String in order to store it in a text file.
+ * The algorithms used to encode the data are describe in:
+ *            http://www.iupac.org/publications/pac/pdf/2001/pdf/7311x1765.pdf
+ * Created by acastillo on 3/2/16.
  */
-class NMR extends _SD2.default {
-  /**
-     * This function creates a SD instance from the given 1D prediction
-     * @param {Array} prediction
-     * @param {object} options
-     * @return {SD}
-     */
-  static fromSignals(prediction, options = {}) {
-    options = Object.assign({}, {
-      nbPoints: 16 * 1024,
-      maxClusterSize: 8,
-      output: 'xy'
-    }, options);
-
-    var spinSystem = _nmrSimulation.SpinSystem.fromPrediction(prediction);
-
-    spinSystem.ensureClusterSize(options);
-    var data = (0, _nmrSimulation.simulate1D)(spinSystem, options);
-    return NMR.fromXY(data.x, data.y, options);
-  }
-
-  /**
-     * This function create a SD instance from xy data
-     * @param {Array} x - X data.
-     * @param {Array} y - Y data.
-     * @param {object} options - Optional parameters
-     * @return {NMR} SD instance from x and y data
-     */
-  static fromXY(x, y, options) {
-    options = Object.assign({}, options, {
-      xUnit: 'PPM',
-      yUnit: 'Intensity',
-      dataType: 'NMR SPECTRUM'
-    });
-    var spectraData = _SD2.default.fromXY(x, y, options);
-    var spectrum = spectraData.sd.spectra[0];
-
-    spectrum.observeFrequency = options.frequency || 400;
-    spectraData.putParam('observefrequency', spectrum.observeFrequency);
-    spectraData.putParam('.SOLVENTNAME', options.solvent || 'none');
-    // eslint-disable-next-line camelcase
-    spectraData.putParam('$SW_h', Math.abs(spectrum.lastX - spectrum.firstX) * spectrum.observeFrequency);
-    spectraData.putParam('$SW', Math.abs(spectrum.lastX - spectrum.firstX));
-    spectraData.putParam('$TD', spectrum.nbPoints);
-    spectraData.sd.xType = options.nucleus || '1H';
-    return new NMR(spectraData.sd);
-  }
-
-  /**
-     * This function returns a NMR instance from Array of folders or zip file with folders
-     * @param {Array | zipFile} brukerFile - spectra data in two possible input
-     * @param {object} options - the options dependent on brukerFile input, but some parameter are permanents like:
-     * @option {boolean} xy - The spectraData should not be a oneD array but an object with x and y
-     * @option {boolean} keepSpectra - keep the spectra in 2D NMR instance
-     * @option {boolean} noContours - option to generate not generate countour plot for 2Dnmr spectra
-     * @option {string} keepRecordsRegExp - regular expressions to parse data
-     * @return {*}
-     */
-  static fromBruker(brukerFile, options) {
-    options = Object.assign({}, { xy: true, keepSpectra: true, keepRecordsRegExp: /^.+$/ }, options);
-    var brukerSpectra = null;
-    if (Array.isArray(brukerFile)) {
-      brukerSpectra = _brukerconverter2.default.converFolder(brukerFile, options);
-    } else {
-      brukerSpectra = _brukerconverter2.default.convertZip(brukerFile, options);
-    }
-    if (brukerSpectra) {
-      return brukerSpectra.map(function (spectrum) {
-        return new NMR(spectrum);
-      });
-    }
-    return null;
-  }
-
-  /**
-     * create a SD instance with the magnitude mode spectra for 1D data.
-     * @return {NMR} absolute value spectra-data instance.
-     */
-  getMagnitude() {
-    return Filters.absoluteValue(this);
-  }
-
-  /**
-     * @private
-     * Returns the observed nucleus. A dimension parameter is accepted for compatibility with 2DNMR
-     * @param {number} dim
-     * @return {string}
-     */
-  getNucleus(dim) {
-    if (!dim || dim === 0 || dim === 1) {
-      return this.sd.xType;
-    } else {
-      return '';
-    }
-  }
-
-  /**
-     * @private
-     * Returns the solvent name.
-     * @return {string|XML}
-     */
-  getSolventName() {
-    return (this.sd.info['.SOLVENTNAME'] || this.sd.info.$SOLVENT || '').replace('<', '').replace('>', '');
-  }
-
-  /**
-     * @private
-     * Returns the observe frequency in the direct dimension
-     * @return {number}
-     */
-  observeFrequencyX() {
-    return this.sd.spectra[0].observeFrequency;
-  }
-
-  /**
-     * @private
-     * Returns the noise factor depending on the nucleus.
-     * @param {string} nucleus
-     * @return {number}
-     */
-  getNMRPeakThreshold(nucleus) {
-    if (nucleus === '1H') {
-      return 3.0;
-    }
-    if (nucleus === '13C') {
-      return 5.0;
-    }
-    return 1.0;
-  }
-
-  /**
-     * This function adds white noise to the the given spectraData. The intensity of the noise is
-     * calculated from the given signal to noise ratio.
-     * @param SNR Signal to noise ratio
-     * @return {NMR} this object
-     */
-  /* addNoise(SNR) {
-        //@TODO Implement addNoise filter
-    }*/
-
-  /**
-     *  This filter performs a linear combination of two spectraDatas.
-     * A=spec1
-     * B=spec2
-     * After to apply this filter you will get:
-     *      A=A*factor1+B*factor2
-     * if autoscale is set to 'true' then you will obtain:
-     *  A=A*factor1+B*k*factor2
-     * Where the k is a factor such that the maximum peak in A is equal to the maximum peak in spectraData2
-     * @param spec2 spectraData2
-     * @param factor1 linear factor for spec1
-     * @param factor2 linear factor for spec2
-     * @param autoscale Auto-adjust scales before combine the spectraDatas
-     * @return {NMR} this object
-     * @example spec1 = addSpectraDatas(spec1,spec2,1,-1, false) This subtract spec2 from spec1
-     */
-  /* addSpectraDatas(spec2, factor1, factor2, autoscale) {
-        //@TODO Implement addSpectraDatas filter
-     }*/
-
-  /**
-     * Automatically corrects the base line of a given spectraData. After this process the spectraData
-     * should have meaningful integrals.
-     * @return {NMR} this object
-     */
-  /* autoBaseline() {
-        //@TODO Implement autoBaseline filter
-    }*/
-
-  /**
-     * Fourier transforms the given spectraData (Note. no 2D handling yet) this spectraData have to be
-     * of type NMR_FID or 2DNMR_FID
-     * @return {NMR} this object
-     */
-  fourierTransform() {
-    return Filters.fourierTransform(this);
-  }
-
-  /**
-     * This filter makes an phase 1 correction that corrects the problem of the spectra that has been obtained
-     * on spectrometers using the Bruker digital filters. This method is used in cases when the BrukerSpectra
-     * filter could not find the correct number of points to perform a circular shift.
-     * The actual problem is that not all of the spectra has the necessary parameters for use only one method for
-     * correcting the problem of the Bruker digital filters.
-     * @param {number} ph1corr - Phase 1 correction value in radians.
-     * @return {NMR} this object
-     */
-  postFourierTransform(ph1corr) {
-    return Filters.phaseCorrection(0, ph1corr);
-  }
-
-  /**
-     * This function increase the size of the spectrum, filling the new positions with zero values. Doing it one
-     * could increase artificially the spectral resolution.
-     * @param {number} nPointsX - Number of new zero points in the direct dimension
-     * @param {number} nPointsY - Number of new zero points in the indirect dimension
-     * @return {NMR} this object
-     */
-  zeroFilling(nPointsX, nPointsY) {
-    return Filters.zeroFilling(this, nPointsX, nPointsY);
-  }
-
-  /**
-     * Applies a baseline correction as described in J Magn Resonance 183 (2006) 145-151 10.1016/j.jmr.2006.07.013
-     * The needed parameters are the wavelet scale and the lambda used in the whittaker smoother.
-     * @param waveletScale To be described
-     * @param whittakerLambda To be described
-     * @return {NMR} this object
-     */
-  /* haarWhittakerBaselineCorrection(waveletScale, whittakerLambda) {
-        //@TODO Implement haarWhittakerBaselineCorrection filter
-    }*/
-
-  /**
-     * Applies a baseline correction as described in J Magn Resonance 183 (2006) 145-151 10.1016/j.jmr.2006.07.013
-     * The needed parameters are the Wavelet scale and the lambda used in the Whittaker smoother.
-     * @param waveletScale To be described
-     * @param whittakerLambda To be described
-     * @param ranges A string containing the ranges of no signal.
-     * @return {NMR} this object
-     */
-  /* whittakerBaselineCorrection(whittakerLambda, ranges) {
-        //@TODO Implement whittakerBaselineCorrection filter
-    }*/
-
-  /**
-     * This filter applies a circular shift(phase 1 correction in the time domain) to an NMR FID spectrum that
-     * have been obtained on spectrometers using the Bruker digital filters. The amount of shift depends on the
-     * parameters DECIM and DSPFVS. This spectraData have to be of type NMR_FID
-     * @return {NMR} this object
-     */
-  brukerFilter() {
-    return Filters.digitalFilter(this, { brukerFilter: true });
-  }
-
-  /**
-     * This filter applies a circular shift(phase 1 correction in the time domain) to an NMR FID spectrum that
-     * have been obtained on spectrometers using the Bruker digital filters. The amount of shift depends on the
-     * parameters DECIM and DSPFVS. This spectraData have to be of type NMR_FID
-     * @param {object} options ->
-     * nbPoints: The number of points to shift. Positive values will shift the values to the rigth
-     * and negative values will do to the left.
-     * @return {NMR} this object
-     */
-  digitalFilter(options) {
-    return Filters.digitalFilter(this, options);
-  }
-
-  /**
-     * That decodes an Echo-Antiecho 2D spectrum.
-     * @return {NMR} this object
-     */
-  echoAntiechoFilter() {
-    // @TODO Implement echoAntiechoFilter filter
-    return this;
-  }
-
-  /**
-     * This function apply a Standard Normal Variate Transformation over the given spectraData. Mainly used for IR spectra.
-     * @return {NMR} this object
-     */
-  SNVFilter() {
-    // @TODO Implement SNVFilter
-    return this;
-  }
-
-  /**
-     * This function applies a power to all the Y values. If the power is less than 1 and the spectrum has negative values,
-     * it will be shifted so that the lowest value is zero
-     * @param {number} power - The power value to apply
-     * @return {NMR} this object
-     */
-  powerFilter(power) {
-    var minY = this.getMinY();
-    if (power < 1 && minY < 0) {
-      this.YShift(-1 * minY);
-      // console.warn('SD.powerFilter: The spectrum had negative values and was automatically shifted before applying the function.');
-    }
-    // @TODO Implement powerFilter
-    return this;
-  }
-
-  /**
-     * This function applies a log to all the Y values.<br>If the spectrum has negative or zero values, it will be shifted so that the lowest value is 1
-     * @param   base    The base to use
-     * @return this object
-     */
-  /* logarithmFilter(base) {
-        var minY = this.getMinY();
-        if (minY <= 0) {
-            this.yShift((-1 * minY) + 1);
-            //console.warn('SD.logarithmFilter: The spectrum had negative values and was automatically shifted before applying the function.');
-        }
-        //@TODO Implement logarithmFilter filter
-    }*/
-
-  /**
-     * This function correlates the given spectraData with the given vector func. The correlation
-     * operation (*) is defined as:
-     *
-     *                    __ inf
-     *  c(x)=f(x)(*)g(x)= \        f(x)*g(x+i)
-     *                   ./
-     *                    -- i=-inf
-     * @param func A double array containing the function to correlates the spectraData
-     * @return this object
-     * @example var smoothedSP = SD.correlationFilter(spectraData,[1,1]) returns a smoothed version of the
-     * given spectraData.
-     */
-  /* correlationFilter(func) {
-        //@TODO Implement correlationFilter filter
-    }*/
-
-  /**
-     * Applies the phase correction (phi0,phi1) to a Fourier transformed spectraData. The angles must be given in radians.
-     * @param {number} phi0 - the value of Zero order phase correction
-     * @param {number} phi1 - the value of first order phase correction
-     * @return {NMR}
-     */
-  phaseCorrection(phi0, phi1) {
-    return Filters.phaseCorrection(this, phi0, phi1);
-  }
-
-  /**
-     * This function determines automatically the correct parameters phi0 and phi1 for a phaseCorrection
-     * function and applies it.
-     * @return {NMR}
-     */
-  /* automaticPhase() {
-        //@TODO Implement automaticPhase filter
-    }*/
-
-  /**
-     * This function process the given spectraData and tries to determine the NMR signals. Returns an NMRSignal1D array
-     * containing all the detected 1D-NMR Signals
-     * @param {object} options - A JSONObject containing the optional parameters:
-     * @option fromX:   Lower limit.
-     * @option toX:     Upper limit.
-     * @option threshold: The minimum intensity to consider a peak as a signal, expressed as a percentage of the highest peak.
-     * @option stdev: Number of standard deviation of the noise for the threshold calculation if a threshold is not specified.
-     * @return {*}
-     */
-  getRanges(options = {}) {
-    if (this.ranges) {
-      return this.ranges;
-    } else {
-      var peaks = this.getPeaks(options);
-      var ranges = (0, _peaks2Ranges2.default)(this, peaks, options);
-      return ranges;
-    }
-  }
-
-  /**
-     * This function compute again the process of the given spectraData and tries to determine the NMR signals.
-     * Returns an NMRSignal1D array containing all the detected 1D-NMR Signals
-     * @param {object} options - A JSONObject containing the optional parameters:
-     * @option fromX:   Lower limit.
-     * @option toX:     Upper limit.
-     * @option threshold: The minimum intensity to consider a peak as a signal, expressed as a percentage of the highest peak.
-     * @option stdev: Number of standard deviation of the noise for the threshold calculation if a threshold is not specified.
-     * @return {null|*}
-     */
-  createRanges(options) {
-    this.ranges = null;
-    this.peaks = null;
-    this.ranges = this.getRanges(options);
-    return this.ranges;
-  }
-
-  /**
-     * Return the information with respect to residual signal solvent
-     * @param {string} solvent - solvent name
-     * @return {object}
-     */
-  getResidual(solvent) {
-    return this.getImpurity(solvent, 'solvent_residual_peak');
-  }
-
-  /**
-     * Return an object with possible impurities in a NMR spectrum with respect to a solvent
-     * @param {string} solvent - solvent name
-     * @return {object}
-     */
-  getImpurities(solvent) {
-    return this.getImpurity(solvent);
-  }
-
-  /**
-     * Return the impurity information with respect to a solvent
-     * @param {string} solvent - solvent name
-     * @param {string} impurity - impurity name
-     * @return {object}
-     */
-  getImpurity(solvent, impurity = null) {
-    solvent = solvent.toLowerCase();
-    if (solvent === '(cd3)2so') solvent = 'dmso';
-    var result = _impurities2.default[solvent];
-    if (impurity) {
-      result = result[impurity.toLocaleLowerCase()];
-    }
-    return result;
-  }
-
-  /**
-     * Change the intensities of a respective impurities signals based on peak picking and solvent impurities
-     * @param {string} solvent - solvent name
-     * @param {object} [options = {}] - object may have the peak picking options if this.peaks does not exist.
-     * @param {string} [options.impurity = null] - options to fill a particular impurity of the solvent some thing like 'solvent_residual_peak'
-     * @param {number} [options.value = 0] - value to fill
-     * @param {number} [options.error = 0.025] - tolerance to find the chemical shift of the impurities.
-     */
-  fillImpurity(solvent, options = {}) {
-    var _options$impurity = options.impurity,
-        impurity = _options$impurity === undefined ? null : _options$impurity,
-        _options$value = options.value,
-        value = _options$value === undefined ? 0 : _options$value,
-        _options$error = options.error,
-        error = _options$error === undefined ? 0.025 : _options$error;
-
-
-    var solventImpurities = this.getImpurities(solvent, impurity);
-    if (!solventImpurities) {
-      throw Error('The solvent does not mach with a impurities into the list');
-    }
-
-    var peaks = this.getPeaks(options);
-
-    peaks.forEach(peak => {
-      for (var _impurity in solventImpurities) {
-        for (var signal of _impurity) {
-          if (peak.width + error > Math.abs(signal.shift - peak.x)) {
-            var from = peak.x + peak.width;
-            var to = peak.x - peak.width;
-            this.fill(from, to, value);
-          }
-        }
-      }
-    });
-  }
-}
-
-exports.default = NMR; // node packages/nmr-learning/src/index.js
-// node --experimental-modules  packages/nmr-predictor/example/predict.js
-// node   packages/nmr-predictor/example/predict.js ./node_modules/.bin/jest -o packages/nmr-predictor/
-
-},{"./SD":160,"./filters/Filters.js":161,"./peakPicking/impurities.js":172,"./peakPicking/peaks2Ranges":177,"brukerconverter":5,"nmr-simulation":131}],159:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _brukerconverter = require('brukerconverter');
-
-var _brukerconverter2 = _interopRequireDefault(_brukerconverter);
-
-var _mlArrayMin = require('ml-array-min');
-
-var _mlArrayMin2 = _interopRequireDefault(_mlArrayMin);
-
-var _mlArrayMax = require('ml-array-max');
-
-var _mlArrayMax2 = _interopRequireDefault(_mlArrayMax);
-
-var _nmrSimulation = require('nmr-simulation');
-
-var _SD = require('./SD');
-
-var _SD2 = _interopRequireDefault(_SD);
-
-var _peakPicking2D = require('./peakPicking/peakPicking2D');
-
-var _peakPicking2D2 = _interopRequireDefault(_peakPicking2D);
-
-var _peakOptimizer = require('./peakPicking/peakOptimizer');
-
-var _peakOptimizer2 = _interopRequireDefault(_peakOptimizer);
-
-var _Filters = require('./filters/Filters.js');
-
-var _Filters2 = _interopRequireDefault(_Filters);
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
-}
-
-class NMR2D extends _SD2.default {
-  /**
-     * This function creates a SD instance from the given 2D prediction
-     * @param {Array} prediction
-     * @param {object} options
-     * @return {SD}
-     */
-  static fromPrediction(prediction, options) {
-    var data = (0, _nmrSimulation.simulate2D)(prediction, options);
-    var spectrum = NMR2D.fromMatrix(data, options);
-    var jcamp = spectrum.toJcamp({ type: 'NTUPLES' });
-    return NMR2D.fromJcamp(jcamp);
-  }
-
-  /**
-     * This function return a NMR instance from Array of folders or zip file with folders
-     * @param {Array} brukerFile - spectra data in two possible input
-     * @param {object} options - the options dependent on brukerFile input, but some parameter are permanents like:
-     * @option {boolean} xy - The spectraData should not be a oneD array but an object with x and y
-     * @option {boolean} keepSpectra - keep the spectra in 2D NMR instance
-     * @option {boolean} noContours - option to generate not generate countour plot for 2Dnmr spectra
-     * @option {string} keepRecordsRegExp - regular expressions to parse data
-     * @return {*}
-     */
-  static fromBruker(brukerFile, options) {
-    options = Object.assign({}, { xy: true, keepSpectra: true, keepRecordsRegExp: /^.+$/ }, options);
-    var brukerSpectra = null;
-    if (Array.isArray(brukerFile)) {
-      // It is a folder
-      brukerSpectra = _brukerconverter2.default.converFolder(brukerFile, options);
-    } else {
-      // It is a zip
-      brukerSpectra = _brukerconverter2.default.convertZip(brukerFile, options);
-    }
-    if (brukerSpectra) {
-      return brukerSpectra.map(function (spectrum) {
-        return new NMR2D(spectrum);
-      });
-    }
-    return null;
-  }
-
-  /**
-     * This function creates a 2D spectrum from a matrix containing the independent values of the spectrum and a set
-     * of options...
-     * @param {Array} data
-     * @param {object} options
-     * @return {*}
-     */
-  static fromMatrix(data, options) {
-    var result = {};
-    result.profiling = [];
-    result.logs = [];
-    var spectra = [];
-    var nbPoints = data[0].length;
-    result.spectra = spectra;
-    result.info = {};
-    var firstY = options.firstY || 0;
-    var lastY = options.lastY || data.length - 1;
-    var deltaY = (lastY - firstY) / (data.length - 1);
-
-    var firstX = options.firstX || 0;
-    var lastX = options.lastX || nbPoints - 1;
-    var deltaX = (lastY - firstY) / (nbPoints - 1);
-    var x = options.x;
-    if (!x) {
-      x = new Array(nbPoints);
-      for (var i = 0; i < nbPoints; i++) {
-        x[i] = firstX + deltaX * i;
-      }
-    }
-
-    var observeFrequency = options.frequencyX || 400;
-    var minZ = Number.MAX_SAFE_INTEGER;
-    var maxZ = Number.MIN_SAFE_INTEGER;
-
-    data.forEach((y, index) => {
-      var spectrum = {};
-      spectrum.isXYdata = true;
-      spectrum.nbPoints = nbPoints;
-      spectrum.firstX = firstX;
-      spectrum.firstY = y[0];
-      spectrum.lastX = lastX;
-      spectrum.lastY = y[spectrum.nbPoints - 1];
-      spectrum.xFactor = 1;
-      spectrum.yFactor = 1;
-      spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
-      spectrum.title = options.title || 'spectra-data from matrix';
-      spectrum.dataType = options.dataType || 'nD NMR SPECTRUM';
-      spectrum.observeFrequency = observeFrequency;
-      spectrum.data = [{ x: x, y: y }];
-      spectrum.page = firstY + index * deltaY;
-      result.xType = options.xType || options.nucleusX || '1H';
-      spectra.push(spectrum);
-
-      // let minMax = StatArray.minMax(y);
-
-      minZ = Math.min(minZ, (0, _mlArrayMin2.default)(y));
-      maxZ = Math.max(maxZ, (0, _mlArrayMax2.default)(y));
-    });
-
-    result.ntuples = [{ units: options.xUnit || 'PPM' }, { units: options.yUnit || 'PPM' }, { units: options.zUnit || 'Intensity' }];
-    result.info['2D_Y_FREQUENCY'] = options.frequencyY || 400;
-    result.info['2D_X_FREQUENCY'] = options.frequencyX || 400;
-    result.info.observefrequency = result.info['2D_X_FREQUENCY'];
-    result.info.$BF1 = result.info.observefrequency;
-    result.info['.SOLVENTNAME'] = options.solvent || 'none';
-    // eslint-disable-next-line camelcase
-    result.info.$SW_h = Math.abs(lastX - firstX) * observeFrequency;
-    result.info.$SW = Math.abs(lastX - firstX);
-    result.info.$TD = nbPoints;
-    result.info.firstY = firstY;
-    result.info.lastY = lastY;
-    result.minMax = {
-      minY: firstY,
-      maxY: lastY,
-      minX: firstX,
-      maxX: lastX,
-      minZ: minZ,
-      maxZ: maxZ
-    };
-
-    result.yType = options.yType || options.nucleusY || '1H';
-    result.twoD = true;
-    return new NMR2D(result);
-  }
-  /**
-     * Return true if the it is an homo-nuclear experiment
-     * @return {boolean}
-     */
-  isHomoNuclear() {
-    return this.sd.xType === this.sd.yType;
-  }
-
-  /**
-     * Return the observe frequency in the direct dimension
-     * @return {number}
-     */
-  observeFrequencyX() {
-    return this.sd.spectra[0].observeFrequency;
-  }
-  /**
-     * Return the observe frequency in the indirect dimension
-     * @return {number}
-     */
-  observeFrequencyY() {
-    return this.sd.indirectFrequency;
-  }
-
-  /**
-     * Return the solvent name.
-     * @return {string|XML}
-     */
-  getSolventName() {
-    return (this.sd.info['.SOLVENTNAME'] || this.sd.info.$SOLVENT).replace('<', '').replace('>', '');
-  }
-
-  /**
-     * This function Return the units of the direct dimension. It overrides the SD getXUnits function
-     * @return {ntuples.units|*|b.units}
-     */
-  getXUnits() {
-    return this.sd.ntuples[1].units;
-  }
-  /**
-     * This function Return the units of the indirect dimension. It overrides the SD getYUnits function
-     * @return {ntuples.units|*|b.units}
-     */
-  getYUnits() {
-    return this.sd.ntuples[0].units;
-  }
-  /**
-     * Return the units of the dependent variable
-     * @return {ntuples.units|*|b.units}
-     */
-  getZUnits() {
-    return this.sd.ntuples[2].units;
-  }
-  /**
-     * Return the min value in the indirect dimension.
-     * @return {sd.minMax.maxY}
-     */
-  getLastY() {
-    return this.sd.minMax.maxY;
-  }
-
-  /**
-     * Return the min value in the indirect dimension.
-     * @return {sd.minMax.minY}
-     */
-  getFirstY() {
-    return this.sd.minMax.minY;
-  }
-  /**
-     * Return the separation between 2 consecutive points in the indirect domain
-     * @return {number}
-     */
-  getDeltaY() {
-    return (this.getLastY() - this.getFirstY()) / (this.getNbSubSpectra() - 1);
-  }
-
-  /**
-     * Return the minimum value of the independent variable
-     * @return {number}
-     */
-  getMinZ() {
-    return this.sd.minMax.minZ;
-  }
-
-  /**
-     * Return the maximum value of the independent variable
-     * @return {number}
-     */
-  getMaxZ() {
-    return this.sd.minMax.maxZ;
-  }
-
-  /**
-     * This function process the given spectraData and tries to determine the NMR signals.
-     * Return an NMRSignal2D array containing all the detected 2D-NMR Signals
-     * @param {object} options - Object containing the options.
-     * @option {number} thresholdFactor - A factor to scale the automatically determined noise threshold.
-     * @return  {*} set of NMRSignal2D.
-     */
-  getZones(options) {
-    options = options || {};
-    if (!options.thresholdFactor) {
-      options.thresholdFactor = 1;
-    }
-    var id = Math.round(Math.random() * 255);
-    if (options.idPrefix) {
-      id = options.idPrefix;
-    }
-    var peakList = (0, _peakPicking2D2.default)(this, options.thresholdFactor);
-
-    // lets add an unique ID for each peak.
-    for (var i = 0; i < peakList.length; i++) {
-      peakList[i]._highlight = [`${id}_${i}`];
-      peakList[i].signalID = `${id}_${i}`;
-    }
-    if (options.references) {
-      _peakOptimizer2.default.alignDimensions(peakList, options.references);
-    }
-
-    if (options.format === 'new') {
-      var zones = new Array(peakList.length);
-      for (var k = peakList.length - 1; k >= 0; k--) {
-        var signal = peakList[k];
-        zones[k] = {
-          fromTo: signal.fromTo,
-          integral: signal.intensity || 1,
-          remark: '',
-          signal: [{
-            peak: signal.peaks,
-            delta: [signal.shiftX, signal.shiftY]
-          }],
-          _highlight: signal._highlight,
-          signalID: signal.signalID
-        };
-      }
-      peakList = zones;
-    }
-
-    this.zones = peakList;
-
-    return this.zones;
-  }
-
-  /**
-     * Return the noise factor depending on the nucleus.
-     * @param {string} nucleus
-     * @return {number}
-     */
-  getNMRPeakThreshold(nucleus) {
-    if (nucleus === '1H') {
-      return 3.0;
-    }
-    if (nucleus === '13C') {
-      return 5.0;
-    }
-    return 1.0;
-  }
-
-  /**
-     * Return the observed nucleus in the specified dimension
-     * @param {number} dim
-     * @return {string}
-     */
-  getNucleus(dim) {
-    if (dim === 1) {
-      return this.sd.xType;
-    }
-    if (dim === 2) {
-      return this.sd.yType;
-    }
-    return this.sd.xType;
-  }
-
-  /**
-     * This function increase the size of the spectrum, filling the new positions with zero values. Doing it one
-     * could increase artificially the spectral resolution.
-     * @param {number} nPointsX Number of new zero points in the direct dimension
-     * @param {number} nPointsY Number of new zero points in the indirect dimension
-     * @return {NMR2D} this object
-     */
-  zeroFilling(nPointsX, nPointsY) {
-    return _Filters2.default.zeroFilling(this, nPointsX, nPointsY);
-  }
-
-  /**
-     * This filter applies a circular shift(phase 1 correction in the time domain) to an NMR FID spectrum that
-     * have been obtained on spectrometers using the Bruker digital filters. The amount of shift depends on the
-     * parameters DECIM and DSPFVS. This spectraData have to be of type NMR_FID
-     * @return {NMR2D} this object
-     */
-  brukerFilter() {
-    return _Filters2.default.digitalFilter(this, { brukerFilter: true });
-  }
-
-  /**
-     * This filter applies a circular shift(phase 1 correction in the time domain) to an NMR FID spectrum that
-     * have been obtained on spectrometers using the Bruker digital filters. The amount of shift depends on the
-     * parameters DECIM and DSPFVS. This spectraData have to be of type NMR_FID
-     * @param {object} options - some options are availables:
-     * @option nbPoints: The number of points to shift. Positive values will shift the values to the rigth
-     * and negative values will do to the left.
-     * @option brukerSpectra
-     * @return {NMR2D} this object
-     */
-  digitalFilter(options) {
-    return _Filters2.default.digitalFilter(this, options);
-  }
-
-  /**
-     * Fourier transforms the given spectraData (Note. no 2D handling yet) this spectraData have to be of type NMR_FID or 2DNMR_FID
-     * @return {NMR2D} this object
-     */
-  fourierTransform() {
-    return _Filters2.default.fourierTransform(this);
-  }
-
-  /**
-     * This filter makes an phase 1 correction that corrects the problem of the spectra that has been obtained
-     * on spectrometers using the Bruker digital filters. This method is used in cases when the BrukerSpectra
-     * filter could not find the correct number of points to perform a circular shift.
-     * The actual problem is that not all of the spectra has the necessary parameters for use only one method for
-     * correcting the problem of the Bruker digital filters.
-     * @param {number} ph1corr - Phase 1 correction value in radians.
-     * @return {NMR2D} this object
-     */
-  postFourierTransform(ph1corr) {
-    return _Filters2.default.phaseCorrection(0, ph1corr);
-  }
-}
-exports.default = NMR2D;
-
-},{"./SD":160,"./filters/Filters.js":161,"./peakPicking/peakOptimizer":174,"./peakPicking/peakPicking2D":176,"brukerconverter":5,"ml-array-max":45,"ml-array-min":47,"nmr-simulation":131}],160:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _mlArrayUtils = require('ml-array-utils');
-
-var _mlArrayUtils2 = _interopRequireDefault(_mlArrayUtils);
-
-var _mlArrayMin = require('ml-array-min');
-
-var _mlArrayMin2 = _interopRequireDefault(_mlArrayMin);
-
-var _mlArrayMax = require('ml-array-max');
-
-var _mlArrayMax2 = _interopRequireDefault(_mlArrayMax);
-
-var _mlArrayMedian = require('ml-array-median');
-
-var _mlArrayMedian2 = _interopRequireDefault(_mlArrayMedian);
-
-var _mlArrayRescale = require('ml-array-rescale');
-
-var _mlArrayRescale2 = _interopRequireDefault(_mlArrayRescale);
-
-var _jcampconverter = require('jcampconverter');
-
-var _jcampconverter2 = _interopRequireDefault(_jcampconverter);
-
-var _JcampCreator = require('./jcampEncoder/JcampCreator');
-
-var _JcampCreator2 = _interopRequireDefault(_JcampCreator);
-
-var _peakPicking = require('./peakPicking/peakPicking');
-
-var _peakPicking2 = _interopRequireDefault(_peakPicking);
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
-}
-
-// small note on the best way to define array
-// http://jsperf.com/lp-array-and-loops/2
-
-var DATACLASS_XY = 1;
-var DATACLASS_PEAK = 2;
+var newLine = '\r\n';
+
+var pseudoDigits = [['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], ['@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'], ['@', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'], ['%', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'], ['%', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r'], [' ', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 's']];
+
+var SQZ_P = 1;
+var SQZ_N = 2;
+var DIF_P = 3;
+var DIF_N = 4;
+var DUP = 5;
+var MaxLinelength = 100;
 
 /**
- * Construct the object from the given sd object(output of the jcampconverter or brukerconverter filter)
- * @class SD
- * @param {SD} sd
- * @constructor
+ * This function encodes the given vector. The encoding format is specified by the
+ * encoding option
+ * @param {Array} data
+ * @param {number} firstX
+ * @param {number} intervalX
+ * @param {string} encoding: ('FIX','SQZ','DIF','DIFDUP','CVS','PAC') Default 'DIFDUP'
+ * @return {string}
  */
-class SD {
-  constructor(sd) {
-    this.sd = sd;
-    this.activeElement = 0;
+function encode(data, firstX, intervalX, encoding) {
+  switch (encoding) {
+    case 'FIX':
+      return fixEncoding(data, firstX, intervalX);
+    case 'SQZ':
+      return squeezedEncoding(data, firstX, intervalX);
+    case 'DIF':
+      return differenceEncoding(data, firstX, intervalX);
+    case 'DIFDUP':
+      return differenceDuplicateEncoding(data, firstX, intervalX);
+    case 'CSV':
+      return commaSeparatedValuesEncoding(data, firstX, intervalX);
+    case 'PAC':
+      return packedEncoding(data, firstX, intervalX);
+    default:
+      return differenceEncoding(data, firstX, intervalX);
   }
-
-  /**
-     * Creates a SD instance from the given jcamp.
-     * @param {string} jcamp - The jcamp string to parse from
-     * @param {object} options - Jcamp parsing options
-     * @param {boolean} [options.keepSpectra=true] - If set to false the spectra data points will not be stored in the instance
-     * @param {RegExp} [options.keepRecordsRegExp=/^.+$/] A regular expression for metadata fields to extract from the jcamp
-     * @return {SD} Return the constructed SD instance
-     */
-  static fromJcamp(jcamp, options = {}) {
-    options = Object.assign({}, { keepSpectra: true, keepRecordsRegExp: /^.+$/ }, options, { xy: true });
-    var spectrum = _jcampconverter2.default.convert(jcamp, options);
-    return new this(spectrum);
-  }
-
-  /**
-     * This function create a SD instance from xy data
-     * @param {Array} x - X data.
-     * @param {Array} y - Y data.
-     * @param {object} options - Optional parameters
-     * @return {SD} SD instance from x and y data
-     */
-  static fromXY(x, y, options = {}) {
-    var result = {};
-    result.profiling = [];
-    result.logs = [];
-    result.info = {};
-    var spectrum = {};
-    spectrum.isXYdata = true;
-    spectrum.nbPoints = x.length;
-    spectrum.firstX = x[0];
-    spectrum.firstY = y[0];
-    spectrum.lastX = x[spectrum.nbPoints - 1];
-    spectrum.lastY = y[spectrum.nbPoints - 1];
-    spectrum.xFactor = 1;
-    spectrum.yFactor = 1;
-    spectrum.xUnit = options.xUnit;
-    spectrum.yUnit = options.yUnit;
-    spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
-    spectrum.title = options.title || 'spectra-data from xy';
-    spectrum.dataType = options.dataType;
-    spectrum.data = [{ x: x, y: y }];
-    result.twoD = false;
-    result.spectra = [spectrum];
-    return new this(result);
-  }
-
-  /**
-     * This function sets the nactiveSpectrum sub-spectrum as active
-     * @param {number} nactiveSpectrum index of the sub-spectrum to set as active
-     */
-  setActiveElement(nactiveSpectrum) {
-    this.activeElement = nactiveSpectrum;
-  }
-
-  /**
-     * This function returns the index of the active sub-spectrum.
-     * @return {number|*}
-     */
-  getActiveElement() {
-    return this.activeElement;
-  }
-
-  /**
-     * This function returns the units of the independent dimension.
-     * @return {xUnit|*|M.xUnit}
-     */
-  getXUnits() {
-    return this.getSpectrum().xUnit;
-  }
-
-  /**
-     * This function set the units of the independent dimension.
-     * @param {string} units of the independent dimension.
-     */
-  setXUnits(units) {
-    this.getSpectrum().xUnit = units;
-  }
-  /**
-     * * This function returns the units of the dependent variable.
-     * @return {yUnit|*|M.yUnit}
-     */
-  getYUnits() {
-    return this.getSpectrum().yUnit;
-  }
-
-  /**
-     * This function returns the information about the dimensions
-     * @param {number} index of the tuple
-     * @return {number|*}
-     */
-  getSpectraVariable(index) {
-    return this.sd.ntuples[index];
-  }
-
-  /**
-     * Return the current page
-     * @param {number} index - index of spectrum
-     * @return {number}
-     */
-  getPage(index) {
-    return this.sd.spectra[index].page;
-  }
-
-  /**
-     * Return the number of points in the current spectrum
-     * @param {number} i of sub-spectrum
-     * @return {number | *}
-     */
-  getNbPoints(i) {
-    return this.getSpectrumData(i).y.length;
-  }
-
-  /**
-     * Return the first value of the independent dimension
-     * @param {i} i of sub-spectrum
-     * @return {number | *}
-     */
-  getFirstX(i = this.activeElement) {
-    return this.sd.spectra[i].firstX;
-  }
-
-  /**
-     * Set the firstX for this spectrum. You have to force and update of the xAxis after!!!
-     * @param {number} x - The value for firstX
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     */
-  setFirstX(x, i = this.activeElement) {
-    this.sd.spectra[i].firstX = x;
-  }
-
-  /**
-     * Return the last value of the direct dimension
-     * @param {number} i - sub-spectrum Default:activeSpectrum
-     * @return {number}
-     */
-  getLastX(i = this.activeElement) {
-    return this.sd.spectra[i].lastX;
-  }
-
-  /**
-     * Set the last value of the direct dimension. You have to force and update of the xAxis after!!!
-     * @param {number} x - The value for lastX
-     * @param {number} i - sub-spectrum Default:activeSpectrum
-     */
-  setLastX(x, i = this.activeElement) {
-    this.sd.spectra[i].lastX = x;
-  }
-
-  /**
-     */
-  /**
-     * Return the first value of the direct dimension
-     * @param {number} i - sub-spectrum Default:activeSpectrum
-     * @return {number}
-     */
-  getFirstY(i = this.activeElement) {
-    return this.sd.spectra[i].firstY;
-  }
-
-  /**
-     * Set the first value of the indirect dimension. Only valid for 2D spectra.
-     * @param {number} y - the value of firstY
-     * @param {number} i - sub-spectrum Default: activeSpectrum
-     */
-  setFirstY(y, i = this.activeElement) {
-    this.sd.spectra[i].firstY = y;
-  }
-
-  /**
-     * Return the first value of the indirect dimension. Only valid for 2D spectra.
-     * @param {number} i - sub-spectrum Default: activeSpectrum
-     * @return {number}
-     */
-  getLastY(i = this.activeElement) {
-    return this.sd.spectra[i].lastY;
-  }
-
-  /**
-     * Return the first value of the indirect dimension
-     * @param {number} y - the value of firstY
-     * @param {number} i - sub-spectrum Default:activeSpectrum
-     */
-  setLastY(y, i = this.activeElement) {
-    this.sd.spectra[i].lastY = y;
-  }
-
-  /**
-     * Set the spectrum data_class. It could be DATACLASS_PEAK=1 or DATACLASS_XY=2
-     * @param {string} dataClass - data_class of the current spectra data
-     */
-  setDataClass(dataClass) {
-    if (dataClass === DATACLASS_PEAK) {
-      this.getSpectrum().isPeaktable = true;
-      this.getSpectrum().isXYdata = false;
-    }
-    if (dataClass === DATACLASS_XY) {
-      this.getSpectrum().isXYdata = true;
-      this.getSpectrum().isPeaktable = false;
-    }
-  }
-
-  /**
-     * Is this a PEAKTABLE spectrum?
-     * @return {boolean}
-     */
-  isDataClassPeak() {
-    if (this.getSpectrum().isPeaktable) {
-      return this.getSpectrum().isPeaktable;
-    }
-    return false;
-  }
-
-  /**
-     * Is this a XY spectrum?
-     * @return {*}
-     */
-  isDataClassXY() {
-    if (this.getSpectrum().isXYdata) {
-      return this.getSpectrum().isXYdata;
-    }
-    return false;
-  }
-
-  /**
-     * Set the data type for this spectrum. It could be one of the following:
-     ["INFRARED"||"IR","IV","NDNMRSPEC","NDNMRFID","NMRSPEC","NMRFID","HPLC","MASS"
-     * "UV", "RAMAN" "GC"|| "GASCHROMATOGRAPH","CD"|| "DICHRO","XY","DEC"]
-     * @param {string} dataType
-     */
-  setDataType(dataType) {
-    this.getSpectrum().dataType = dataType;
-  }
-
-  /**
-     * Return the dataType(see: setDataType )
-     * @return {string|string|*|string}
-     */
-  getDataType() {
-    return this.getSpectrum().dataType;
-  }
-
-  /**
-     * Return the i-th sub-spectrum data in the current spectrum
-     * @param {number} i - sub-spectrum Default:activeSpectrum
-     * @return {object}
-     */
-  getSpectrumData(i = this.activeElement) {
-    return this.sd.spectra[i].data[0];
-  }
-
-  /**
-     * Return the i-th sub-spectra in the current spectrum
-     * @param {number} i - sub-spectrum Default:activeSpectrum
-     * @return {object}
-     */
-  getSpectrum(i = this.activeElement) {
-    return this.sd.spectra[i];
-  }
-
-  /**
-     * Return the amount of sub-spectra in this object
-     * @return {*}
-     */
-  getNbSubSpectra() {
-    return this.sd.spectra.length;
-  }
-
-  /**
-     *  Returns an array containing the x values of the spectrum
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     * @return {Array}
-     */
-  getXData(i) {
-    return this.getSpectrumData(i).x;
-  }
-
-  /**
-     * This function returns a double array containing the values with the intensities for the current sub-spectrum.
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     * @return {Array}
-     */
-  getYData(i) {
-    return this.getSpectrumData(i).y;
-  }
-
-  /**
-     * Returns the x value at the specified index for the active sub-spectrum.
-     * @param {number} i array index between 0 and spectrum.getNbPoints()-1
-     * @return {number}
-     */
-  getX(i) {
-    return this.getXData()[i];
-  }
-
-  /**
-     * Returns the y value at the specified index for the active sub-spectrum.
-     * @param {number} i array index between 0 and spectrum.getNbPoints()-1
-     * @return {number}
-     */
-  getY(i) {
-    return this.getYData()[i];
-  }
-
-  /**
-     * Returns a double[2][nbPoints] where the first row contains the x values and the second row the y values.
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     * @return {*[]}
-     */
-  getXYData(i = this.activeElement) {
-    return [this.getXData(i), this.getYData(i)];
-  }
-
-  /**
-     * Return the title of the current spectrum.
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     * @return {*}
-     */
-  getTitle(i) {
-    return this.getSpectrum(i).title;
-  }
-
-  /**
-     * Set the title of this spectrum.
-     * @param {string} newTitle The new title
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     */
-  setTitle(newTitle, i) {
-    this.getSpectrum(i).title = newTitle;
-  }
-
-  /**
-     * This function returns the minimal value of Y
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     * @return {number}
-     */
-  getMinY(i) {
-    return (0, _mlArrayMin2.default)(this.getYData(i));
-  }
-
-  /**
-     * This function returns the maximal value of Y
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     * @return {number}
-     */
-  getMaxY(i) {
-    return (0, _mlArrayMax2.default)(this.getYData(i));
-  }
-
-  /**
-     * Return the min and max value of Y
-     * @param {number} i sub-spectrum Default:activeSpectrum
-     * @return {{min, max}|*}
-     */
-  getMinMaxY(i) {
-    return { min: this.getMinY(i), max: this.getMaxY(i) };
-  }
-
-  /**
-     * Get the noise threshold level of the current spectrum. It uses median instead of the mean
-     * @param {object} options
-     * @param {number} [options.from] - lower limit in ppm to compute noise level
-     * @param {number} [options.to] - upper limit in ppm to compute noise level
-     * @return {number}
-     */
-  getNoiseLevel(options = {}) {
-    var from = options.from,
-        to = options.to;
-
-    var data = from !== undefined && to !== undefined ? this.getVector({ from, to }) : this.getYData();
-    var median = (0, _mlArrayMedian2.default)(data);
-    return median * this.getNMRPeakThreshold(this.getNucleus(1));
-  }
-
-  /**
-     * Return the xValue for the given index.
-     * @param {number} doublePoint
-     * @return {number}
-     */
-  arrayPointToUnits(doublePoint) {
-    return this.getFirstX() - doublePoint * (this.getFirstX() - this.getLastX()) / (this.getNbPoints() - 1);
-  }
-
-  /**
-     * Returns the index-value for the data array corresponding to a X-value in
-     * units for the element of spectraData to which it is linked (spectraNb).
-     * This method makes use of spectraData.getFirstX(), spectraData.getLastX()
-     * and spectraData.getNbPoints() to derive the return value if it of data class XY
-     * It performs a binary search if the spectrum is a peak table
-     * @param {number} inValue - value in Units to be converted
-     * @return {number} An integer representing the index value of the inValue
-     */
-  unitsToArrayPoint(inValue) {
-    if (this.isDataClassXY()) {
-      return Math.round((this.getFirstX() - inValue) * (-1.0 / this.getDeltaX()));
-    } else if (this.isDataClassPeak()) {
-      var currentArrayPoint = 0;
-      var upperLimit = this.getNbPoints() - 1;
-      var lowerLimit = 0;
-      var midPoint;
-
-      if (this.getFirstX() > this.getLastX()) {
-        upperLimit = 0;
-        lowerLimit = this.getNbPoints() - 1;
-
-        if (inValue > this.getFirstX()) {
-          return this.getNbPoints();
-        }
-        if (inValue < this.getLastX()) {
-          return -1;
-        }
-      } else {
-        if (inValue < this.getFirstX()) {
-          return -1;
-        }
-        if (inValue > this.getLastX()) {
-          return this.getNbPoints();
-        }
-      }
-
-      while (Math.abs(upperLimit - lowerLimit) > 1) {
-        midPoint = Math.round(Math.floor((upperLimit + lowerLimit) / 2));
-        if (this.getX(midPoint) === inValue) {
-          return midPoint;
-        }
-        if (this.getX(midPoint) > inValue) {
-          upperLimit = midPoint;
-        } else {
-          lowerLimit = midPoint;
-        }
-      }
-      currentArrayPoint = lowerLimit;
-      if (Math.abs(this.getX(lowerLimit) - inValue) > Math.abs(this.getX(upperLimit) - inValue)) {
-        currentArrayPoint = upperLimit;
-      }
-      return currentArrayPoint;
-    } else {
-      return 0;
-    }
-  }
-
-  /**
-     * Returns the separation between 2 consecutive points in the frequency domain
-     * @return {number}
-     */
-  getDeltaX() {
-    return (this.getLastX() - this.getFirstX()) / (this.getNbPoints() - 1);
-  }
-
-  /**
-     * This function scales the values of Y between the min and max parameters
-     * @param {number} min - Minimum desired value for Y
-     * @param {number} max - Maximum desired value for Y
-     */
-  setMinMax(min, max) {
-    var y = this.getYData();
-    (0, _mlArrayRescale2.default)(y, { min: min, max: max, output: y });
-    this.updateFirstLastY();
-  }
-
-  /**
-     * This function scales the values of Y to fit the min parameter
-     * @param {number} min - Minimum desired value for Y
-     */
-  setMin(min) {
-    var y = this.getYData();
-    (0, _mlArrayRescale2.default)(y, { min: min, output: y, autoMinMax: true });
-    this.updateFirstLastY();
-  }
-
-  /**
-     * This function scales the values of Y to fit the max parameter
-     * @param {number} max - Maximum desired value for Y
-     */
-  setMax(max) {
-    var y = this.getYData();
-    (0, _mlArrayRescale2.default)(y, { max: max, output: y, autoMinMax: true });
-    this.updateFirstLastY();
-  }
-
-  /**
-     * This function shifts the values of Y
-     * @param {number} value - Distance of the shift
-     */
-  yShift(value) {
-    var y = this.getYData();
-    for (var i = 0; i < y.length; i++) {
-      y[i] += value;
-    }
-    this.updateFirstLastY(y);
-  }
-
-  /**
-     * This function shift the given spectraData. After this function is applied, all the peaks in the
-     * spectraData will be found at xi+globalShift
-     * @param {number} globalShift - Distance of the shift for direct dimension.
-     */
-  shift(globalShift) {
-    for (var i = 0; i < this.getNbSubSpectra(); i++) {
-      this.setActiveElement(i);
-      var x = this.getSpectrumData().x;
-      var length = this.getNbPoints();
-      for (var j = 0; j < length; j++) {
-        x[j] += globalShift;
-      }
-      this.updateFirstLastX(x);
-    }
-  }
-
-  /**
-     * Update first and last values of Y data.
-     * @param {Array} y - array of Y spectra data.
-     */
-  updateFirstLastY(y) {
-    if (!Array.isArray(y)) {
-      y = this.getYData();
-    }
-    this.setFirstY(y[0]);
-    this.setLastY(y[y.length - 1]);
-  }
-
-  /**
-     * Update first and last values of X data.
-     * @param {Array} x - array of X spectra data.
-     */
-  updateFirstLastX(x) {
-    if (!Array.isArray(x)) {
-      x = this.getXData();
-    }
-    this.setFirstX(x[0]);
-    this.setLastX(x[x.length - 1]);
-  }
-  /**
-     * Fills a zone of the spectrum with the given value.
-     * @param {number} from - one limit the spectrum to fill
-     * @param {number} to - one limit the spectrum to fill
-     * @param {number} value - value with which to fill
-     */
-  fill(from, to, value = 0) {
-    if (from > to) {
-      var _ref = [to, from];
-      from = _ref[0];
-      to = _ref[1];
-    }
-
-    var currentActiveElement = this.getActiveElement();
-    for (var i = 0; i < this.getNbSubSpectra(); i++) {
-      this.setActiveElement(i);
-
-      var minX = this.getFirstX();
-      var maxX = this.getLastX();
-
-      if (this.getDeltaX()) {
-        ;
-
-        var _ref2 = [maxX, minX];
-        minX = _ref2[0];
-        maxX = _ref2[1];
-      }if (from > maxX || to < minX) {
-        return;
-      }
-
-      from = Math.max(from, minX);
-      to = Math.min(to, maxX);
-
-      var start = this.unitsToArrayPoint(from);
-      var end = this.unitsToArrayPoint(to);
-
-      if (start > end) {
-        var _ref3 = [end, start];
-        start = _ref3[0];
-        end = _ref3[1];
-      }
-
-      var y = this.getYData();
-      for (var j = start; j <= end; j++) {
-        y[j] = value;
-      }
-      this.updateFirstLastY();
-    }
-    this.setActiveElement(currentActiveElement);
-  }
-
-  /**
-     * This function suppress a zone from the given spectraData within the given x range.
-     * Returns a spectraData of type PEAKDATA without peaks in the given region
-     * @param {number} from - one limit the spectrum to suppress
-     * @param {number} to - one limit the spectrum to suppress
-     */
-  suppressRange(from, to) {
-    this.suppressRanges([{ from, to }]);
-  }
-
-  /**
-     * This function suppress a zones of the given spectraData within the given x range.
-     * Returns a spectraData of type PEAKDATA without peaks in the given region
-     * @param {Array} zones - Array with from-to limits of the spectrum to suppress.
-     */
-  suppressRanges(zones = []) {
-    var currentActiveElement = this.getActiveElement();
-    for (var zone of zones) {
-      if (zone.active) {
-        var from = zone.from,
-            to = zone.to;
-
-
-        if (from === to) {
-          return;
-        } else if (from > to) {
-          var _ref4 = [to, from];
-          from = _ref4[0];
-          to = _ref4[1];
-        }
-
-        var start = void 0,
-            end = void 0,
-            x = void 0,
-            y = void 0;
-        for (var i = 0; i < this.getNbSubSpectra(); i++) {
-          this.setActiveElement(i);
-
-          x = this.getXData();
-          y = this.getYData();
-
-          var minX = this.getFirstX();
-          var maxX = this.getLastX();
-
-          if (this.getDeltaX()) {
-            ;
-
-            var _ref5 = [maxX, minX];
-            minX = _ref5[0];
-            maxX = _ref5[1];
-          }if (from > maxX || to < minX) {
-            return;
-          }
-
-          from = Math.max(from, minX);
-          to = Math.min(to, maxX);
-
-          start = this.unitsToArrayPoint(from);
-          end = this.unitsToArrayPoint(to);
-
-          if (start > end) {
-            var _ref6 = [end, start];
-            start = _ref6[0];
-            end = _ref6[1];
-          }
-
-          y.splice(start, end - start + 1);
-          x.splice(start, end - start + 1);
-
-          this.updateFirstLastX();
-          this.updateFirstLastY();
-          this.setDataClass(DATACLASS_PEAK);
-        }
-      }
-    }
-    this.setActiveElement(currentActiveElement);
-  }
-
-  /**
-     * This function performs a simple peak detection in a spectraData. The parameters that can be specified are:
-     * Returns a two dimensional array of double specifying [x,y] of the detected peaks.
-     * @option from:    Lower limit.
-     * @option to:      Upper limit.
-     * @option threshold: The minimum intensity to consider a peak as a signal, expressed as a percentage of the highest peak.
-     * @option stdev: Number of standard deviation of the noise for the threshold calculation if a threshold is not specified.
-     * @option resolution: The maximum resolution of the spectrum for considering peaks.
-     * @option yInverted: Is it a Y inverted spectrum?(like an IR spectrum)
-     * @option smooth: A function for smoothing the spectraData before the detection. If your are dealing with
-     * experimental spectra, smoothing will make the algorithm less prune to false positives.
-     */
-  /*
-    simplePeakPicking(parameters) {
-        //@TODO implements this filter
-    }
-    */
-
-  /**
-     * Get the maximum peak the spectrum
-     * @return {[x, y]}
-     */
-  getMaxPeak() {
-    var y = this.getSpectraDataY();
-    var max = y[0];
-    var index = 0;
-    for (var i = 0; i < y.length; i++) {
-      if (max < y[i]) {
-        max = y[i];
-        index = i;
-      }
-    }
-    return [this.getX(index), max];
-  }
-
-  /** TODO: should be modifed, this is same that getParamInt and getParam
-     * Get the value of the parameter. If it is null, will set up a default value
-     * @param {string} name - The parameter name
-     * @param {*} defvalue - The default value
-     * @return {number}
-     */
-
-  getParamDouble(name, defvalue) {
-    var value = this.sd.info[name];
-    if (!value) {
-      value = defvalue;
-    }
-    return value;
-  }
-
-  /**
-     * Get the string of the value of the parameter. If it is null, will set up a default value
-     * @param {string} name - The parameter name
-     * @param {*} defvalue - The default value
-     * @return {string}
-     */
-  getParamString(name, defvalue) {
-    var value = this.sd.info[name];
-    if (!value) {
-      value = defvalue;
-    }
-    return `${value}`;
-  }
-
-  /**
-     * Get the value of the parameter
-     * @param {string} name - The parameter name
-     * @param {*} defvalue - The default value
-     * @return {number}
-     */
-  getParamInt(name, defvalue) {
-    var value = this.sd.info[name];
-    if (!value) {
-      value = defvalue;
-    }
-    return value;
-  }
-
-  /**
-     * Get the value of the parameter
-     * @param {string} name - The parameter name
-     * @param {*} defvalue - The default value
-     * @return {*}
-     */
-  getParam(name, defvalue) {
-    var value = this.sd.info[name];
-    if (!value) {
-      value = defvalue;
-    }
-    return value;
-  }
-
-  /**
-     * True if the spectrum.info contains the given parameter
-     * @param {string} name - The parameter name
-     * @return {boolean}
-     */
-  containsParam(name) {
-    if (this.sd.info[name]) {
-      return true;
-    }
-    return false;
-  }
-
-  /**
-     * Return the y elements of the current spectrum. Same as getYData. Kept for backward compatibility.
-     * @return {Array}
-     */
-  getSpectraDataY() {
-    return this.getYData();
-  }
-
-  /**
-     * Return the x elements of the current spectrum. Same as getXData. Kept for backward compatibility.
-     * @return {Array}
-     */
-  getSpectraDataX() {
-    return this.getXData();
-  }
-
-  /**
-     * Update min max values of X and Y axis.
-     */
-  resetMinMax() {}
-  // TODO: Implement this function
-
-
-  /**
-     * Set a new parameter to this spectrum
-     * @param {string} name - the parameter name
-     * @param {number | *} value - the parameter value
-     */
-  putParam(name, value) {
-    this.sd.info[name] = value;
-  }
-
-  /**
-     * This function returns the area under the spectrum in the given window (spectrum units)
-     * @param {number} from - one limit in spectrum units
-     * @param {number} to - one limit in spectrum units
-     * @return {number}
-     */
-  getArea(from, to) {
-    var i0 = this.unitsToArrayPoint(from);
-    var ie = this.unitsToArrayPoint(to);
-    var area = 0;
-
-    if (i0 > ie) {
-      var _ref7 = [ie, i0];
-      i0 = _ref7[0];
-      ie = _ref7[1];
-    }
-
-    for (var i = i0; i < ie; i++) {
-      area += this.getY(i);
-    }
-    return area * Math.abs(this.getDeltaX());
-  }
-
-  /**
-     * This function return the integral values for certains ranges at specific SD instance .
-     * @param {Array} ranges - array of objects ranges
-     * @param {object} options - option such as nH for normalization, if it is nH is zero the integral value returned is absolute value
-     */
-  updateIntegrals(ranges, options = {}) {
-    ranges.forEach(range => {
-      range.integral = this.getArea(range.from, range.to);
-    });
-    ranges.updateIntegrals({ sum: options.nH });
-  }
-
-  /**
-     * Returns a equally spaced vector within the given window.
-     * @param {object} options
-     * @param {number} [options.from = firstX] - one limit in spectrum units
-     * @param {number} [options.to = lastX] - one limit in spectrum units
-     * @param {number} [options.nbPoints] - number of points to return(!!!sometimes it is not possible to return exactly the required nbPoints)
-     * @param {string} [options.variant = 'slot'] - variant of the algorithm to get equally spaced data if nbPoints is an entry.
-     * @return {Array}
-     */
-  getVector(options = {}) {
-    var from = options.from,
-        to = options.to,
-        nbPoints = options.nbPoints,
-        variant = options.variant;
-
-
-    if (nbPoints) {
-      return _mlArrayUtils2.default.getEquallySpacedData(this.getSpectraDataX(), this.getSpectraDataY(), { from, to, numberOfPoints: nbPoints, variant });
-    } else {
-      return this.getPointsInWindow(from, to, options);
-    }
-  }
-
-  /**
-     * In place modification of the data to usually reduce the size
-     * This will convert the data in equally spaces X.
-     * @param {object} options
-     * @param {number} [options.from] - one limit in spectrum units
-     * @param {number} [options.to] - one limit in spectrum units
-     * @param {number} [options.nbPoints] - number of points to return(!!!sometimes it is not possible to return exactly the required nbPoints)
-     * @return {this}
-     */
-  reduceData(options = {}) {
-    if (!this.isDataClassXY()) {
-      throw Error('reduceData can only apply on equidistant data');
-    }
-
-    var from = options.from,
-        to = options.to,
-        nbPoints = options.nbPoints;
-
-
-    var currentActiveElement = this.activeElement;
-    for (var i = 0; i < this.getNbSubSpectra(); i++) {
-      this.setActiveElement(i);
-      if (this.getXUnits().toLowerCase() !== 'hz') {
-        if (options.nbPoints) {
-          var x = this.getSpectraDataX();
-          var y = this.getSpectraDataY();
-
-          if (x[0] > x[1] && from < to) {
-            var _ref8 = [to, from];
-            from = _ref8[0];
-            to = _ref8[1];
-          } else if (from > to) {
-            var _ref9 = [to, from];
-            from = _ref9[0];
-            to = _ref9[1];
-          }
-
-          y = _mlArrayUtils2.default.getEquallySpacedData(x, y, { from, to, numberOfPoints: nbPoints });
-
-          var step = (to - from) / (y.length - 1);
-
-          x = new Array(y.length).fill(from);
-          for (var j = 0; j < y.length; j++) {
-            x[j] += step * j;
-          }
-
-          this.sd.spectra[i].data[0].x = x;
-          this.sd.spectra[i].data[0].y = y;
-          this.setFirstX(x[0]);this.setLastX(x[x.length - 1]);
-          this.sd.spectra[i].nbPoints = y.length;
-        } else {
-          var xyData = this.getPointsInWindow(from, to, { outputX: true });
-          this.sd.spectra[i].data[0] = xyData;
-          this.setFirstX(xyData.x[0]);this.setLastX(xyData.x[xyData.x.length - 1]);
-          this.sd.spectra[i].nbPoints = xyData.y.length;
-        }
-      }
-    }
-    this.setActiveElement(currentActiveElement);
-    return this;
-  }
-
-  /**
-     * Returns all the point in a given window.
-     * Not tested, you have to know what you are doing
-     * @param {number} from - index of a limit of the desired window.
-     * @param {number} to - index of a limit of the desired window
-     * @param {object} options
-     * @param {boolean} [options.outputX = false] - if true the output will be {x, y}.
-     * @return {Array | object} - Array / {x, y} data of the desired window.
-     * @private
-     */
-  getPointsInWindow(from, to, options = {}) {
-    if (!this.isDataClassXY()) {
-      throw Error('getPointsInWindow can only apply on equidistant data');
-    }
-    var _options$outputX = options.outputX,
-        outputX = _options$outputX === undefined ? false : _options$outputX;
-
-
-    var indexOfFrom = this.unitsToArrayPoint(from);
-    var indexOfTo = this.unitsToArrayPoint(to);
-
-    if (indexOfFrom > indexOfTo) {
-      var _ref10 = [indexOfTo, indexOfFrom];
-      indexOfFrom = _ref10[0];
-      indexOfTo = _ref10[1];
-    }
-    if (indexOfFrom >= 0 && indexOfTo <= this.getNbPoints() - 2) {
-      var data = this.getSpectraDataY().slice(indexOfFrom, indexOfTo + 1);
-      if (outputX) {
-        var x = this.getSpectraDataX().slice(indexOfFrom, indexOfTo + 1);
-        data = { x, y: data };
-      }
-      return data;
-    } else {
-      throw Error('values outside this in range');
-    }
-  }
-
-  /**
-     * Is it a 2D spectrum?
-     * @return {boolean}
-     */
-  is2D() {
-    if (typeof this.sd.twoD === 'undefined') {
-      return false;
-    }
-    return this.sd.twoD;
-  }
-
-  /**
-     * Set the normalization value for this spectrum
-     * @param {number} value - integral value to set up
-     */
-  setTotalIntegral(value) {
-    this.totalIntegralValue = value;
-  }
-
-  /**
-     * Return the normalization value. It is not set check the molfile and guess it from the number of atoms.
-     * @return {number}
-     */
-  get totalIntegral() {
-    if (this.totalIntegralValue) {
-      return this.totalIntegralValue;
-    } else if (this.molecule) {
-      if (this.getNucleus(0).indexOf('H')) {
-        return this.mf.replace(/.*H([0-9]+).*/, '$1') * 1;
-      }
-      if (this.getNucleus(0).indexOf('C')) {
-        return this.mf.replace(/.*C([0-9]+).*/, '$1') * 1;
-      }
-    } else {
-      return 100;
-    }
-    return 1;
-  }
-
-  /**
-     * this function set a molfile, molecule and molecular formula.
-     * @param {string} molfile - The molfile that correspond to current spectra data
-     */
-  setMolfile(molfile) {
-    this.molfile = molfile;
-  }
-
-  setMF(mf) {
-    this.mf = mf;
-  }
-
-  /**
-     * this function create a new peakPicking
-     * @param {object} options - parameters to calculation of peakPicking
-     * @return {*}
-     */
-  createPeaks(options = {}) {
-    this.peaks = (0, _peakPicking2.default)(this, options);
-    return this.peaks;
-  }
-
-  /**
-     * this function return the peak table or extract the peak of the spectrum.
-     * @param {object} options - parameters to calculation of peakPicking
-     * @return {*}
-     */
-  getPeaks(options) {
-    var peaks = void 0;
-    if (this.peaks) {
-      peaks = this.peaks;
-    } else {
-      peaks = (0, _peakPicking2.default)(this, options);
-    }
-    return peaks;
-  }
-
-  /* autoAssignment(options) {
-     }*/
-
-  /**
-     * This function creates a String that represents the given spectraData in the format JCAMP-DX 5.0
-     * The X,Y data can be compressed using one of the methods described in:
-     * "JCAMP-DX. A STANDARD FORMAT FOR THE EXCHANGE OF ION MOBILITY SPECTROMETRY DATA",
-     *  http://www.iupac.org/publications/pac/pdf/2001/pdf/7311x1765.pdf
-     * @param {object} options - some options are availables:
-     * @option {string} encode  - ['FIX','SQZ','DIF','DIFDUP','CVS','PAC'] (Default: 'DIFDUP')
-     * @option {number} yfactor - The YFACTOR. It allows to compress the data by removing digits from the ordinate. (Default: 1)
-     * @option {string} type - ["NTUPLES", "SIMPLE"] (Default: "SIMPLE")
-     * @option {object} keep - A set of user defined parameters of the given SpectraData to be stored in the jcamp.
-     * @example SD.toJcamp(spectraData,{encode:'DIFDUP',yfactor:0.01,type:"SIMPLE",keep:['#batchID','#url']});
-     * @return {*} a string containing the jcamp-DX file
-     */
-  toJcamp(options = {}) {
-    var creator = new _JcampCreator2.default();
-    return creator.convert(this, Object.assign({}, { yFactor: 1, encode: 'DIFDUP', type: 'SIMPLE' }, options));
-  }
-}
-exports.default = SD;
-
-},{"./jcampEncoder/JcampCreator":169,"./peakPicking/peakPicking":175,"jcampconverter":18,"ml-array-max":45,"ml-array-median":46,"ml-array-min":47,"ml-array-rescale":48,"ml-array-utils":51}],161:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _fourierTransform = require('./fourierTransform');
-
-Object.defineProperty(exports, 'fourierTransform', {
-  enumerable: true,
-  get: function get() {
-    return _interopRequireDefault(_fourierTransform).default;
-  }
-});
-
-var _zeroFilling = require('./zeroFilling');
-
-Object.defineProperty(exports, 'zeroFilling', {
-  enumerable: true,
-  get: function get() {
-    return _interopRequireDefault(_zeroFilling).default;
-  }
-});
-
-var _phaseCorrection = require('./phaseCorrection');
-
-Object.defineProperty(exports, 'phaseCorrection', {
-  enumerable: true,
-  get: function get() {
-    return _interopRequireDefault(_phaseCorrection).default;
-  }
-});
-
-var _digitalFilter = require('./digitalFilter');
-
-Object.defineProperty(exports, 'digitalFilter', {
-  enumerable: true,
-  get: function get() {
-    return _interopRequireDefault(_digitalFilter).default;
-  }
-});
-
-var _absoluteValue = require('./absoluteValue');
-
-Object.defineProperty(exports, 'absoluteValue', {
-  enumerable: true,
-  get: function get() {
-    return _interopRequireDefault(_absoluteValue).default;
-  }
-});
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
-}
-
-},{"./absoluteValue":162,"./digitalFilter":163,"./fourierTransform":164,"./phaseCorrection":165,"./zeroFilling":167}],162:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = absoluteValue;
-
-var _index = require('../index');
-
-function absoluteValue(spectrum) {
-  if (spectrum.is2D()) throw TypeError('The data should be one dimensional');
-  if (spectrum.getXUnits(0).toLowerCase() !== 'ppm') throw TypeError('NMR data should be in ppm');
-  if (spectrum.getXUnits(1).toLowerCase() !== 'ppm') throw TypeError('The data has no imaginary part');
-
-  var re = spectrum.getYData(0);
-  var im = spectrum.getYData(1);
-
-  var result = JSON.parse(JSON.stringify(spectrum.sd));
-
-  result.spectra.splice(1);
-  result.spectra[0].data[0].y = re.map((val, index) => {
-    var imValSquare = Math.pow(im[index], 2);
-    return Math.sqrt(imValSquare + val * val);
-  });
-
-  return new _index.NMR(result);
-}
-
-},{"../index":168}],163:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = digitalFilter;
-
-var _rotate = require('./rotate');
-
-var _rotate2 = _interopRequireDefault(_rotate);
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
-}
-
-function digitalFilter(spectraData, options) {
-  var activeElement = spectraData.activeElement;
-  var nbPoints = 0;
-  if (options.nbPoints) {
-    nbPoints = options.nbPoints;
-  } else {
-    if (options.brukerFilter) {
-      // TODO Determine the number of points to shift, or the ph1 correction
-      // based on DECIM and DSPSVF parameters
-      nbPoints = 0;
-    }
-  }
-
-  var nbSubSpectra = spectraData.getNbSubSpectra();
-  if (nbPoints !== 0) {
-    for (var iSubSpectra = 0; iSubSpectra < nbSubSpectra; iSubSpectra++) {
-      spectraData.setActiveElement(iSubSpectra);
-      (0, _rotate2.default)(spectraData.getYData(), nbPoints);
-      if (options.rotateX) {
-        (0, _rotate2.default)(spectraData.getXData(), nbPoints);
-        spectraData.setFirstX(spectraData.getX(0));
-        spectraData.setLastX(spectraData.getX(spectraData.getNbPoints() - 1));
-      }
-    }
-  }
-  spectraData.setActiveElement(activeElement);
-  return spectraData;
-}
-
-},{"./rotate":166}],164:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = fourierTransform;
-
-var _mlFft = require('ml-fft');
-
-var _mlFft2 = _interopRequireDefault(_mlFft);
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
 }
 
 /**
- * This function make a fourier transformation to each FID withing a SD instance
- * @param {SD} spectraData - SD instance
- * @returns {SD} return SD with spectrum and FID
- */
-
-function fourierTransform(spectraData) {
-  var nbPoints = spectraData.getNbPoints();
-  var nSubSpectra = spectraData.getNbSubSpectra() / 2;
-  var spectraType = 'NMR SPECTRUM'; // spectraData.TYPE_NMR_SPECTRUM;
-  var FFT = _mlFft2.default.FFT;
-  if (nSubSpectra > 1) {
-    spectraType = 'nD NMR SPECTRUM';
-  } // spectraData.TYPE_2DNMR_SPECTRUM;
-
-  FFT.init(nbPoints);
-
-  var fcor = spectraData.getParamDouble('$FCOR', 0.0);
-  // var tempArray = new Array(nbPoints / 2);
-  for (var iSubSpectra = 0; iSubSpectra < nSubSpectra; iSubSpectra++) {
-    var re = spectraData.getYData(2 * iSubSpectra);
-    var im = spectraData.getYData(2 * iSubSpectra + 1);
-
-    re[0] *= fcor;
-    im[0] *= fcor;
-
-    FFT.fft(re, im);
-    re = re.concat(re.slice(0, (nbPoints + 1) / 2)); // TODO why +1 ???
-    re.splice(0, (nbPoints + 1) / 2);
-    im = im.concat(im.slice(0, (nbPoints + 1) / 2));
-    im.splice(0, (nbPoints + 1) / 2);
-
-    spectraData.setActiveElement(2 * iSubSpectra);
-    updateSpectra(spectraData, spectraType);
-
-    spectraData.setActiveElement(2 * iSubSpectra + 1);
-    updateSpectra(spectraData, spectraType);
-  }
-  // TODO For Alejandro
-  // Now we can try to apply the FFt on the second dimension
-  if (spectraData.is2D()) {
-    throw new Error('FT of 2D is not implemented');
-    // var mode = spectraData.getParam('.ACQUISITION SCHEME');
-    /* switch (mode) {
-            case 1://"State-TPP"
-                break;
-            case 2://State
-                break;
-            case 3://Echo-Antiecho
-                break;
-                //QF
-                //Does not transform in the indirect dimension
-        }*/
-  }
-  spectraData.setActiveElement(0);
-  return spectraData;
-}
-
-function updateSpectra(spectraData, spectraType) {
-  var baseFrequency = spectraData.getParamDouble('$BF1', NaN);
-  var spectralFrequency = spectraData.getParamDouble('$SFO1', NaN);
-  var spectralWidth = spectraData.getParamDouble('$SW', NaN);
-  var xMiddle = (spectralFrequency - baseFrequency) / baseFrequency * 1e6;
-  var dx = 0.5 * spectralWidth * spectralFrequency / baseFrequency;
-
-  spectraData.setDataType(spectraType);
-  spectraData.setFirstX(xMiddle + dx);
-  spectraData.setLastX(xMiddle - dx);
-  spectraData.setXUnits('PPM');
-
-  var x = spectraData.getXData();
-  var tmp = xMiddle + dx;
-  dx = -2 * dx / (x.length - 1);
-
-  for (var i = 0; i < x.length; i++) {
-    x[i] = tmp;
-    tmp += dx;
-  }
-
-  // TODO update minmax in Y axis
-}
-
-},{"ml-fft":61}],165:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = phaseCorrection;
-/**
- * Phase correction filter
- * @param {SD} spectraData - SD instance
- * @param {number} [phi0 = 0] - value
- * @param {number} [phi1 = 0] - value
- * @return {SD} returns the modified spectraData
- */
-function phaseCorrection(spectraData, phi0, phi1) {
-  phi0 = Number.isFinite(phi0) ? phi0 : 0;
-  phi1 = Number.isFinite(phi1) ? phi1 : 0;
-
-  var nbPoints = spectraData.getNbPoints();
-  var reData = spectraData.getYData(0);
-  var imData = spectraData.getYData(1);
-
-  var delta = phi1 / nbPoints;
-  var alpha = 2 * Math.pow(Math.sin(delta / 2), 2);
-  var beta = Math.sin(delta);
-  var cosTheta = Math.cos(phi0);
-  var sinTheta = Math.sin(phi0);
-  var cosThetaNew, sinThetaNew;
-
-  var reTmp, imTmp;
-  var index;
-  for (var i = 0; i < nbPoints; i++) {
-    index = nbPoints - i - 1;
-    index = i;
-    reTmp = reData[index] * cosTheta - imData[index] * sinTheta;
-    imTmp = reData[index] * sinTheta + imData[index] * cosTheta;
-    reData[index] = reTmp;
-    imData[index] = imTmp;
-    // calculate angles i+1 from i
-    cosThetaNew = cosTheta - (alpha * cosTheta + beta * sinTheta);
-    sinThetaNew = sinTheta - (alpha * sinTheta - beta * cosTheta);
-    cosTheta = cosThetaNew;
-    sinTheta = sinThetaNew;
-  }
-
-  spectraData.resetMinMax();
-  spectraData.putParam('PHC0', phi0);
-  spectraData.putParam('PHC1', phi1);
-
-  return spectraData;
-}
-
-},{}],166:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = rotate;
-/**
- * This function performs a circular shift of the input object without realocating memory.
- * Positive values of shifts will shift to the right and negative values will do to the left
- * @example rotate([1,2,3,4],1) -> [4,1,2,3]
- * @example rotate([1,2,3,4],-1) -> [2,3,4,1]
- * @param {Array} array - the array that will be rotated
- * @param {number} shift
- */
-function rotate(array, shift) {
-  var nbPoints = array.length;
-  // Lets calculate the lest amount of points to shift.
-  // It decreases the amount of validations in the loop
-  shift = shift % nbPoints;
-
-  if (Math.abs(shift) > nbPoints / 2) {
-    shift = shift > 0 ? shift - nbPoints : shift + nbPoints;
-  }
-
-  if (shift !== 0) {
-    var currentIndex = 0;
-    var nextIndex = shift;
-    var toMove = nbPoints;
-    var current = array[currentIndex];
-    var next;
-    var lastFirstIndex = shift;
-    var direction = shift > 0 ? 1 : -1;
-
-    while (toMove > 0) {
-      nextIndex = putInRange(nextIndex, nbPoints);
-      next = array[nextIndex];
-      array[nextIndex] = current;
-      nextIndex += shift;
-      current = next;
-      toMove--;
-
-      if (nextIndex === lastFirstIndex) {
-        nextIndex = putInRange(nextIndex + direction, nbPoints);
-        lastFirstIndex = nextIndex;
-        currentIndex = putInRange(nextIndex - shift, nbPoints);
-        current = array[currentIndex];
-      }
-    }
-  }
-}
-/**
- * Put a new value in the range
- * @param {number} value
- * @param {number} nbPoints
- * @return {*}
  * @private
+ * No data compression used. The data is separated by a comma(',').
+ * @param {Array} data
+ * @param {number} firstX
+ * @param {number} intervalX
+ * @return {string}
  */
-function putInRange(value, nbPoints) {
-  if (value < 0) {
-    value += nbPoints;
-  }
-  if (value >= nbPoints) {
-    value -= nbPoints;
-  }
-  return value;
+function commaSeparatedValuesEncoding(data, firstX, intervalX) {
+  return fixEncoding(data, firstX, intervalX, ',');
 }
 
-},{}],167:[function(require,module,exports){
-"use strict";
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = zeroFilling;
 /**
- * This function make a zero filling to each Active element in a SD instance.
- * @param {SD} spectraData instance.
- * @param {number} zeroFillingX - number of points that FID will have, if is it lower
- * than initial number of points, the FID will be spliced
- * @return {SD}
+ * @private
+ * No data compression used. The data is separated by the specified separator.
+ * @param {Array} data
+ * @param {number} firstX
+ * @param {number} intervalX
+ * @param {string} separator, The separator character
+ * @return {string}
  */
-function zeroFilling(spectraData, zeroFillingX) {
-  var nbSubSpectra = spectraData.getNbSubSpectra();
-  // var zeroPadding = spectraData.getParamDouble("$$ZEROPADDING", 0);
-  var nbXPoints, lastX, deltaX, k, x, y;
-  if (zeroFillingX !== 0) {
-    for (var iSubSpectra = 0; iSubSpectra < nbSubSpectra; iSubSpectra++) {
-      spectraData.setActiveElement(iSubSpectra);
-      nbXPoints = spectraData.getNbPoints();
-      y = spectraData.getYData();
-      x = spectraData.getXData();
-      lastX = spectraData.getLastX();
-      deltaX = (lastX - x[0]) / (nbXPoints - 1);
-      for (k = nbXPoints; k < zeroFillingX; k++) {
-        y.push(0);
-        x.push(lastX + deltaX);
+function fixEncoding(data, firstX, intervalX, separator) {
+  if (!separator) {
+    separator = ' ';
+  }
+  var outputData = '';
+  var j = 0;
+  var TD = data.length;
+  var i = void 0;
+  while (j < TD - 7) {
+    outputData += Math.ceil(firstX + j * intervalX);
+    for (i = 0; i < 8; i++) {
+      outputData += separator + data[j++];
+    }
+    outputData += newLine;
+  }
+  if (j < TD) {
+    // We add last numbers
+    outputData += Math.ceil(firstX + j * intervalX);
+    for (i = j; i < TD; i++) {
+      outputData += separator + data[i];
+    }
+  }
+  return outputData;
+}
+
+/**
+ * @private
+ * No data compression used. The data is separated by the sign of the number.
+ * @param {Array} data
+ * @param {number} firstX
+ * @param {number} intervalX
+ * @return {string}
+ */
+function packedEncoding(data, firstX, intervalX) {
+  var outputData = '';
+  var j = 0;
+  var TD = data.length;
+  var i = void 0;
+
+  while (j < TD - 7) {
+    outputData += Math.ceil(firstX + j * intervalX);
+    for (i = 0; i < 8; i++) {
+      if (data[j] < 0) {
+        outputData += `-${data[j++]}`;
+      } else {
+        outputData += `+${data[j++]}`;
       }
-      if (zeroFillingX < nbXPoints) {
-        y.splice(zeroFillingX, y.length - 1);
-        x.splice(zeroFillingX, x.length - 1);
+    }
+    outputData += newLine;
+  }
+  if (j < TD) {
+    // We add last numbers
+    outputData += Math.ceil(firstX + j * intervalX);
+    for (i = j; i < TD; i++) {
+      if (data[i] < 0) {
+        outputData += `-${data[i]}`;
+      } else {
+        outputData += `+${data[i]}`;
       }
-      spectraData.setFirstX(x[0]);
-      spectraData.setLastX(x[x.length - 1]);
+    }
+  }
+  return outputData;
+}
+
+/**
+ * @private
+ * Data compression is possible using the squeezed form (SQZ) in which the delimiter, the leading digit,
+ * and sign are replaced by a pseudo-digit from Table 1. For example, the Y-values 30, 32 would be
+ * represented as C0C2.
+ * @param {Array} data
+ * @param {number} firstX
+ * @param {number} intervalX
+ * @return {string}
+ */
+function squeezedEncoding(data, firstX, intervalX) {
+  var outputData = '';
+  // String outputData = new String();
+  var j = 0;
+  var TD = data.length;
+  var i = void 0;
+
+  while (j < TD - 10) {
+    outputData += Math.ceil(firstX + j * intervalX);
+    for (i = 0; i < 10; i++) {
+      outputData += squeezedDigit(data[j++].toString());
+    }
+    outputData += newLine;
+  }
+  if (j < TD) {
+    // We add last numbers
+    outputData += Math.ceil(firstX + j * intervalX);
+    for (i = j; i < TD; i++) {
+      outputData += squeezedDigit(data[i].toString());
     }
   }
 
-  spectraData.setActiveElement(0);
-  return spectraData;
-  // @TODO implement zeroFillingY for 2D spectra
+  return outputData;
 }
 
-},{}],168:[function(require,module,exports){
-'use strict';
+/**
+ * @private
+ * Duplicate suppression encoding
+ * @param {Array} data
+ * @param {number} firstX
+ * @param {number} intervalX
+ * @return {string}
+ */
+function differenceDuplicateEncoding(data, firstX, intervalX) {
+  var mult = 0;
+  var index = 0;
+  var charCount = 0;
+  var i = void 0;
+  // We built a string where we store the encoded data.
+  var encodData = '';
+  var encodNumber = '';
+  var temp = '';
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-
-var _SD = require('./SD');
-
-Object.defineProperty(exports, 'SD', {
-  enumerable: true,
-  get: function get() {
-    return _interopRequireDefault(_SD).default;
+  // We calculate the differences vector
+  var diffData = new Array(data.length - 1);
+  for (i = 0; i < diffData.length; i++) {
+    diffData[i] = data[i + 1] - data[i];
   }
-});
 
-var _NMR = require('./NMR');
-
-Object.defineProperty(exports, 'NMR', {
-  enumerable: true,
-  get: function get() {
-    return _interopRequireDefault(_NMR).default;
+  // We simulate a line carry
+  var numDiff = diffData.length;
+  while (index < numDiff) {
+    if (charCount === 0) {
+      // Start line
+      encodNumber = Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString()) + differenceDigit(diffData[index].toString());
+      encodData += encodNumber;
+      charCount += encodNumber.length;
+    } else {
+      // Try to insert next difference
+      if (diffData[index - 1] === diffData[index]) {
+        mult++;
+      } else {
+        if (mult > 0) {
+          // Now we know that it can be in line
+          mult++;
+          encodNumber = duplicateDigit(mult.toString());
+          encodData += encodNumber;
+          charCount += encodNumber.length;
+          mult = 0;
+          index--;
+        } else {
+          // Mirar si cabe, en caso contrario iniciar una nueva linea
+          encodNumber = differenceDigit(diffData[index].toString());
+          if (encodNumber.length + charCount < MaxLinelength) {
+            encodData += encodNumber;
+            charCount += encodNumber.length;
+          } else {
+            // Iniciar nueva linea
+            encodData += newLine;
+            temp = Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString()) + encodNumber;
+            encodData += temp; // Each line start with first index number.
+            charCount = temp.length;
+          }
+        }
+      }
+    }
+    index++;
   }
-});
-
-var _NMR2D = require('./NMR2D');
-
-Object.defineProperty(exports, 'NMR2D', {
-  enumerable: true,
-  get: function get() {
-    return _interopRequireDefault(_NMR2D).default;
+  if (mult > 0) {
+    encodData += duplicateDigit((mult + 1).toString());
   }
-});
+  // We insert the last data from fid. It is done to control of data
+  // The last line start with the number of datas in the fid.
+  encodData += newLine + Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString());
 
-var _spectraDataRanges = require('spectra-data-ranges');
-
-Object.defineProperty(exports, 'Ranges', {
-  enumerable: true,
-  get: function get() {
-    return _spectraDataRanges.Ranges;
-  }
-});
-Object.defineProperty(exports, 'getACS', {
-  enumerable: true,
-  get: function get() {
-    return _spectraDataRanges.getACS;
-  }
-});
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
+  return encodData;
 }
 
-},{"./NMR":158,"./NMR2D":159,"./SD":160,"spectra-data-ranges":155}],169:[function(require,module,exports){
-'use strict';
+/**
+ * @private
+ * Differential encoding
+ * @param {Array} data
+ * @param {number} firstX
+ * @param {number} intervalX
+ * @return {string}
+ */
+function differenceEncoding(data, firstX, intervalX) {
+  var index = 0;
+  var charCount = 0;
+  var i = void 0;
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+  var encodData = '';
+  var encodNumber = '';
+  var temp = '';
 
-var _VectorEncoder = require('./VectorEncoder');
+  // We calculate the differences vector
+  var diffData = new Array(data.length - 1);
+  for (i = 0; i < diffData.length; i++) {
+    diffData[i] = data[i + 1] - data[i];
+  }
 
-var _VectorEncoder2 = _interopRequireDefault(_VectorEncoder);
+  var numDiff = diffData.length;
+  while (index < numDiff) {
+    if (charCount === 0) {
+      // We convert the first number.
+      encodNumber = Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString()) + differenceDigit(diffData[index].toString());
+      encodData += encodNumber;
+      charCount += encodNumber.length;
+    } else {
+      encodNumber = differenceDigit(diffData[index].toString());
+      if (encodNumber.length + charCount < MaxLinelength) {
+        encodData += encodNumber;
+        charCount += encodNumber.length;
+      } else {
+        encodData += newLine;
+        temp = Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString()) + encodNumber;
+        encodData += temp; // Each line start with first index number.
+        charCount = temp.length;
+      }
+    }
+    index++;
+  }
+  // We insert the last number from data. It is done to control of data
+  encodData += newLine + Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString());
 
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
+  return encodData;
 }
+
+/**
+ * @private
+ * Convert number to the ZQZ format, using pseudo digits.
+ * @param {number} num
+ * @return {string}
+ */
+function squeezedDigit(num) {
+  var SQZdigit = '';
+  if (num.charAt(0) === '-') {
+    SQZdigit += pseudoDigits[SQZ_N][num.charAt(1)];
+    if (num.length > 2) {
+      SQZdigit += num.substring(2);
+    }
+  } else {
+    SQZdigit += pseudoDigits[SQZ_P][num.charAt(0)];
+    if (num.length > 1) {
+      SQZdigit += num.substring(1);
+    }
+  }
+
+  return SQZdigit;
+}
+
+/**
+ * @private
+ * Convert number to the DIF format, using pseudo digits.
+ * @param {number} num
+ * @return {string}
+ */
+function differenceDigit(num) {
+  var DIFFdigit = '';
+
+  if (num.charAt(0) === '-') {
+    DIFFdigit += pseudoDigits[DIF_N][num.charAt(1)];
+    if (num.length > 2) {
+      DIFFdigit += num.substring(2);
+    }
+  } else {
+    DIFFdigit += pseudoDigits[DIF_P][num.charAt(0)];
+    if (num.length > 1) {
+      DIFFdigit += num.substring(1);
+    }
+  }
+
+  return DIFFdigit;
+}
+
+/**
+ * @private
+ * Convert number to the DUP format, using pseudo digits.
+ * @param {number} num
+ * @return {string}
+ */
+function duplicateDigit(num) {
+  var DUPdigit = '';
+  DUPdigit += pseudoDigits[DUP][num.charAt(0)];
+  if (num.length > 1) {
+    DUPdigit += num.substring(1);
+  }
+
+  return DUPdigit;
+}
+
+// const v = require('../../jj.json');
 
 var CRLF = '\r\n';
-var version = `Cheminfo tools ${require('../../package.json').version}`;
+var version$1 = `Cheminfo tools ${version}`;
 
-var defaultParameters = { encode: 'DIFDUP', yFactor: 1, type: 'SIMPLE', keep: [] };
+var defaultParameters = {
+  encode: 'DIFDUP',
+  yFactor: 1,
+  type: 'SIMPLE',
+  keep: []
+};
 /**
  * This class converts a SpectraData object into a String that can be stored as a jcamp file.
  * The string reflects the current state of the object and not the raw data from where this
@@ -33453,18 +35980,18 @@ var defaultParameters = { encode: 'DIFDUP', yFactor: 1, type: 'SIMPLE', keep: []
  */
 class JcampCreator {
   /**
-     * This function creates a String that represents the given spectraData, in the format JCAM-DX 5.0
-     * The X,Y data can be compressed using one of the methods described in:
-     * "JCAMP-DX. A STANDARD FORMAT FOR THE EXCHANGE OF ION MOBILITY SPECTROMETRY DATA",
-     *  http://www.iupac.org/publications/pac/pdf/2001/pdf/7311x1765.pdf
-     * @param {SD} spectraData
-     * @param {object} options - Optional paramteres
-     * @param {string} [options.encode = 'DIFDUP']
-     * @param {number} [options.yFactor = 1]
-     * @param {string} [options.type = 'SIMPLE']
-     * @param {Array} [options.keep = [] ]
-     * @return {string}
-     */
+   * This function creates a String that represents the given spectraData, in the format JCAM-DX 5.0
+   * The X,Y data can be compressed using one of the methods described in:
+   * "JCAMP-DX. A STANDARD FORMAT FOR THE EXCHANGE OF ION MOBILITY SPECTROMETRY DATA",
+   *  http://www.iupac.org/publications/pac/pdf/2001/pdf/7311x1765.pdf
+   * @param {SD} spectraData
+   * @param {object} options - Optional paramteres
+   * @param {string} [options.encode = 'DIFDUP']
+   * @param {number} [options.yFactor = 1]
+   * @param {string} [options.type = 'SIMPLE']
+   * @param {Array} [options.keep = [] ]
+   * @return {string}
+   */
   convert(spectraData, options) {
     options = Object.assign({}, defaultParameters, options);
     var encodeFormat = options.encode.toUpperCase().trim();
@@ -33496,7 +36023,7 @@ class JcampCreator {
     var scaleX = Math.abs(1.0 / spectraData.getDeltaX());
 
     outString += `##TITLE= ${spectraData.getTitle()}${CRLF}`;
-    outString += `##JCAMP-DX= 5.00\t$$${version}${CRLF}`;
+    outString += `##JCAMP-DX= 5.00\t$$${version$1}${CRLF}`;
     outString += `##OWNER= ${spectraData.getParamString('##OWNER=', '')}${CRLF}`;
     outString += `##DATA TYPE= ${spectraData.getDataType()}${CRLF}`;
 
@@ -33512,7 +36039,6 @@ class JcampCreator {
   }
 }
 
-exports.default = JcampCreator;
 function ntuplesHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams) {
   var outString = '';
   var variableX = spectraData.getSpectraVariable(0);
@@ -33525,7 +36051,7 @@ function ntuplesHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams
   // we set the VarName parameter to the most common ones.
   // These tables contain the number of occurences of each one
   var abscVar = {};
-  var sub;
+  var sub = void 0;
   for (sub = 0; sub < spectraData.getNbSubSpectra(); sub++) {
     spectraData.setActiveElement(sub);
     if (abscVar[spectraData.getXUnits()]) {
@@ -33718,7 +36244,7 @@ function ntuplesHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams
         data[_point] = Math.round(spectraData.getY(_point) * scale);
       }
 
-      tempString += _VectorEncoder2.default.encode(data, spectraData.getFirstX() * scaleX, spectraData.getDeltaX() * scaleX, encodeFormat);
+      tempString += encode(data, spectraData.getFirstX() * scaleX, spectraData.getDeltaX() * scaleX, encodeFormat);
       outString += tempString + CRLF;
     }
   }
@@ -33799,7 +36325,7 @@ function simpleHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams)
       data[_point2] = Math.round(spectraData.getY(_point2) * scale);
     }
 
-    tempString += _VectorEncoder2.default.encode(data, spectraData.getFirstX() * scaleX, spectraData.getDeltaX() * scaleX, encodeFormat);
+    tempString += encode(data, spectraData.getFirstX() * scaleX, spectraData.getDeltaX() * scaleX, encodeFormat);
 
     outString += tempString + CRLF;
     outString += '##END= ';
@@ -33809,434 +36335,2015 @@ function simpleHead(spectraData, scale, scaleX, encodeFormat, userDefinedParams)
   return outString;
 }
 
-},{"../../package.json":178,"./VectorEncoder":170}],170:[function(require,module,exports){
-'use strict';
-
 /**
- * class encodes a integer vector as a String in order to store it in a text file.
- * The algorithms used to encode the data are describe in:
- *            http://www.iupac.org/publications/pac/pdf/2001/pdf/7311x1765.pdf
- * Created by acastillo on 3/2/16.
+ * Implementation of the peak picking method described by Cobas in:
+ * A new approach to improving automated analysis of proton NMR spectra
+ * through Global Spectral Deconvolution (GSD)
+ * http://www.spectroscopyeurope.com/images/stories/ColumnPDFs/TD_23_1.pdf
+ * @param {SD} spectrum - SD instance.
+ * @param {Object} peakList - nmr signals.
+ * @param {Object} options - options object with some parameter for GSD.
+ * @param {boolean} [options.compile = true] - If true, the Janalyzer function is run over signals to compile the patterns.
+ * @param {number} [options.minMaxRatio = 0.01] - Threshold to determine if a given peak should be considered as a noise, bases on its relative height compared to the highest peak.
+ * @param {number} [options.broadRatio = 0.00025] - If broadRatio is higher than 0, then all the peaks which second derivative smaller than broadRatio * maxAbsSecondDerivative will be marked with the soft mask equal to true.
+ * @param {boolean} [options.smoothY = true] - Select the peak intensities from a smoothed version of the independent variables?
+ * @param {number} [options.nL = 4] - factor to determine the width at the moment to group the peaks in signals in 'GSD.optimizePeaks' function.
+ * @param {boolean} [options.optimize = true] - if it's true adjust an train of gaussian or lorentzian shapes to spectrum.
+ * @param {string} [options.functionType = 'gaussian'] - This option allows us choose between 'gaussian' or 'lorentzian' function when options.optimize is true.
+ * @param {number} [options.broadWidth = 0.25] - Threshold to determine if some peak is candidate to clustering into range.
+ * @return {Array}
  */
 
-var newLine = '\r\n';
+var defaultOptions = {
+  thresholdFactor: 1,
+  minMaxRatio: 0.01,
+  broadRatio: 0.00025,
+  smoothY: true,
+  widthFactor: 4,
+  realTop: true,
+  functionName: 'gaussian',
+  broadWidth: 0.25,
+  sgOptions: { windowSize: 9, polynomial: 3 }
+};
 
-var pseudoDigits = [['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'], ['@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I'], ['@', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'], ['%', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'], ['%', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r'], [' ', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 's']];
+function extractPeaks(spectrum, options = {}) {
+  options = Object.assign({}, defaultOptions, options, {
+    optimize: false,
+    broadWidth: false
+  });
 
-var SQZ_P = 1;
-var SQZ_N = 2;
-var DIF_P = 3;
-var DIF_N = 4;
-var DUP = 5;
-var MaxLinelength = 100;
+  var _options = options,
+      from = _options.from,
+      to = _options.to,
+      broadWidth = _options.broadWidth,
+      optimize = _options.optimize,
+      _options$noiseLevel = _options.noiseLevel,
+      noiseLevel = _options$noiseLevel === undefined ? Math.abs(spectrum.getNoiseLevel(options)) * options.thresholdFactor : _options$noiseLevel;
 
-/**
- * This function encodes the given vector. The encoding format is specified by the
- * encoding option
- * @param {Array} data
- * @param {number} firstX
- * @param {number} intervalX
- * @param {string} encoding: ('FIX','SQZ','DIF','DIFDUP','CVS','PAC') Default 'DIFDUP'
- * @return {string}
- */
-function encode(data, firstX, intervalX, encoding) {
-  switch (encoding) {
-    case 'FIX':
-      return fixEncoding(data, firstX, intervalX);
-    case 'SQZ':
-      return squeezedEncoding(data, firstX, intervalX);
-    case 'DIF':
-      return differenceEncoding(data, firstX, intervalX);
-    case 'DIFDUP':
-      return differenceDuplicateEncoding(data, firstX, intervalX);
-    case 'CSV':
-      return commaSeparatedValuesEncoding(data, firstX, intervalX);
-    case 'PAC':
-      return packedEncoding(data, firstX, intervalX);
-    default:
-      return differenceEncoding(data, firstX, intervalX);
+
+  var data = from !== undefined && to !== undefined ? spectrum.getVector({ from, to, outputX: true }) : spectrum.getSpectrumData();
+
+  var peakList = GSD.gsd(data.x, data.y, options);
+
+  if (broadWidth) {
+    peakList = GSD.post.joinBroadPeaks(peakList, { width: options.broadWidth });
   }
+  if (optimize) {
+    peakList = GSD.post.optimizePeaks(peakList, data.x, data.y, options);
+  }
+
+  return peakList.filter(p => p.y >= noiseLevel);
 }
 
-/**
- * @private
- * No data compression used. The data is separated by a comma(',').
- * @param {Array} data
- * @param {number} firstX
- * @param {number} intervalX
- * @return {string}
- */
-function commaSeparatedValuesEncoding(data, firstX, intervalX) {
-  return fixEncoding(data, firstX, intervalX, ',');
-}
+// small note on the best way to define array
+
+var DATACLASS_XY = 1;
+var DATACLASS_PEAK = 2;
 
 /**
- * @private
- * No data compression used. The data is separated by the specified separator.
- * @param {Array} data
- * @param {number} firstX
- * @param {number} intervalX
- * @param {string} separator, The separator character
- * @return {string}
+ * Construct the object from the given sd object(output of the jcampconverter or brukerconverter filter)
+ * @class SD
+ * @param {SD} sd
+ * @constructor
  */
-function fixEncoding(data, firstX, intervalX, separator) {
-  if (!separator) {
-    separator = ' ';
+class SD {
+  constructor(sd) {
+    this.sd = sd;
+    this.activeElement = 0;
   }
-  var outputData = '';
-  var j = 0;
-  var TD = data.length;
-  var i;
-  while (j < TD - 7) {
-    outputData += Math.ceil(firstX + j * intervalX);
-    for (i = 0; i < 8; i++) {
-      outputData += separator + data[j++];
+
+  /**
+   * Creates a SD instance from the given jcamp.
+   * @param {string} jcamp - The jcamp string to parse from
+   * @param {object} options - Jcamp parsing options
+   * @param {boolean} [options.keepSpectra=true] - If set to false the spectra data points will not be stored in the instance
+   * @param {RegExp} [options.keepRecordsRegExp=/^.+$/] A regular expression for metadata fields to extract from the jcamp
+   * @return {SD} Return the constructed SD instance
+   */
+  static fromJcamp(jcamp, options = {}) {
+    options = Object.assign({}, { keepSpectra: true, keepRecordsRegExp: /^.+$/ }, options, { xy: true });
+    var spectrum = JcampConverter.convert(jcamp, options);
+    return new this(spectrum);
+  }
+
+  /**
+   * This function create a SD instance from xy data
+   * @param {Array} x - X data.
+   * @param {Array} y - Y data.
+   * @param {object} options - Optional parameters
+   * @return {SD} SD instance from x and y data
+   */
+  static fromXY(x, y, options = {}) {
+    var result = {};
+    result.profiling = [];
+    result.logs = [];
+    result.info = {};
+    var spectrum = {};
+    spectrum.isXYdata = true;
+    spectrum.nbPoints = x.length;
+    spectrum.firstX = x[0];
+    spectrum.firstY = y[0];
+    spectrum.lastX = x[spectrum.nbPoints - 1];
+    spectrum.lastY = y[spectrum.nbPoints - 1];
+    spectrum.xFactor = 1;
+    spectrum.yFactor = 1;
+    spectrum.xUnit = options.xUnit;
+    spectrum.yUnit = options.yUnit;
+    spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
+    spectrum.title = options.title || 'spectra-data from xy';
+    spectrum.dataType = options.dataType;
+    spectrum.data = [{ x: x, y: y }];
+    result.twoD = false;
+    result.spectra = [spectrum];
+    return new this(result);
+  }
+
+  /**
+   * This function sets the nactiveSpectrum sub-spectrum as active
+   * @param {number} nactiveSpectrum index of the sub-spectrum to set as active
+   */
+  setActiveElement(nactiveSpectrum) {
+    this.activeElement = nactiveSpectrum;
+  }
+
+  /**
+   * This function returns the index of the active sub-spectrum.
+   * @return {number|*}
+   */
+  getActiveElement() {
+    return this.activeElement;
+  }
+
+  /**
+   * This function returns the units of the independent dimension.
+   * @return {xUnit|*|M.xUnit}
+   */
+  getXUnits() {
+    return this.getSpectrum().xUnit;
+  }
+
+  /**
+   * This function set the units of the independent dimension.
+   * @param {string} units of the independent dimension.
+   */
+  setXUnits(units) {
+    this.getSpectrum().xUnit = units;
+  }
+  /**
+   * * This function returns the units of the dependent variable.
+   * @return {yUnit|*|M.yUnit}
+   */
+  getYUnits() {
+    return this.getSpectrum().yUnit;
+  }
+
+  /**
+   * This function returns the information about the dimensions
+   * @param {number} index of the tuple
+   * @return {number|*}
+   */
+  getSpectraVariable(index) {
+    return this.sd.ntuples[index];
+  }
+
+  /**
+   * Return the current page
+   * @param {number} index - index of spectrum
+   * @return {number}
+   */
+  getPage(index) {
+    return this.sd.spectra[index].page;
+  }
+
+  /**
+   * Return the number of points in the current spectrum
+   * @param {number} i of sub-spectrum
+   * @return {number | *}
+   */
+  getNbPoints(i) {
+    return this.getSpectrumData(i).y.length;
+  }
+
+  /**
+   * Return the first value of the independent dimension
+   * @param {i} i of sub-spectrum
+   * @return {number | *}
+   */
+  getFirstX(i = this.activeElement) {
+    return this.sd.spectra[i].firstX;
+  }
+
+  /**
+   * Set the firstX for this spectrum. You have to force and update of the xAxis after!!!
+   * @param {number} x - The value for firstX
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   */
+  setFirstX(x, i = this.activeElement) {
+    this.sd.spectra[i].firstX = x;
+  }
+
+  /**
+   * Return the last value of the direct dimension
+   * @param {number} i - sub-spectrum Default:activeSpectrum
+   * @return {number}
+   */
+  getLastX(i = this.activeElement) {
+    return this.sd.spectra[i].lastX;
+  }
+
+  /**
+   * Set the last value of the direct dimension. You have to force and update of the xAxis after!!!
+   * @param {number} x - The value for lastX
+   * @param {number} i - sub-spectrum Default:activeSpectrum
+   */
+  setLastX(x, i = this.activeElement) {
+    this.sd.spectra[i].lastX = x;
+  }
+
+  /**
+   */
+  /**
+   * Return the first value of the direct dimension
+   * @param {number} i - sub-spectrum Default:activeSpectrum
+   * @return {number}
+   */
+  getFirstY(i = this.activeElement) {
+    return this.sd.spectra[i].firstY;
+  }
+
+  /**
+   * Set the first value of the indirect dimension. Only valid for 2D spectra.
+   * @param {number} y - the value of firstY
+   * @param {number} i - sub-spectrum Default: activeSpectrum
+   */
+  setFirstY(y, i = this.activeElement) {
+    this.sd.spectra[i].firstY = y;
+  }
+
+  /**
+   * Return the first value of the indirect dimension. Only valid for 2D spectra.
+   * @param {number} i - sub-spectrum Default: activeSpectrum
+   * @return {number}
+   */
+  getLastY(i = this.activeElement) {
+    return this.sd.spectra[i].lastY;
+  }
+
+  /**
+   * Return the first value of the indirect dimension
+   * @param {number} y - the value of firstY
+   * @param {number} i - sub-spectrum Default:activeSpectrum
+   */
+  setLastY(y, i = this.activeElement) {
+    this.sd.spectra[i].lastY = y;
+  }
+
+  /**
+   * Set the spectrum data_class. It could be DATACLASS_PEAK=1 or DATACLASS_XY=2
+   * @param {string} dataClass - data_class of the current spectra data
+   */
+  setDataClass(dataClass) {
+    if (dataClass === DATACLASS_PEAK) {
+      this.getSpectrum().isPeaktable = true;
+      this.getSpectrum().isXYdata = false;
     }
-    outputData += newLine;
-  }
-  if (j < TD) {
-    // We add last numbers
-    outputData += Math.ceil(firstX + j * intervalX);
-    for (i = j; i < TD; i++) {
-      outputData += separator + data[i];
+    if (dataClass === DATACLASS_XY) {
+      this.getSpectrum().isXYdata = true;
+      this.getSpectrum().isPeaktable = false;
     }
   }
-  return outputData;
-}
 
-/**
- * @private
- * No data compression used. The data is separated by the sign of the number.
- * @param {Array} data
- * @param {number} firstX
- * @param {number} intervalX
- * @return {string}
- */
-function packedEncoding(data, firstX, intervalX) {
-  var outputData = '';
-  var j = 0;
-  var TD = data.length;
-  var i;
+  /**
+   * Is this a PEAKTABLE spectrum?
+   * @return {boolean}
+   */
+  isDataClassPeak() {
+    if (this.getSpectrum().isPeaktable) {
+      return this.getSpectrum().isPeaktable;
+    }
+    return false;
+  }
 
-  while (j < TD - 7) {
-    outputData += Math.ceil(firstX + j * intervalX);
-    for (i = 0; i < 8; i++) {
-      if (data[j] < 0) {
-        outputData += `-${data[j++]}`;
+  /**
+   * Is this a XY spectrum?
+   * @return {*}
+   */
+  isDataClassXY() {
+    if (this.getSpectrum().isXYdata) {
+      return this.getSpectrum().isXYdata;
+    }
+    return false;
+  }
+
+  /**
+     * Set the data type for this spectrum. It could be one of the following:
+     ["INFRARED"||"IR","IV","NDNMRSPEC","NDNMRFID","NMRSPEC","NMRFID","HPLC","MASS"
+     * "UV", "RAMAN" "GC"|| "GASCHROMATOGRAPH","CD"|| "DICHRO","XY","DEC"]
+     * @param {string} dataType
+     */
+  setDataType(dataType) {
+    this.getSpectrum().dataType = dataType;
+  }
+
+  /**
+   * Return the dataType(see: setDataType )
+   * @return {string|string|*|string}
+   */
+  getDataType() {
+    return this.getSpectrum().dataType;
+  }
+
+  /**
+   * Return the i-th sub-spectrum data in the current spectrum
+   * @param {number} i - sub-spectrum Default:activeSpectrum
+   * @return {object}
+   */
+  getSpectrumData(i = this.activeElement) {
+    return this.sd.spectra[i].data[0];
+  }
+
+  /**
+   * Return the i-th sub-spectra in the current spectrum
+   * @param {number} i - sub-spectrum Default:activeSpectrum
+   * @return {object}
+   */
+  getSpectrum(i = this.activeElement) {
+    return this.sd.spectra[i];
+  }
+
+  /**
+   * Return the amount of sub-spectra in this object
+   * @return {*}
+   */
+  getNbSubSpectra() {
+    return this.sd.spectra.length;
+  }
+
+  /**
+   *  Returns an array containing the x values of the spectrum
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   * @return {Array}
+   */
+  getXData(i) {
+    return this.getSpectrumData(i).x;
+  }
+
+  /**
+   * This function returns a double array containing the values with the intensities for the current sub-spectrum.
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   * @return {Array}
+   */
+  getYData(i) {
+    return this.getSpectrumData(i).y;
+  }
+
+  /**
+   * Returns the x value at the specified index for the active sub-spectrum.
+   * @param {number} i array index between 0 and spectrum.getNbPoints()-1
+   * @return {number}
+   */
+  getX(i) {
+    return this.getXData()[i];
+  }
+
+  /**
+   * Returns the y value at the specified index for the active sub-spectrum.
+   * @param {number} i array index between 0 and spectrum.getNbPoints()-1
+   * @return {number}
+   */
+  getY(i) {
+    return this.getYData()[i];
+  }
+
+  /**
+   * Returns a double[2][nbPoints] where the first row contains the x values and the second row the y values.
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   * @return {*[]}
+   */
+  getXYData(i = this.activeElement) {
+    return [this.getXData(i), this.getYData(i)];
+  }
+
+  /**
+   * Return the title of the current spectrum.
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   * @return {*}
+   */
+  getTitle(i) {
+    return this.getSpectrum(i).title;
+  }
+
+  /**
+   * Set the title of this spectrum.
+   * @param {string} newTitle The new title
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   */
+  setTitle(newTitle, i) {
+    this.getSpectrum(i).title = newTitle;
+  }
+
+  /**
+   * This function returns the minimal value of Y
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   * @return {number}
+   */
+  getMinY(i) {
+    return min(this.getYData(i));
+  }
+
+  /**
+   * This function returns the maximal value of Y
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   * @return {number}
+   */
+  getMaxY(i) {
+    return max(this.getYData(i));
+  }
+
+  /**
+   * Return the min and max value of Y
+   * @param {number} i sub-spectrum Default:activeSpectrum
+   * @return {{min, max}|*}
+   */
+  getMinMaxY(i) {
+    return { min: this.getMinY(i), max: this.getMaxY(i) };
+  }
+
+  /**
+   * Get the noise threshold level of the current spectrum. It uses median instead of the mean
+   * @param {object} options
+   * @param {number} [options.from] - lower limit in ppm to compute noise level
+   * @param {number} [options.to] - upper limit in ppm to compute noise level
+   * @return {number}
+   */
+  getNoiseLevel(options = {}) {
+    var from = options.from,
+        to = options.to;
+
+    var data = from !== undefined && to !== undefined ? this.getVector({ from, to }) : this.getYData();
+    var median = getMedian(data);
+    return median * this.getNMRPeakThreshold(this.getNucleus(1));
+  }
+
+  /**
+   * Return the xValue for the given index.
+   * @param {number} doublePoint
+   * @return {number}
+   */
+  arrayPointToUnits(doublePoint) {
+    return this.getFirstX() - doublePoint * (this.getFirstX() - this.getLastX()) / (this.getNbPoints() - 1);
+  }
+
+  /**
+   * Returns the index-value for the data array corresponding to a X-value in
+   * units for the element of spectraData to which it is linked (spectraNb).
+   * This method makes use of spectraData.getFirstX(), spectraData.getLastX()
+   * and spectraData.getNbPoints() to derive the return value if it of data class XY
+   * It performs a binary search if the spectrum is a peak table
+   * @param {number} inValue - value in Units to be converted
+   * @return {number} An integer representing the index value of the inValue
+   */
+  unitsToArrayPoint(inValue) {
+    if (this.isDataClassXY()) {
+      return Math.round((this.getFirstX() - inValue) * (-1.0 / this.getDeltaX()));
+    } else if (this.isDataClassPeak()) {
+      var currentArrayPoint = 0;
+      var upperLimit = this.getNbPoints() - 1;
+      var lowerLimit = 0;
+      var midPoint = void 0;
+
+      if (this.getFirstX() > this.getLastX()) {
+        upperLimit = 0;
+        lowerLimit = this.getNbPoints() - 1;
+
+        if (inValue > this.getFirstX()) {
+          return this.getNbPoints();
+        }
+        if (inValue < this.getLastX()) {
+          return -1;
+        }
       } else {
-        outputData += `+${data[j++]}`;
+        if (inValue < this.getFirstX()) {
+          return -1;
+        }
+        if (inValue > this.getLastX()) {
+          return this.getNbPoints();
+        }
       }
-    }
-    outputData += newLine;
-  }
-  if (j < TD) {
-    // We add last numbers
-    outputData += Math.ceil(firstX + j * intervalX);
-    for (i = j; i < TD; i++) {
-      if (data[i] < 0) {
-        outputData += `-${data[i]}`;
-      } else {
-        outputData += `+${data[i]}`;
-      }
-    }
-  }
-  return outputData;
-}
 
-/**
- * @private
- * Data compression is possible using the squeezed form (SQZ) in which the delimiter, the leading digit,
- * and sign are replaced by a pseudo-digit from Table 1. For example, the Y-values 30, 32 would be
- * represented as C0C2.
- * @param {Array} data
- * @param {number} firstX
- * @param {number} intervalX
- * @return {string}
- */
-function squeezedEncoding(data, firstX, intervalX) {
-  var outputData = '';
-  // String outputData = new String();
-  var j = 0;
-  var TD = data.length;
-  var i;
-
-  while (j < TD - 10) {
-    outputData += Math.ceil(firstX + j * intervalX);
-    for (i = 0; i < 10; i++) {
-      outputData += squeezedDigit(data[j++].toString());
-    }
-    outputData += newLine;
-  }
-  if (j < TD) {
-    // We add last numbers
-    outputData += Math.ceil(firstX + j * intervalX);
-    for (i = j; i < TD; i++) {
-      outputData += squeezedDigit(data[i].toString());
-    }
-  }
-
-  return outputData;
-}
-
-/**
- * @private
- * Duplicate suppression encoding
- * @param {Array} data
- * @param {number} firstX
- * @param {number} intervalX
- * @return {string}
- */
-function differenceDuplicateEncoding(data, firstX, intervalX) {
-  var mult = 0;
-  var index = 0;
-  var charCount = 0;
-  var i;
-  // We built a string where we store the encoded data.
-  var encodData = '';
-  var encodNumber = '';
-  var temp = '';
-
-  // We calculate the differences vector
-  var diffData = new Array(data.length - 1);
-  for (i = 0; i < diffData.length; i++) {
-    diffData[i] = data[i + 1] - data[i];
-  }
-
-  // We simulate a line carry
-  var numDiff = diffData.length;
-  while (index < numDiff) {
-    if (charCount === 0) {
-      // Start line
-      encodNumber = Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString()) + differenceDigit(diffData[index].toString());
-      encodData += encodNumber;
-      charCount += encodNumber.length;
-    } else {
-      // Try to insert next difference
-      if (diffData[index - 1] === diffData[index]) {
-        mult++;
-      } else {
-        if (mult > 0) {
-          // Now we know that it can be in line
-          mult++;
-          encodNumber = duplicateDigit(mult.toString());
-          encodData += encodNumber;
-          charCount += encodNumber.length;
-          mult = 0;
-          index--;
+      while (Math.abs(upperLimit - lowerLimit) > 1) {
+        midPoint = Math.round(Math.floor((upperLimit + lowerLimit) / 2));
+        if (this.getX(midPoint) === inValue) {
+          return midPoint;
+        }
+        if (this.getX(midPoint) > inValue) {
+          upperLimit = midPoint;
         } else {
-          // Mirar si cabe, en caso contrario iniciar una nueva linea
-          encodNumber = differenceDigit(diffData[index].toString());
-          if (encodNumber.length + charCount < MaxLinelength) {
-            encodData += encodNumber;
-            charCount += encodNumber.length;
+          lowerLimit = midPoint;
+        }
+      }
+      currentArrayPoint = lowerLimit;
+      if (Math.abs(this.getX(lowerLimit) - inValue) > Math.abs(this.getX(upperLimit) - inValue)) {
+        currentArrayPoint = upperLimit;
+      }
+      return currentArrayPoint;
+    } else {
+      return 0;
+    }
+  }
+
+  /**
+   * Returns the separation between 2 consecutive points in the frequency domain
+   * @return {number}
+   */
+  getDeltaX() {
+    return (this.getLastX() - this.getFirstX()) / (this.getNbPoints() - 1);
+  }
+
+  /**
+   * This function scales the values of Y between the min and max parameters
+   * @param {number} min - Minimum desired value for Y
+   * @param {number} max - Maximum desired value for Y
+   */
+  setMinMax(min, max) {
+    var y = this.getYData();
+    rescale(y, { min: min, max: max, output: y });
+    this.updateFirstLastY();
+  }
+
+  /**
+   * This function scales the values of Y to fit the min parameter
+   * @param {number} min - Minimum desired value for Y
+   */
+  setMin(min) {
+    var y = this.getYData();
+    rescale(y, { min: min, output: y, autoMinMax: true });
+    this.updateFirstLastY();
+  }
+
+  /**
+   * This function scales the values of Y to fit the max parameter
+   * @param {number} max - Maximum desired value for Y
+   */
+  setMax(max) {
+    var y = this.getYData();
+    rescale(y, { max: max, output: y, autoMinMax: true });
+    this.updateFirstLastY();
+  }
+
+  /**
+   * This function shifts the values of Y
+   * @param {number} value - Distance of the shift
+   */
+  yShift(value) {
+    var y = this.getYData();
+    for (var i = 0; i < y.length; i++) {
+      y[i] += value;
+    }
+    this.updateFirstLastY(y);
+  }
+
+  /**
+   * This function shift the given spectraData. After this function is applied, all the peaks in the
+   * spectraData will be found at xi+globalShift
+   * @param {number} globalShift - Distance of the shift for direct dimension.
+   */
+  shift(globalShift) {
+    for (var i = 0; i < this.getNbSubSpectra(); i++) {
+      this.setActiveElement(i);
+      var x = this.getSpectrumData().x;
+      var length = this.getNbPoints();
+      for (var j = 0; j < length; j++) {
+        x[j] += globalShift;
+      }
+      this.updateFirstLastX(x);
+    }
+  }
+
+  /**
+   * Update first and last values of Y data.
+   * @param {Array} y - array of Y spectra data.
+   */
+  updateFirstLastY(y) {
+    if (!Array.isArray(y)) {
+      y = this.getYData();
+    }
+    this.setFirstY(y[0]);
+    this.setLastY(y[y.length - 1]);
+  }
+
+  /**
+   * Update first and last values of X data.
+   * @param {Array} x - array of X spectra data.
+   */
+  updateFirstLastX(x) {
+    if (!Array.isArray(x)) {
+      x = this.getXData();
+    }
+    this.setFirstX(x[0]);
+    this.setLastX(x[x.length - 1]);
+  }
+  /**
+   * Fills a zone of the spectrum with the given value.
+   * @param {number} from - one limit the spectrum to fill
+   * @param {number} to - one limit the spectrum to fill
+   * @param {number} value - value with which to fill
+   */
+  fill(from, to, value = 0) {
+    if (from > to) {
+      var _ref = [to, from];
+      from = _ref[0];
+      to = _ref[1];
+    }
+
+    var currentActiveElement = this.getActiveElement();
+    for (var i = 0; i < this.getNbSubSpectra(); i++) {
+      this.setActiveElement(i);
+
+      var minX = this.getFirstX();
+      var maxX = this.getLastX();
+
+      if (this.getDeltaX()) {
+        ;
+
+        var _ref2 = [maxX, minX];
+        minX = _ref2[0];
+        maxX = _ref2[1];
+      }if (from > maxX || to < minX) {
+        return;
+      }
+
+      from = Math.max(from, minX);
+      to = Math.min(to, maxX);
+
+      var start = this.unitsToArrayPoint(from);
+      var end = this.unitsToArrayPoint(to);
+
+      if (start > end) {
+        var _ref3 = [end, start];
+        start = _ref3[0];
+        end = _ref3[1];
+      }
+
+      var y = this.getYData();
+      for (var j = start; j <= end; j++) {
+        y[j] = value;
+      }
+      this.updateFirstLastY();
+    }
+    this.setActiveElement(currentActiveElement);
+  }
+
+  /**
+   * This function suppress a zone from the given spectraData within the given x range.
+   * Returns a spectraData of type PEAKDATA without peaks in the given region
+   * @param {number} from - one limit the spectrum to suppress
+   * @param {number} to - one limit the spectrum to suppress
+   */
+  suppressRange(from, to) {
+    this.suppressRanges([{ from, to }]);
+  }
+
+  /**
+   * This function suppress a zones of the given spectraData within the given x range.
+   * Returns a spectraData of type PEAKDATA without peaks in the given region
+   * @param {Array} zones - Array with from-to limits of the spectrum to suppress.
+   */
+  suppressRanges(zones = []) {
+    var currentActiveElement = this.getActiveElement();
+    for (var zone of zones) {
+      if (zone.active) {
+        var from = zone.from,
+            to = zone.to;
+
+
+        if (from === to) {
+          return;
+        } else if (from > to) {
+          var _ref4 = [to, from];
+          from = _ref4[0];
+          to = _ref4[1];
+        }
+
+        var start = void 0,
+            end = void 0,
+            x = void 0,
+            y = void 0;
+        for (var i = 0; i < this.getNbSubSpectra(); i++) {
+          this.setActiveElement(i);
+
+          x = this.getXData();
+          y = this.getYData();
+
+          var minX = this.getFirstX();
+          var maxX = this.getLastX();
+
+          if (this.getDeltaX()) {
+            ;
+
+            var _ref5 = [maxX, minX];
+            minX = _ref5[0];
+            maxX = _ref5[1];
+          }if (from > maxX || to < minX) {
+            return;
+          }
+
+          from = Math.max(from, minX);
+          to = Math.min(to, maxX);
+
+          start = this.unitsToArrayPoint(from);
+          end = this.unitsToArrayPoint(to);
+
+          if (start > end) {
+            var _ref6 = [end, start];
+            start = _ref6[0];
+            end = _ref6[1];
+          }
+
+          y.splice(start, end - start + 1);
+          x.splice(start, end - start + 1);
+
+          this.updateFirstLastX();
+          this.updateFirstLastY();
+          this.setDataClass(DATACLASS_PEAK);
+        }
+      }
+    }
+    this.setActiveElement(currentActiveElement);
+  }
+
+  /**
+   * This function performs a simple peak detection in a spectraData. The parameters that can be specified are:
+   * Returns a two dimensional array of double specifying [x,y] of the detected peaks.
+   * @option from:    Lower limit.
+   * @option to:      Upper limit.
+   * @option threshold: The minimum intensity to consider a peak as a signal, expressed as a percentage of the highest peak.
+   * @option stdev: Number of standard deviation of the noise for the threshold calculation if a threshold is not specified.
+   * @option resolution: The maximum resolution of the spectrum for considering peaks.
+   * @option yInverted: Is it a Y inverted spectrum?(like an IR spectrum)
+   * @option smooth: A function for smoothing the spectraData before the detection. If your are dealing with
+   * experimental spectra, smoothing will make the algorithm less prune to false positives.
+   */
+  /*
+    simplePeakPicking(parameters) {
+        //@TODO implements this filter
+    }
+    */
+
+  /**
+   * Get the maximum peak the spectrum
+   * @return {[x, y]}
+   */
+  getMaxPeak() {
+    var y = this.getSpectraDataY();
+    var max = y[0];
+    var index = 0;
+    for (var i = 0; i < y.length; i++) {
+      if (max < y[i]) {
+        max = y[i];
+        index = i;
+      }
+    }
+    return [this.getX(index), max];
+  }
+
+  /** TODO: should be modifed, this is same that getParamInt and getParam
+   * Get the value of the parameter. If it is null, will set up a default value
+   * @param {string} name - The parameter name
+   * @param {*} defvalue - The default value
+   * @return {number}
+   */
+
+  getParamDouble(name, defvalue) {
+    var value = this.sd.info[name];
+    if (!value) {
+      value = defvalue;
+    }
+    return value;
+  }
+
+  /**
+   * Get the string of the value of the parameter. If it is null, will set up a default value
+   * @param {string} name - The parameter name
+   * @param {*} defvalue - The default value
+   * @return {string}
+   */
+  getParamString(name, defvalue) {
+    var value = this.sd.info[name];
+    if (!value) {
+      value = defvalue;
+    }
+    return `${value}`;
+  }
+
+  /**
+   * Get the value of the parameter
+   * @param {string} name - The parameter name
+   * @param {*} defvalue - The default value
+   * @return {number}
+   */
+  getParamInt(name, defvalue) {
+    var value = this.sd.info[name];
+    if (!value) {
+      value = defvalue;
+    }
+    return value;
+  }
+
+  /**
+   * Get the value of the parameter
+   * @param {string} name - The parameter name
+   * @param {*} defvalue - The default value
+   * @return {*}
+   */
+  getParam(name, defvalue) {
+    var value = this.sd.info[name];
+    if (!value) {
+      value = defvalue;
+    }
+    return value;
+  }
+
+  /**
+   * True if the spectrum.info contains the given parameter
+   * @param {string} name - The parameter name
+   * @return {boolean}
+   */
+  containsParam(name) {
+    if (this.sd.info[name]) {
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Return the y elements of the current spectrum. Same as getYData. Kept for backward compatibility.
+   * @return {Array}
+   */
+  getSpectraDataY() {
+    return this.getYData();
+  }
+
+  /**
+   * Return the x elements of the current spectrum. Same as getXData. Kept for backward compatibility.
+   * @return {Array}
+   */
+  getSpectraDataX() {
+    return this.getXData();
+  }
+
+  /**
+   * Update min max values of X and Y axis.
+   */
+  resetMinMax() {}
+  // TODO: Implement this function
+
+
+  /**
+   * Set a new parameter to this spectrum
+   * @param {string} name - the parameter name
+   * @param {number | *} value - the parameter value
+   */
+  putParam(name, value) {
+    this.sd.info[name] = value;
+  }
+
+  /**
+   * This function returns the area under the spectrum in the given window (spectrum units)
+   * @param {number} from - one limit in spectrum units
+   * @param {number} to - one limit in spectrum units
+   * @return {number}
+   */
+  getArea(from, to) {
+    var i0 = this.unitsToArrayPoint(from);
+    var ie = this.unitsToArrayPoint(to);
+    var area = 0;
+
+    if (i0 > ie) {
+      var _ref7 = [ie, i0];
+      i0 = _ref7[0];
+      ie = _ref7[1];
+    }
+
+    for (var i = i0; i < ie; i++) {
+      area += this.getY(i);
+    }
+    return area * Math.abs(this.getDeltaX());
+  }
+
+  /**
+   * This function return the integral values for certains ranges at specific SD instance .
+   * @param {Array} ranges - array of objects ranges
+   * @param {object} options - option such as nH for normalization, if it is nH is zero the integral value returned is absolute value
+   */
+  updateIntegrals(ranges, options = {}) {
+    ranges.forEach(range => {
+      range.integral = this.getArea(range.from, range.to);
+    });
+    ranges.updateIntegrals({ sum: options.nH });
+  }
+
+  /**
+   * Returns a equally spaced vector within the given window.
+   * @param {object} options
+   * @param {number} [options.from = firstX] - one limit in spectrum units
+   * @param {number} [options.to = lastX] - one limit in spectrum units
+   * @param {number} [options.nbPoints] - number of points to return(!!!sometimes it is not possible to return exactly the required nbPoints)
+   * @param {string} [options.variant = 'slot'] - variant of the algorithm to get equally spaced data if nbPoints is an entry.
+   * @return {Array}
+   */
+  getVector(options = {}) {
+    var from = options.from,
+        to = options.to,
+        nbPoints = options.nbPoints,
+        variant = options.variant;
+
+
+    if (nbPoints) {
+      return ArrayUtils.getEquallySpacedData(this.getSpectraDataX(), this.getSpectraDataY(), { from, to, numberOfPoints: nbPoints, variant });
+    } else {
+      return this.getPointsInWindow(from, to, options);
+    }
+  }
+
+  /**
+   * In place modification of the data to usually reduce the size
+   * This will convert the data in equally spaces X.
+   * @param {object} options
+   * @param {number} [options.from] - one limit in spectrum units
+   * @param {number} [options.to] - one limit in spectrum units
+   * @param {number} [options.nbPoints] - number of points to return(!!!sometimes it is not possible to return exactly the required nbPoints)
+   * @return {this}
+   */
+  reduceData(options = {}) {
+    if (!this.isDataClassXY()) {
+      throw Error('reduceData can only apply on equidistant data');
+    }
+
+    var from = options.from,
+        to = options.to,
+        nbPoints = options.nbPoints;
+
+
+    var currentActiveElement = this.activeElement;
+    for (var i = 0; i < this.getNbSubSpectra(); i++) {
+      this.setActiveElement(i);
+      if (this.getXUnits().toLowerCase() !== 'hz') {
+        if (options.nbPoints) {
+          var x = this.getSpectraDataX();
+          var y = this.getSpectraDataY();
+
+          if (x[0] > x[1] && from < to) {
+            var _ref8 = [to, from];
+            from = _ref8[0];
+            to = _ref8[1];
+          } else if (from > to) {
+            var _ref9 = [to, from];
+            from = _ref9[0];
+            to = _ref9[1];
+          }
+
+          y = ArrayUtils.getEquallySpacedData(x, y, {
+            from,
+            to,
+            numberOfPoints: nbPoints
+          });
+
+          var step = (to - from) / (y.length - 1);
+
+          x = new Array(y.length).fill(from);
+          for (var j = 0; j < y.length; j++) {
+            x[j] += step * j;
+          }
+
+          this.sd.spectra[i].data[0].x = x;
+          this.sd.spectra[i].data[0].y = y;
+          this.setFirstX(x[0]);
+          this.setLastX(x[x.length - 1]);
+          this.sd.spectra[i].nbPoints = y.length;
+        } else {
+          var xyData = this.getPointsInWindow(from, to, { outputX: true });
+          this.sd.spectra[i].data[0] = xyData;
+          this.setFirstX(xyData.x[0]);
+          this.setLastX(xyData.x[xyData.x.length - 1]);
+          this.sd.spectra[i].nbPoints = xyData.y.length;
+        }
+      }
+    }
+    this.setActiveElement(currentActiveElement);
+    return this;
+  }
+
+  /**
+   * Returns all the point in a given window.
+   * Not tested, you have to know what you are doing
+   * @param {number} from - index of a limit of the desired window.
+   * @param {number} to - index of a limit of the desired window
+   * @param {object} options
+   * @param {boolean} [options.outputX = false] - if true the output will be {x, y}.
+   * @return {Array | object} - Array / {x, y} data of the desired window.
+   * @private
+   */
+  getPointsInWindow(from, to, options = {}) {
+    if (!this.isDataClassXY()) {
+      throw Error('getPointsInWindow can only apply on equidistant data');
+    }
+    var _options$outputX = options.outputX,
+        outputX = _options$outputX === undefined ? false : _options$outputX;
+
+
+    var indexOfFrom = this.unitsToArrayPoint(from);
+    var indexOfTo = this.unitsToArrayPoint(to);
+
+    if (indexOfFrom > indexOfTo) {
+      var _ref10 = [indexOfTo, indexOfFrom];
+      indexOfFrom = _ref10[0];
+      indexOfTo = _ref10[1];
+    }
+    if (indexOfFrom >= 0 && indexOfTo <= this.getNbPoints() - 2) {
+      var data = this.getSpectraDataY().slice(indexOfFrom, indexOfTo + 1);
+      if (outputX) {
+        var x = this.getSpectraDataX().slice(indexOfFrom, indexOfTo + 1);
+        data = { x, y: data };
+      }
+      return data;
+    } else {
+      throw Error('values outside this in range');
+    }
+  }
+
+  /**
+   * Is it a 2D spectrum?
+   * @return {boolean}
+   */
+  is2D() {
+    if (typeof this.sd.twoD === 'undefined') {
+      return false;
+    }
+    return this.sd.twoD;
+  }
+
+  /**
+   * Set the normalization value for this spectrum
+   * @param {number} value - integral value to set up
+   */
+  setTotalIntegral(value) {
+    this.totalIntegralValue = value;
+  }
+
+  /**
+   * Return the normalization value. It is not set check the molfile and guess it from the number of atoms.
+   * @return {number}
+   */
+  get totalIntegral() {
+    if (this.totalIntegralValue) {
+      return this.totalIntegralValue;
+    } else if (this.molecule) {
+      if (this.getNucleus(0).indexOf('H')) {
+        return this.mf.replace(/.*H([0-9]+).*/, '$1') * 1;
+      }
+      if (this.getNucleus(0).indexOf('C')) {
+        return this.mf.replace(/.*C([0-9]+).*/, '$1') * 1;
+      }
+    } else {
+      return 100;
+    }
+    return 1;
+  }
+
+  /**
+   * this function set a molfile, molecule and molecular formula.
+   * @param {string} molfile - The molfile that correspond to current spectra data
+   */
+  setMolfile(molfile) {
+    this.molfile = molfile;
+  }
+
+  setMF(mf) {
+    this.mf = mf;
+  }
+
+  /**
+   * this function create a new peakPicking
+   * @param {object} options - parameters to calculation of peakPicking
+   * @return {*}
+   */
+  createPeaks(options = {}) {
+    this.peaks = extractPeaks(this, options);
+    return this.peaks;
+  }
+
+  /**
+   * this function return the peak table or extract the peak of the spectrum.
+   * @param {object} options - parameters to calculation of peakPicking
+   * @return {*}
+   */
+  getPeaks(options) {
+    var peaks = void 0;
+    if (this.peaks) {
+      peaks = this.peaks;
+    } else {
+      peaks = extractPeaks(this, options);
+    }
+    return peaks;
+  }
+
+  /* autoAssignment(options) {
+     }*/
+
+  /**
+   * This function creates a String that represents the given spectraData in the format JCAMP-DX 5.0
+   * The X,Y data can be compressed using one of the methods described in:
+   * "JCAMP-DX. A STANDARD FORMAT FOR THE EXCHANGE OF ION MOBILITY SPECTROMETRY DATA",
+   *  http://www.iupac.org/publications/pac/pdf/2001/pdf/7311x1765.pdf
+   * @param {object} options - some options are availables:
+   * @option {string} encode  - ['FIX','SQZ','DIF','DIFDUP','CVS','PAC'] (Default: 'DIFDUP')
+   * @option {number} yfactor - The YFACTOR. It allows to compress the data by removing digits from the ordinate. (Default: 1)
+   * @option {string} type - ["NTUPLES", "SIMPLE"] (Default: "SIMPLE")
+   * @option {object} keep - A set of user defined parameters of the given SpectraData to be stored in the jcamp.
+   * @example SD.toJcamp(spectraData,{encode:'DIFDUP',yfactor:0.01,type:"SIMPLE",keep:['#batchID','#url']});
+   * @return {*} a string containing the jcamp-DX file
+   */
+  toJcamp(options = {}) {
+    var creator = new JcampCreator();
+    return creator.convert(this, Object.assign({}, { yFactor: 1, encode: 'DIFDUP', type: 'SIMPLE' }, options));
+  }
+}
+
+/**
+ * This function make a fourier transformation to each FID withing a SD instance
+ * @param {SD} spectraData - SD instance
+ * @returns {SD} return SD with spectrum and FID
+ */
+
+function fourierTransform(spectraData) {
+  var nbPoints = spectraData.getNbPoints();
+  var nSubSpectra = spectraData.getNbSubSpectra() / 2;
+  var spectraType = 'NMR SPECTRUM'; // spectraData.TYPE_NMR_SPECTRUM;
+  var FFT = fft__default.FFT;
+  if (nSubSpectra > 1) {
+    spectraType = 'nD NMR SPECTRUM';
+  } // spectraData.TYPE_2DNMR_SPECTRUM;
+
+  FFT.init(nbPoints);
+
+  var fcor = spectraData.getParamDouble('$FCOR', 0.0);
+  // var tempArray = new Array(nbPoints / 2);
+  for (var iSubSpectra = 0; iSubSpectra < nSubSpectra; iSubSpectra++) {
+    var re = spectraData.getYData(2 * iSubSpectra);
+    var im = spectraData.getYData(2 * iSubSpectra + 1);
+
+    re[0] *= fcor;
+    im[0] *= fcor;
+
+    FFT.fft(re, im);
+    re = re.concat(re.slice(0, (nbPoints + 1) / 2)); // TODO why +1 ???
+    re.splice(0, (nbPoints + 1) / 2);
+    im = im.concat(im.slice(0, (nbPoints + 1) / 2));
+    im.splice(0, (nbPoints + 1) / 2);
+
+    spectraData.setActiveElement(2 * iSubSpectra);
+    updateSpectra(spectraData, spectraType);
+
+    spectraData.setActiveElement(2 * iSubSpectra + 1);
+    updateSpectra(spectraData, spectraType);
+  }
+  // TODO For Alejandro
+  // Now we can try to apply the FFt on the second dimension
+  if (spectraData.is2D()) {
+    throw new Error('FT of 2D is not implemented');
+    // var mode = spectraData.getParam('.ACQUISITION SCHEME');
+    /* switch (mode) {
+            case 1://"State-TPP"
+                break;
+            case 2://State
+                break;
+            case 3://Echo-Antiecho
+                break;
+                //QF
+                //Does not transform in the indirect dimension
+        }*/
+  }
+  spectraData.setActiveElement(0);
+  return spectraData;
+}
+
+function updateSpectra(spectraData, spectraType) {
+  var baseFrequency = spectraData.getParamDouble('$BF1', NaN);
+  var spectralFrequency = spectraData.getParamDouble('$SFO1', NaN);
+  var spectralWidth = spectraData.getParamDouble('$SW', NaN);
+  var xMiddle = (spectralFrequency - baseFrequency) / baseFrequency * 1e6;
+  var dx = 0.5 * spectralWidth * spectralFrequency / baseFrequency;
+
+  spectraData.setDataType(spectraType);
+  spectraData.setFirstX(xMiddle + dx);
+  spectraData.setLastX(xMiddle - dx);
+  spectraData.setXUnits('PPM');
+
+  var x = spectraData.getXData();
+  var tmp = xMiddle + dx;
+  dx = -2 * dx / (x.length - 1);
+
+  for (var i = 0; i < x.length; i++) {
+    x[i] = tmp;
+    tmp += dx;
+  }
+
+  // TODO update minmax in Y axis
+}
+
+/**
+ * This function make a zero filling to each Active element in a SD instance.
+ * @param {SD} spectraData instance.
+ * @param {number} zeroFillingX - number of points that FID will have, if is it lower
+ * than initial number of points, the FID will be spliced
+ * @return {SD}
+ */
+function zeroFilling(spectraData, zeroFillingX) {
+  var nbSubSpectra = spectraData.getNbSubSpectra();
+  // var zeroPadding = spectraData.getParamDouble("$$ZEROPADDING", 0);
+  var nbXPoints = void 0,
+      lastX = void 0,
+      deltaX = void 0,
+      k = void 0,
+      x = void 0,
+      y = void 0;
+  if (zeroFillingX !== 0) {
+    for (var iSubSpectra = 0; iSubSpectra < nbSubSpectra; iSubSpectra++) {
+      spectraData.setActiveElement(iSubSpectra);
+      nbXPoints = spectraData.getNbPoints();
+      y = spectraData.getYData();
+      x = spectraData.getXData();
+      lastX = spectraData.getLastX();
+      deltaX = (lastX - x[0]) / (nbXPoints - 1);
+      for (k = nbXPoints; k < zeroFillingX; k++) {
+        y.push(0);
+        x.push(lastX + deltaX);
+      }
+      if (zeroFillingX < nbXPoints) {
+        y.splice(zeroFillingX, y.length - 1);
+        x.splice(zeroFillingX, x.length - 1);
+      }
+      spectraData.setFirstX(x[0]);
+      spectraData.setLastX(x[x.length - 1]);
+    }
+  }
+
+  spectraData.setActiveElement(0);
+  return spectraData;
+  // @TODO implement zeroFillingY for 2D spectra
+}
+
+/**
+ * Phase correction filter
+ * @param {SD} spectraData - SD instance
+ * @param {number} [phi0 = 0] - value
+ * @param {number} [phi1 = 0] - value
+ * @return {SD} returns the modified spectraData
+ */
+function phaseCorrection(spectraData, phi0, phi1) {
+  phi0 = Number.isFinite(phi0) ? phi0 : 0;
+  phi1 = Number.isFinite(phi1) ? phi1 : 0;
+
+  var nbPoints = spectraData.getNbPoints();
+  var reData = spectraData.getYData(0);
+  var imData = spectraData.getYData(1);
+
+  var delta = phi1 / nbPoints;
+  var alpha = 2 * Math.pow(Math.sin(delta / 2), 2);
+  var beta = Math.sin(delta);
+  var cosTheta = Math.cos(phi0);
+  var sinTheta = Math.sin(phi0);
+  var cosThetaNew = void 0,
+      sinThetaNew = void 0;
+
+  var reTmp = void 0,
+      imTmp = void 0;
+  var index = void 0;
+  for (var i = 0; i < nbPoints; i++) {
+    index = nbPoints - i - 1;
+    index = i;
+    reTmp = reData[index] * cosTheta - imData[index] * sinTheta;
+    imTmp = reData[index] * sinTheta + imData[index] * cosTheta;
+    reData[index] = reTmp;
+    imData[index] = imTmp;
+    // calculate angles i+1 from i
+    cosThetaNew = cosTheta - (alpha * cosTheta + beta * sinTheta);
+    sinThetaNew = sinTheta - (alpha * sinTheta - beta * cosTheta);
+    cosTheta = cosThetaNew;
+    sinTheta = sinThetaNew;
+  }
+
+  spectraData.resetMinMax();
+  spectraData.putParam('PHC0', phi0);
+  spectraData.putParam('PHC1', phi1);
+
+  return spectraData;
+}
+
+/**
+ * This function performs a circular shift of the input object without realocating memory.
+ * Positive values of shifts will shift to the right and negative values will do to the left
+ * @example rotate([1,2,3,4],1) -> [4,1,2,3]
+ * @example rotate([1,2,3,4],-1) -> [2,3,4,1]
+ * @param {Array} array - the array that will be rotated
+ * @param {number} shift
+ */
+function rotate(array, shift) {
+  var nbPoints = array.length;
+  // Lets calculate the lest amount of points to shift.
+  // It decreases the amount of validations in the loop
+  shift = shift % nbPoints;
+
+  if (Math.abs(shift) > nbPoints / 2) {
+    shift = shift > 0 ? shift - nbPoints : shift + nbPoints;
+  }
+
+  if (shift !== 0) {
+    var currentIndex = 0;
+    var nextIndex = shift;
+    var toMove = nbPoints;
+    var current = array[currentIndex];
+    var next = void 0;
+    var lastFirstIndex = shift;
+    var direction = shift > 0 ? 1 : -1;
+
+    while (toMove > 0) {
+      nextIndex = putInRange(nextIndex, nbPoints);
+      next = array[nextIndex];
+      array[nextIndex] = current;
+      nextIndex += shift;
+      current = next;
+      toMove--;
+
+      if (nextIndex === lastFirstIndex) {
+        nextIndex = putInRange(nextIndex + direction, nbPoints);
+        lastFirstIndex = nextIndex;
+        currentIndex = putInRange(nextIndex - shift, nbPoints);
+        current = array[currentIndex];
+      }
+    }
+  }
+}
+/**
+ * Put a new value in the range
+ * @param {number} value
+ * @param {number} nbPoints
+ * @return {*}
+ * @private
+ */
+function putInRange(value, nbPoints) {
+  if (value < 0) {
+    value += nbPoints;
+  }
+  if (value >= nbPoints) {
+    value -= nbPoints;
+  }
+  return value;
+}
+
+function digitalFilter(spectraData, options) {
+  var activeElement = spectraData.activeElement;
+  var nbPoints = 0;
+  if (options.nbPoints) {
+    nbPoints = options.nbPoints;
+  } else {
+    if (options.brukerFilter) {
+      // TODO Determine the number of points to shift, or the ph1 correction
+      // based on DECIM and DSPSVF parameters
+      nbPoints = 0;
+    }
+  }
+
+  var nbSubSpectra = spectraData.getNbSubSpectra();
+  if (nbPoints !== 0) {
+    for (var iSubSpectra = 0; iSubSpectra < nbSubSpectra; iSubSpectra++) {
+      spectraData.setActiveElement(iSubSpectra);
+      rotate(spectraData.getYData(), nbPoints);
+      if (options.rotateX) {
+        rotate(spectraData.getXData(), nbPoints);
+        spectraData.setFirstX(spectraData.getX(0));
+        spectraData.setLastX(spectraData.getX(spectraData.getNbPoints() - 1));
+      }
+    }
+  }
+  spectraData.setActiveElement(activeElement);
+  return spectraData;
+}
+
+function absoluteValue(spectrum) {
+  if (spectrum.is2D()) throw TypeError('The data should be one dimensional');
+  if (spectrum.getXUnits(0).toLowerCase() !== 'ppm') {
+    throw TypeError('NMR data should be in ppm');
+  }
+  if (spectrum.getXUnits(1).toLowerCase() !== 'ppm') {
+    throw TypeError('The data has no imaginary part');
+  }
+
+  var re = spectrum.getYData(0);
+  var im = spectrum.getYData(1);
+
+  var result = JSON.parse(JSON.stringify(spectrum.sd));
+
+  result.spectra.splice(1);
+  result.spectra[0].data[0].y = re.map((val, index) => {
+    var imValSquare = Math.pow(im[index], 2);
+    return Math.sqrt(imValSquare + val * val);
+  });
+
+  return result;
+}
+
+/*
+ * This library implements the J analyser described by Cobas et al in the paper:
+ * A two-stage approach to automatic determination of 1H NMR coupling constants
+ */
+var patterns = ['s', 'd', 't', 'q', 'quint', 'h', 'sept', 'o', 'n'];
+var symRatio = 1.5;
+var maxErrorIter1 = 2.5; // Hz
+var maxErrorIter2 = 1; // Hz
+
+var JAnalyzer = {
+  /**
+   * The compilation process implements at the first stage a normalization procedure described by Golotvin et al.
+   * embedding in peak-component-counting method described by Hoyes et al.
+   * @param {object} signal
+   * @private
+   */
+  compilePattern: function compilePattern(signal) {
+    signal.multiplicity = 'm';
+    // 1.1 symmetrize
+    // It will add a set of peaks(signal.peaksComp) to the signal that will be used during
+    // the compilation process. The unit of those peaks will be in Hz
+    signal.symRank = symmetrizeChoiseBest(signal, maxErrorIter1, 1);
+    signal.asymmetric = true;
+    // Is the signal symmetric?
+    if (signal.symRank >= 0.95 && signal.peaksComp.length < 32) {
+      signal.asymmetric = false;
+      var i, j, n, P1, n2, maxFlagged;
+      var k = 1;
+      var Jc = [];
+
+      // Loop over the possible number of coupling contributing to the multiplet
+      for (n = 0; n < 9; n++) {
+        // 1.2 Normalize. It makes a deep copy of the peaks before to modify them.
+        var peaks = normalize(signal, n);
+        // signal.peaksCompX = peaks;
+        var validPattern = false; // It will change to true, when we find the good patter
+        // Lets check if the signal could be a singulet.
+        if (peaks.length === 1 && n === 0) {
+          validPattern = true;
+        } else {
+          if (peaks.length <= 1) {
+            continue;
+          }
+        }
+        // 1.3 Establish a range for the Heights Hi [peaks.intensity*0.85,peaks.intensity*1.15];
+        var ranges = getRanges(peaks);
+        n2 = Math.pow(2, n);
+
+        // 1.4 Find a combination of integer heights Hi, one from each Si, that sums to 2^n.
+        var heights = null;
+        var counter = 1;
+        while (!validPattern && (heights = getNextCombination(ranges, n2)) !== null && counter < 400) {
+          // 2.1 Number the components of the multiplet consecutively from 1 to 2n,
+          // starting at peak 1
+          var numbering = new Array(heights.length);
+          k = 1;
+          for (i = 0; i < heights.length; i++) {
+            numbering[i] = new Array(heights[i]);
+            for (j = 0; j < heights[i]; j++) {
+              numbering[i][j] = k++;
+            }
+          }
+
+          Jc = []; // The array to store the detected j-coupling
+          // 2.2 Set j = 1; J1 = P2 - P1. Flag components 1 and 2 as accounted for.
+          j = 1;
+          Jc.push(peaks[1].x - peaks[0].x);
+          P1 = peaks[0].x;
+          numbering[0].splice(0, 1); // Flagged
+          numbering[1].splice(0, 1); // Flagged
+          k = 1;
+          var nFlagged = 2;
+          maxFlagged = Math.pow(2, n) - 1;
+          while (Jc.length < n && nFlagged < maxFlagged && k < peaks.length) {
+            counter += 1;
+            // 4.1. Increment j. Set k to the number of the first unflagged component.
+            j++;
+            while (k < peaks.length && numbering[k].length === 0) {
+              k++;
+            }
+            if (k < peaks.length) {
+              // 4.2 Jj = Pk - P1.
+              Jc.push(peaks[k].x - peaks[0].x);
+              // Flag component k and, for each sum of the...
+              numbering[k].splice(0, 1); // Flageed
+              nFlagged++;
+              // Flag the other components of the multiplet
+              for (var u = 2; u <= j; u++) {
+                // TODO improve those loops
+                var jSum = 0;
+                for (i = 0; i < u; i++) {
+                  jSum += Jc[i];
+                }
+                for (i = 1; i < numbering.length; i++) {
+                  // Maybe 0.25 Hz is too much?
+                  if (Math.abs(peaks[i].x - (P1 + jSum)) < 0.25) {
+                    numbering[i].splice(0, 1); // Flageed
+                    nFlagged++;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          // Calculate the ideal patter by using the extracted j-couplings
+          var pattern = idealPattern(Jc);
+          // Compare the ideal pattern with the proposed intensities.
+          // All the intensities have to match to accept the multiplet
+          validPattern = true;
+          for (i = 0; i < pattern.length; i++) {
+            if (pattern[i].intensity !== heights[i]) {
+              validPattern = false;
+            }
+          }
+        }
+        // If we found a valid pattern we should inform about the pattern.
+        if (validPattern) {
+          updateSignal(signal, Jc);
+        }
+      }
+    }
+    // Before to return, change the units of peaksComp from Hz to PPM again
+    for (i = 0; i < signal.peaksComp.length; i++) {
+      signal.peaksComp[i].x /= signal.observe;
+    }
+  }
+};
+
+/**
+ * @private
+ * update the signal
+ * @param {*} signal
+ * @param {*} Jc
+ */
+function updateSignal(signal, Jc) {
+  // Update the limits of the signal
+  var peaks = signal.peaksComp; // Always in Hz
+  var nbPeaks = peaks.length;
+  signal.startX = peaks[0].x / signal.observe - peaks[0].width;
+  signal.stopX = peaks[nbPeaks - 1].x / signal.observe + peaks[nbPeaks - 1].width;
+
+  signal.integralData.from = peaks[0].x / signal.observe - peaks[0].width * 3;
+  signal.integralData.to = peaks[nbPeaks - 1].x / signal.observe + peaks[nbPeaks - 1].width * 3;
+
+  // Compile the pattern and format the constant couplings
+  signal.maskPattern = signal.mask2;
+  signal.multiplicity = abstractPattern(signal, Jc);
+  signal.pattern = signal.multiplicity; // Our library depends on this parameter, but it is old
+  // console.log(signal);
+  /* if (DEBUG)        {
+        console.log('Final j-couplings: ' + JSON.stringify(Jc));
+    }*/
+}
+
+/**
+ * Returns the multiplet in the compact format
+ * @param {object} signal
+ * @param {object} Jc
+ * @return {string}
+ * @private
+ */
+function abstractPattern(signal, Jc) {
+  var tol = 0.05;
+  var i = void 0;
+  var pattern = '';
+  var cont = 1;
+  var newNmrJs = [];
+
+  if (Jc && Jc.length > 0) {
+    Jc.sort(function (a, b) {
+      return b - a;
+    });
+
+    for (i = 0; i < Jc.length - 1; i++) {
+      if (Math.abs(Jc[i] - Jc[i + 1]) < tol) {
+        cont++;
+      } else {
+        newNmrJs.push({
+          coupling: Math.abs(Jc[i]),
+          multiplicity: patterns[cont]
+        });
+        pattern += patterns[cont];
+        cont = 1;
+      }
+    }
+    newNmrJs.push({ coupling: Math.abs(Jc[i]), multiplicity: patterns[cont] });
+    pattern += patterns[cont];
+    signal.nmrJs = newNmrJs;
+  } else {
+    pattern = 's';
+    if (Math.abs(signal.startX - signal.stopX) * signal.observe > 16) {
+      pattern = 'br s';
+    }
+  }
+  return pattern;
+}
+
+/**
+ * This function creates an ideal pattern from the given J-couplings
+ * @private
+ * @param {Array} Jc
+ * @return {*[]}
+ * @private
+ */
+function idealPattern(Jc) {
+  var hsum = Math.pow(2, Jc.length);
+  var i = void 0,
+      j = void 0;
+  var pattern = [{ x: 0, intensity: hsum }];
+  // To split the initial height
+  for (i = 0; i < Jc.length; i++) {
+    for (j = pattern.length - 1; j >= 0; j--) {
+      pattern.push({
+        x: pattern[j].x + Jc[i] / 2,
+        intensity: pattern[j].intensity / 2
+      });
+      pattern[j].x = pattern[j].x - Jc[i] / 2;
+      pattern[j].intensity = pattern[j].intensity / 2;
+    }
+  }
+  // To sum the heights in the same positions
+  pattern.sort(function compare(a, b) {
+    return a.x - b.x;
+  });
+  for (j = pattern.length - 2; j >= 0; j--) {
+    if (Math.abs(pattern[j].x - pattern[j + 1].x) < 0.1) {
+      pattern[j].intensity += pattern[j + 1].intensity;
+      pattern.splice(j + 1, 1);
+    }
+  }
+  return pattern;
+}
+
+/**
+ * Find a combination of integer heights Hi, one from each Si, that sums to 2n.
+ * @param {object} ranges
+ * @param {number} value
+ * @return {*}
+ * @private
+ */
+function getNextCombination(ranges, value) {
+  var half = Math.ceil(ranges.values.length * 0.5);
+  var lng = ranges.values.length;
+  var sum = 0;
+  var i = void 0,
+      ok = void 0;
+  while (sum !== value) {
+    // Update the indexes to point at the next possible combination
+    ok = false;
+    while (!ok) {
+      ok = true;
+      ranges.currentIndex[ranges.active]++;
+      if (ranges.currentIndex[ranges.active] >= ranges.values[ranges.active].length) {
+        // In this case, there is no more possible combinations
+        if (ranges.active + 1 === half) {
+          return null;
+        } else {
+          // If this happens we need to try the next active peak
+          ranges.currentIndex[ranges.active] = 0;
+          ok = false;
+          ranges.active++;
+        }
+      } else {
+        ranges.active = 0;
+      }
+    }
+    // Sum the heights for this combination
+    sum = 0;
+    for (i = 0; i < half; i++) {
+      sum += ranges.values[i][ranges.currentIndex[i]] * 2;
+    }
+    if (ranges.values.length % 2 !== 0) {
+      sum -= ranges.values[half - 1][ranges.currentIndex[half - 1]];
+    }
+  }
+  // If the sum is equal to the expected value, fill the array to return
+  if (sum === value) {
+    var heights = new Array(lng);
+    for (i = 0; i < half; i++) {
+      heights[i] = ranges.values[i][ranges.currentIndex[i]];
+      heights[lng - i - 1] = ranges.values[i][ranges.currentIndex[i]];
+    }
+    return heights;
+  }
+  return null;
+}
+
+/**
+ * This function generates the possible values that each peak can contribute
+ * to the multiplet.
+ * @param {Array} peaks Array of objects with peaks information {intensity}
+ * @return {{values: Array, currentIndex: Array, active: number}}
+ * @private
+ */
+function getRanges(peaks) {
+  var ranges = new Array(peaks.length);
+  var currentIndex = new Array(peaks.length);
+  var min = void 0,
+      max = void 0;
+  ranges[0] = [1];
+  ranges[peaks.length - 1] = [1];
+  currentIndex[0] = -1;
+  currentIndex[peaks.length - 1] = 0;
+  for (var i = 1; i < peaks.length - 1; i++) {
+    min = Math.round(peaks[i].intensity * 0.85);
+    max = Math.round(peaks[i].intensity * 1.15);
+    ranges[i] = [];
+    for (var j = min; j <= max; j++) {
+      ranges[i].push(j);
+    }
+    currentIndex[i] = 0;
+  }
+  return { values: ranges, currentIndex: currentIndex, active: 0 };
+}
+/**
+ * Performs a symmetrization of the signal by using different aproximations to the center.
+ * It will return the result of the symmetrization that removes less peaks from the signal
+ * @param {object} signal
+ * @param {number} maxError
+ * @param {number} iteration
+ * @return {*}
+ * @private
+ */
+function symmetrizeChoiseBest(signal, maxError, iteration) {
+  var symRank1 = symmetrize(signal, maxError, iteration);
+  var tmpPeaks = signal.peaksComp;
+  var tmpMask = signal.mask;
+  var cs = signal.delta1;
+  signal.delta1 = (signal.peaks[0].x + signal.peaks[signal.peaks.length - 1].x) / 2;
+  var symRank2 = symmetrize(signal, maxError, iteration);
+  if (signal.peaksComp.length > tmpPeaks.length) {
+    return symRank2;
+  } else {
+    signal.delta1 = cs;
+    signal.peaksComp = tmpPeaks;
+    signal.mask = tmpMask;
+    return symRank1;
+  }
+}
+
+/**
+ * This function will return a set of symmetric peaks that will
+ * be the enter point for the patter compilation process.
+ * @param {object} signal
+ * @param {number} maxError
+ * @param {number} iteration
+ * @return {number}
+ * @private
+ */
+function symmetrize(signal, maxError, iteration) {
+  // Before to symmetrize we need to keep only the peaks that possibly conforms the multiplete
+  var max = void 0,
+      min = void 0,
+      avg = void 0,
+      ratio = void 0,
+      avgWidth = void 0,
+      i = void 0;
+  var peaks = new Array(signal.peaks.length);
+  // Make a deep copy of the peaks and convert PPM ot HZ
+  for (i = 0; i < peaks.length; i++) {
+    peaks[i] = {
+      x: signal.peaks[i].x * signal.observe,
+      intensity: signal.peaks[i].intensity,
+      width: signal.peaks[i].width
+    };
+  }
+  // Join the peaks that are closer than 0.25 Hz
+  for (i = peaks.length - 2; i >= 0; i--) {
+    if (Math.abs(peaks[i].x - peaks[i + 1].x) < 0.25) {
+      peaks[i].x = peaks[i].x * peaks[i].intensity + peaks[i + 1].x * peaks[i + 1].intensity;
+      peaks[i].intensity = peaks[i].intensity + peaks[i + 1].intensity;
+      peaks[i].x /= peaks[i].intensity;
+      peaks[i].intensity /= 2;
+      peaks[i].width += peaks[i + 1].width;
+      peaks.splice(i + 1, 1);
+    }
+  }
+  signal.peaksComp = peaks;
+  var nbPeaks = peaks.length;
+  var mask = new Array(nbPeaks);
+  signal.mask = mask;
+  var left = 0;
+  var right = peaks.length - 1;
+  var cs = signal.delta1 * signal.observe;
+  var middle = [(peaks[0].x + peaks[nbPeaks - 1].x) / 2, 1];
+  maxError = error(Math.abs(cs - middle[0]));
+  var heightSum = 0;
+  // We try to symmetrize the extreme peaks. We consider as candidates for symmetricing those which have
+  // ratio smaller than 3
+  for (i = 0; i < nbPeaks; i++) {
+    mask[i] = true;
+    heightSum += signal.peaks[i].intensity;
+  }
+
+  while (left <= right) {
+    mask[left] = true;
+    mask[right] = true;
+    if (left === right) {
+      if (nbPeaks > 2 && Math.abs(peaks[left].x - cs) > maxError) {
+        mask[left] = false;
+      }
+    } else {
+      max = Math.max(peaks[left].intensity, peaks[right].intensity);
+      min = Math.min(peaks[left].intensity, peaks[right].intensity);
+      ratio = max / min;
+      if (ratio > symRatio) {
+        if (peaks[left].intensity === min) {
+          mask[left] = false;
+          right++;
+        } else {
+          mask[right] = false;
+          left--;
+        }
+      } else {
+        var diffL = Math.abs(peaks[left].x - cs);
+        var diffR = Math.abs(peaks[right].x - cs);
+
+        if (Math.abs(diffL - diffR) < maxError) {
+          avg = Math.min(peaks[left].intensity, peaks[right].intensity);
+          avgWidth = Math.min(peaks[left].width, peaks[right].width);
+          peaks[left].intensity = peaks[right].intensity = avg;
+          peaks[left].width = peaks[right].width = avgWidth;
+          middle = [middle[0] + (peaks[right].x + peaks[left].x) / 2, middle[1] + 1];
+        } else {
+          if (Math.max(diffL, diffR) === diffR) {
+            mask[right] = false;
+            left--;
           } else {
-            // Iniciar nueva linea
-            encodData += newLine;
-            temp = Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString()) + encodNumber;
-            encodData += temp; // Each line start with first index number.
-            charCount = temp.length;
+            mask[left] = false;
+            right++;
           }
         }
       }
     }
-    index++;
+    left++;
+    right--;
+    // Only alter cs if it is the first iteration of the sym process.
+    if (iteration === 1) {
+      cs = chemicalShift(peaks, mask);
+      // There is not more available peaks
+      if (isNaN(cs)) {
+        return 0;
+      }
+    }
+    maxError = error(Math.abs(cs - middle[0] / middle[1]));
   }
-  if (mult > 0) {
-    encodData += duplicateDigit((mult + 1).toString());
+  // To remove the weak peaks and recalculate the cs
+  for (i = nbPeaks - 1; i >= 0; i--) {
+    if (mask[i] === false) {
+      peaks.splice(i, 1);
+    }
   }
-  // We insert the last data from fid. It is done to control of data
-  // The last line start with the number of datas in the fid.
-  encodData += newLine + Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString());
-
-  return encodData;
+  cs = chemicalShift(peaks);
+  if (isNaN(cs)) {
+    return 0;
+  }
+  signal.delta1 = cs / signal.observe;
+  // Now, the peak should be symmetric in heights, but we need to know if it is symmetric in x
+  var symFactor = 0;
+  var weight = 0;
+  if (peaks.length > 1) {
+    for (i = Math.ceil(peaks.length / 2) - 1; i >= 0; i--) {
+      symFactor += (3 + Math.min(Math.abs(peaks[i].x - cs), Math.abs(peaks[peaks.length - 1 - i].x - cs))) / (3 + Math.max(Math.abs(peaks[i].x - cs), Math.abs(peaks[peaks.length - 1 - i].x - cs))) * peaks[i].intensity;
+      weight += peaks[i].intensity;
+    }
+    symFactor /= weight;
+  } else {
+    if (peaks.length === 1) {
+      symFactor = 1;
+    }
+  }
+  var newSumHeights = 0;
+  for (i = 0; i < peaks.length; i++) {
+    newSumHeights += peaks[i].intensity;
+  }
+  symFactor -= (heightSum - newSumHeights) / heightSum * 0.12; // Removed peaks penalty
+  // Sometimes we need a second opinion after the first symmetrization.
+  if (symFactor > 0.8 && symFactor < 0.97 && iteration < 2) {
+    return symmetrize(signal, maxErrorIter2, 2);
+  } else {
+    // Center the given pattern at cs and symmetrize x
+    if (peaks.length > 1) {
+      var dxi = void 0;
+      for (i = Math.ceil(peaks.length / 2) - 1; i >= 0; i--) {
+        dxi = (peaks[i].x - peaks[peaks.length - 1 - i].x) / 2.0;
+        peaks[i].x = cs + dxi;
+        peaks[peaks.length - 1 - i].x = cs - dxi;
+      }
+    }
+  }
+  return symFactor;
 }
-
+/**
+ * Error validator
+ * @param {number} value
+ * @return {number}
+ * @private
+ */
+function error(value) {
+  var maxError = value * 2.5;
+  if (maxError < 0.75) {
+    maxError = 0.75;
+  }
+  if (maxError > 3) {
+    maxError = 3;
+  }
+  return maxError;
+}
 /**
  * @private
- * Differential encoding
- * @param {Array} data
- * @param {number} firstX
- * @param {number} intervalX
- * @return {string}
+ * 2 stages normalizarion of the peaks heights to Math.pow(2,n).
+ * Creates a new mask with the peaks that could contribute to the multiplete
+ * @param {object} signal
+ * @param {number} n
+ * @return {*}
  */
-function differenceEncoding(data, firstX, intervalX) {
-  var index = 0;
-  var charCount = 0;
-  var i;
-
-  var encodData = '';
-  var encodNumber = '';
-  var temp = '';
-
-  // We calculate the differences vector
-  var diffData = new Array(data.length - 1);
-  for (i = 0; i < diffData.length; i++) {
-    diffData[i] = data[i + 1] - data[i];
+function normalize(signal, n) {
+  // Perhaps this is slow
+  var peaks = JSON.parse(JSON.stringify(signal.peaksComp));
+  var norm = 0;
+  var norm2 = 0;
+  for (var i = 0; i < peaks.length; i++) {
+    norm += peaks[i].intensity;
   }
+  norm = Math.pow(2, n) / norm;
+  signal.mask2 = JSON.parse(JSON.stringify(signal.mask));
 
-  var numDiff = diffData.length;
-  while (index < numDiff) {
-    if (charCount === 0) {
-      // We convert the first number.
-      encodNumber = Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString()) + differenceDigit(diffData[index].toString());
-      encodData += encodNumber;
-      charCount += encodNumber.length;
+  var index = signal.mask2.length - 1;
+  for (i = peaks.length - 1; i >= 0; i--) {
+    peaks[i].intensity *= norm;
+    while (index >= 0 && signal.mask2[index] === false) {
+      index--;
+    }
+    if (peaks[i].intensity < 0.75) {
+      peaks.splice(i, 1);
+      signal.mask2[index] = false;
     } else {
-      encodNumber = differenceDigit(diffData[index].toString());
-      if (encodNumber.length + charCount < MaxLinelength) {
-        encodData += encodNumber;
-        charCount += encodNumber.length;
-      } else {
-        encodData += newLine;
-        temp = Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString()) + encodNumber;
-        encodData += temp; // Each line start with first index number.
-        charCount = temp.length;
+      norm2 += peaks[i].intensity;
+    }
+    index--;
+  }
+  norm2 = Math.pow(2, n) / norm2;
+  for (i = peaks.length - 1; i >= 0; i--) {
+    peaks[i].intensity *= norm2;
+  }
+  return peaks;
+}
+
+/**
+ * @private
+ * Calculates the chemical shift as the weighted sum of the peaks
+ * @param {Array} peaks
+ * @param {Array} mask
+ * @return {number}
+ */
+function chemicalShift(peaks, mask) {
+  var sum = 0;
+  var cs = 0;
+  var i = void 0,
+      area = void 0;
+  if (mask) {
+    for (i = 0; i < peaks.length; i++) {
+      if (mask[i] === true) {
+        area = getArea(peaks[i]);
+        sum += area;
+        cs += area * peaks[i].x;
       }
     }
-    index++;
-  }
-  // We insert the last number from data. It is done to control of data
-  encodData += newLine + Math.ceil(firstX + index * intervalX) + squeezedDigit(data[index].toString());
-
-  return encodData;
-}
-
-/**
- * @private
- * Convert number to the ZQZ format, using pseudo digits.
- * @param {number} num
- * @return {string}
- */
-function squeezedDigit(num) {
-  var SQZdigit = '';
-  if (num.charAt(0) === '-') {
-    SQZdigit += pseudoDigits[SQZ_N][num.charAt(1)];
-    if (num.length > 2) {
-      SQZdigit += num.substring(2);
-    }
   } else {
-    SQZdigit += pseudoDigits[SQZ_P][num.charAt(0)];
-    if (num.length > 1) {
-      SQZdigit += num.substring(1);
+    for (i = 0; i < peaks.length; i++) {
+      area = getArea(peaks[i]);
+      sum += area;
+      cs += area * peaks[i].x;
     }
   }
-
-  return SQZdigit;
+  return cs / sum;
 }
 
 /**
+ * Return the area of a Lorentzian function
+ * @param {object} peak - object with peak information
+ * @return {number}
  * @private
- * Convert number to the DIF format, using pseudo digits.
- * @param {number} num
- * @return {string}
  */
-function differenceDigit(num) {
-  var DIFFdigit = '';
-
-  if (num.charAt(0) === '-') {
-    DIFFdigit += pseudoDigits[DIF_N][num.charAt(1)];
-    if (num.length > 2) {
-      DIFFdigit += num.substring(2);
-    }
-  } else {
-    DIFFdigit += pseudoDigits[DIF_P][num.charAt(0)];
-    if (num.length > 1) {
-      DIFFdigit += num.substring(1);
-    }
-  }
-
-  return DIFFdigit;
+function getArea(peak) {
+  return Math.abs(peak.intensity * peak.width * 1.57); // 1.772453851);
 }
 
-/**
- * @private
- * Convert number to the DUP format, using pseudo digits.
- * @param {number} num
- * @return {string}
- */
-function duplicateDigit(num) {
-  var DUPdigit = '';
-  DUPdigit += pseudoDigits[DUP][num.charAt(0)];
-  if (num.length > 1) {
-    DUPdigit += num.substring(1);
-  }
-
-  return DUPdigit;
-}
-
-module.exports = {
-  encode,
-  fixEncoding,
-  commaSeparatedValuesEncoding,
-  packedEncoding,
-  squeezedEncoding,
-  differenceDuplicateEncoding,
-  differenceEncoding
-};
-
-},{}],171:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = removeImpurities;
-
-var _impurities = require('./impurities');
-
-var _impurities2 = _interopRequireDefault(_impurities);
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
-}
-
-var toCheck = ['solvent_residual_peak', 'H2O', 'TMS'];
-
-function checkImpurity(peakList, impurity, options) {
-  var j, tolerance, diference;
-  var i = impurity.length;
-  while (i--) {
-    j = peakList.length;
-    while (j--) {
-      if (!peakList[j].asymmetric) {
-        tolerance = options.error + peakList[j].width;
-        diference = Math.abs(impurity[i].shift - peakList[j].x);
-        if (diference < tolerance) {
-          // && (impurity[i].multiplicity === '' || (impurity[i].multiplicity.indexOf(peakList[j].multiplicity)) { // some impurities has multiplicities like 'bs' but at presents it is unsupported
-          peakList.splice(j, 1);
-        }
-      }
-    }
-  }
-}
-
-function removeImpurities(peakList, options = {}) {
-  var _options$solvent = options.solvent,
-      solvent = _options$solvent === undefined ? '' : _options$solvent,
-      _options$error = options.error,
-      error = _options$error === undefined ? 0.025 : _options$error;
-
-  solvent = solvent.toLowerCase();
-  if (solvent === '(cd3)2so') solvent = 'dmso';
-  if (solvent === 'meod') solvent = 'cd3od';
-  var solventImpurities = _impurities2.default[solvent];
-  if (solventImpurities) {
-    for (var impurity of toCheck) {
-      var impurityShifts = solventImpurities[impurity.toLowerCase()];
-      checkImpurity(peakList, impurityShifts, { error: error });
-    }
-  }
-  return peakList;
-}
-
-},{"./impurities":172}],172:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
 /* eslint-disable camelcase */
-exports.default = {
+var impurities = {
   cdcl3: {
     tms: [{
       proton: 'X',
@@ -36687,573 +40794,281 @@ exports.default = {
   }
 };
 
-},{}],173:[function(require,module,exports){
-'use strict';
+var toCheck = ['solvent_residual_peak', 'H2O', 'TMS'];
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-/*
- * This library implements the J analyser described by Cobas et al in the paper:
- * A two-stage approach to automatic determination of 1H NMR coupling constants
- */
-var patterns = ['s', 'd', 't', 'q', 'quint', 'h', 'sept', 'o', 'n'];
-var symRatio = 1.5;
-var maxErrorIter1 = 2.5; // Hz
-var maxErrorIter2 = 1; // Hz
-
-exports.default = {
-  /**
-     * The compilation process implements at the first stage a normalization procedure described by Golotvin et al.
-     * embedding in peak-component-counting method described by Hoyes et al.
-     * @param {object} signal
-     * @private
-     */
-  compilePattern: function compilePattern(signal) {
-    signal.multiplicity = 'm';
-    // 1.1 symmetrize
-    // It will add a set of peaks(signal.peaksComp) to the signal that will be used during
-    // the compilation process. The unit of those peaks will be in Hz
-    signal.symRank = symmetrizeChoiseBest(signal, maxErrorIter1, 1);
-    signal.asymmetric = true;
-    // Is the signal symmetric?
-    if (signal.symRank >= 0.95 && signal.peaksComp.length < 32) {
-      signal.asymmetric = false;
-      var i, j, n, P1, n2, maxFlagged;
-      var k = 1;
-      var Jc = [];
-
-      // Loop over the possible number of coupling contributing to the multiplet
-      for (n = 0; n < 9; n++) {
-        // 1.2 Normalize. It makes a deep copy of the peaks before to modify them.
-        var peaks = normalize(signal, n);
-        // signal.peaksCompX = peaks;
-        var validPattern = false; // It will change to true, when we find the good patter
-        // Lets check if the signal could be a singulet.
-        if (peaks.length === 1 && n === 0) {
-          validPattern = true;
-        } else {
-          if (peaks.length <= 1) {
-            continue;
-          }
-        }
-        // 1.3 Establish a range for the Heights Hi [peaks.intensity*0.85,peaks.intensity*1.15];
-        var ranges = getRanges(peaks);
-        n2 = Math.pow(2, n);
-
-        // 1.4 Find a combination of integer heights Hi, one from each Si, that sums to 2^n.
-        var heights = null;
-        var counter = 1;
-        while (!validPattern && (heights = getNextCombination(ranges, n2)) !== null && counter < 400) {
-          // 2.1 Number the components of the multiplet consecutively from 1 to 2n,
-          // starting at peak 1
-          var numbering = new Array(heights.length);
-          k = 1;
-          for (i = 0; i < heights.length; i++) {
-            numbering[i] = new Array(heights[i]);
-            for (j = 0; j < heights[i]; j++) {
-              numbering[i][j] = k++;
-            }
-          }
-
-          Jc = []; // The array to store the detected j-coupling
-          // 2.2 Set j = 1; J1 = P2 - P1. Flag components 1 and 2 as accounted for.
-          j = 1;
-          Jc.push(peaks[1].x - peaks[0].x);
-          P1 = peaks[0].x;
-          numbering[0].splice(0, 1); // Flagged
-          numbering[1].splice(0, 1); // Flagged
-          k = 1;
-          var nFlagged = 2;
-          maxFlagged = Math.pow(2, n) - 1;
-          while (Jc.length < n && nFlagged < maxFlagged && k < peaks.length) {
-            counter += 1;
-            // 4.1. Increment j. Set k to the number of the first unflagged component.
-            j++;
-            while (k < peaks.length && numbering[k].length === 0) {
-              k++;
-            }
-            if (k < peaks.length) {
-              // 4.2 Jj = Pk - P1.
-              Jc.push(peaks[k].x - peaks[0].x);
-              // Flag component k and, for each sum of the...
-              numbering[k].splice(0, 1); // Flageed
-              nFlagged++;
-              // Flag the other components of the multiplet
-              for (var u = 2; u <= j; u++) {
-                // TODO improve those loops
-                var jSum = 0;
-                for (i = 0; i < u; i++) {
-                  jSum += Jc[i];
-                }
-                for (i = 1; i < numbering.length; i++) {
-                  // Maybe 0.25 Hz is too much?
-                  if (Math.abs(peaks[i].x - (P1 + jSum)) < 0.25) {
-                    numbering[i].splice(0, 1); // Flageed
-                    nFlagged++;
-                    break;
-                  }
-                }
-              }
-            }
-          }
-          // Calculate the ideal patter by using the extracted j-couplings
-          var pattern = idealPattern(Jc);
-          // Compare the ideal pattern with the proposed intensities.
-          // All the intensities have to match to accept the multiplet
-          validPattern = true;
-          for (i = 0; i < pattern.length; i++) {
-            if (pattern[i].intensity !== heights[i]) {
-              validPattern = false;
-            }
-          }
-        }
-        // If we found a valid pattern we should inform about the pattern.
-        if (validPattern) {
-          updateSignal(signal, Jc);
+function checkImpurity(peakList, impurity, options) {
+  var j = void 0,
+      tolerance = void 0,
+      diference = void 0;
+  var i = impurity.length;
+  while (i--) {
+    j = peakList.length;
+    while (j--) {
+      if (!peakList[j].asymmetric) {
+        tolerance = options.error + peakList[j].width;
+        diference = Math.abs(impurity[i].shift - peakList[j].x);
+        if (diference < tolerance) {
+          // && (impurity[i].multiplicity === '' || (impurity[i].multiplicity.indexOf(peakList[j].multiplicity)) { // some impurities has multiplicities like 'bs' but at presents it is unsupported
+          peakList.splice(j, 1);
         }
       }
     }
-    // Before to return, change the units of peaksComp from Hz to PPM again
-    for (i = 0; i < signal.peaksComp.length; i++) {
-      signal.peaksComp[i].x /= signal.observe;
+  }
+}
+
+function removeImpurities(peakList, options = {}) {
+  var _options$solvent = options.solvent,
+      solvent = _options$solvent === undefined ? '' : _options$solvent,
+      _options$error = options.error,
+      error = _options$error === undefined ? 0.025 : _options$error;
+
+  solvent = solvent.toLowerCase();
+  if (solvent === '(cd3)2so') solvent = 'dmso';
+  if (solvent === 'meod') solvent = 'cd3od';
+  var solventImpurities = impurities[solvent];
+  if (solventImpurities) {
+    for (var impurity of toCheck) {
+      var impurityShifts = solventImpurities[impurity.toLowerCase()];
+      checkImpurity(peakList, impurityShifts, { error: error });
     }
   }
+  return peakList;
+}
+
+var defaultOptions$1 = {
+  nH: 100,
+  clean: 0.5,
+  thresholdFactor: 1,
+  compile: true,
+  integralType: 'sum',
+  optimize: true,
+  frequencyCluster: 16,
+  keepPeaks: false
 };
 
 /**
- * @private
- * update the signal
- * @param {*} signal
- * @param {*} Jc
+ * This function clustering peaks and calculate the integral value for each range from the peak list returned from extractPeaks function.
+ * @param {SD} spectrum - SD instance
+ * @param {Object} peakList - nmr signals
+ * @param {Object} options - options object with some parameter for GSD, detectSignal functions.
+ * @param {number} [options.nH = 100] - Number of hydrogens or some number to normalize the integral data. If it's zero return the absolute integral value
+ * @param {string} [options.integralType = 'sum'] - option to chose between approx area with peaks or the sum of the points of given range ('sum', 'peaks')
+ * @param {number} [options.frequencyCluster = 16] - distance limit to clustering peaks.
+ * @param {number} [options.clean] - If exits it remove all the signals with integral < clean value
+ * @param {boolean} [options.compile = true] - If true, the Janalyzer function is run over signals to compile the patterns.
+ * @param {boolean} [options.keepPeaks = false] - If true each signal will contain an array of peaks.
+ * @returns {Array}
  */
 
-function updateSignal(signal, Jc) {
-  // Update the limits of the signal
-  var peaks = signal.peaksComp; // Always in Hz
-  var nbPeaks = peaks.length;
-  signal.startX = peaks[0].x / signal.observe - peaks[0].width;
-  signal.stopX = peaks[nbPeaks - 1].x / signal.observe + peaks[nbPeaks - 1].width;
+function createRanges(spectrum, peakList, options) {
+  options = Object.assign({}, defaultOptions$1, options);
+  var i = void 0,
+      j = void 0;
+  var nH = options.nH;
+  peakList = removeImpurities(peakList, options.removeImpurity);
+  var signals = detectSignals(spectrum, peakList, options);
 
-  signal.integralData.from = peaks[0].x / signal.observe - peaks[0].width * 3;
-  signal.integralData.to = peaks[nbPeaks - 1].x / signal.observe + peaks[nbPeaks - 1].width * 3;
-
-  // Compile the pattern and format the constant couplings
-  signal.maskPattern = signal.mask2;
-  signal.multiplicity = abstractPattern(signal, Jc);
-  signal.pattern = signal.multiplicity; // Our library depends on this parameter, but it is old
-  // console.log(signal);
-  /* if (DEBUG)        {
-        console.log('Final j-couplings: ' + JSON.stringify(Jc));
-    }*/
-}
-
-/**
- * Returns the multiplet in the compact format
- * @param {object} signal
- * @param {object} Jc
- * @return {string}
- * @private
- */
-function abstractPattern(signal, Jc) {
-  var tol = 0.05;
-  var i;
-  var pattern = '';
-  var cont = 1;
-  var newNmrJs = [];
-
-  if (Jc && Jc.length > 0) {
-    Jc.sort(function (a, b) {
-      return b - a;
-    });
-
-    for (i = 0; i < Jc.length - 1; i++) {
-      if (Math.abs(Jc[i] - Jc[i + 1]) < tol) {
-        cont++;
-      } else {
-        newNmrJs.push({ coupling: Math.abs(Jc[i]), multiplicity: patterns[cont] });
-        pattern += patterns[cont];
-        cont = 1;
+  if (options.clean) {
+    for (i = 0; i < signals.length; i++) {
+      if (signals[i].integralData.value < options.clean) {
+        signals.splice(i, 1);
       }
     }
-    newNmrJs.push({ coupling: Math.abs(Jc[i]), multiplicity: patterns[cont] });
-    pattern += patterns[cont];
-    signal.nmrJs = newNmrJs;
-  } else {
-    pattern = 's';
-    if (Math.abs(signal.startX - signal.stopX) * signal.observe > 16) {
-      pattern = 'br s';
-    }
   }
-  return pattern;
-}
 
-/**
- * This function creates an ideal pattern from the given J-couplings
- * @private
- * @param {Array} Jc
- * @return {*[]}
- * @private
- */
-function idealPattern(Jc) {
-  var hsum = Math.pow(2, Jc.length);
-  var i, j;
-  var pattern = [{ x: 0, intensity: hsum }];
-  // To split the initial height
-  for (i = 0; i < Jc.length; i++) {
-    for (j = pattern.length - 1; j >= 0; j--) {
-      pattern.push({ x: pattern[j].x + Jc[i] / 2,
-        intensity: pattern[j].intensity / 2 });
-      pattern[j].x = pattern[j].x - Jc[i] / 2;
-      pattern[j].intensity = pattern[j].intensity / 2;
-    }
-  }
-  // To sum the heights in the same positions
-  pattern.sort(function compare(a, b) {
-    return a.x - b.x;
-  });
-  for (j = pattern.length - 2; j >= 0; j--) {
-    if (Math.abs(pattern[j].x - pattern[j + 1].x) < 0.1) {
-      pattern[j].intensity += pattern[j + 1].intensity;
-      pattern.splice(j + 1, 1);
-    }
-  }
-  return pattern;
-}
+  if (options.compile) {
+    var nHi = void 0,
+        sum = void 0;
+    for (i = 0; i < signals.length; i++) {
+      JAnalyzer.compilePattern(signals[i]);
 
-/**
- * Find a combination of integer heights Hi, one from each Si, that sums to 2n.
- * @param {object} ranges
- * @param {number} value
- * @return {*}
- * @private
- */
-function getNextCombination(ranges, value) {
-  var half = Math.ceil(ranges.values.length * 0.5);
-  var lng = ranges.values.length;
-  var sum = 0;
-  var i, ok;
-  while (sum !== value) {
-    // Update the indexes to point at the next possible combination
-    ok = false;
-    while (!ok) {
-      ok = true;
-      ranges.currentIndex[ranges.active]++;
-      if (ranges.currentIndex[ranges.active] >= ranges.values[ranges.active].length) {
-        // In this case, there is no more possible combinations
-        if (ranges.active + 1 === half) {
-          return null;
-        } else {
-          // If this happens we need to try the next active peak
-          ranges.currentIndex[ranges.active] = 0;
-          ok = false;
-          ranges.active++;
+      if (signals[i].maskPattern && signals[i].multiplicity !== 'm' && signals[i].multiplicity !== '') {
+        // Create a new signal with the removed peaks
+        nHi = 0;
+        sum = 0;
+        var peaksO = [];
+        for (j = signals[i].maskPattern.length - 1; j >= 0; j--) {
+          sum += computeArea(signals[i].peaks[j]);
+          if (signals[i].maskPattern[j] === false) {
+            var peakR = signals[i].peaks.splice(j, 1)[0];
+            peaksO.push({ x: peakR.x, y: peakR.intensity, width: peakR.width });
+            signals[i].mask.splice(j, 1);
+            signals[i].mask2.splice(j, 1);
+            signals[i].maskPattern.splice(j, 1);
+            signals[i].nbPeaks--;
+            nHi += computeArea(peakR);
+          }
         }
-      } else {
-        ranges.active = 0;
-      }
-    }
-    // Sum the heights for this combination
-    sum = 0;
-    for (i = 0; i < half; i++) {
-      sum += ranges.values[i][ranges.currentIndex[i]] * 2;
-    }
-    if (ranges.values.length % 2 !== 0) {
-      sum -= ranges.values[half - 1][ranges.currentIndex[half - 1]];
-    }
-  }
-  // If the sum is equal to the expected value, fill the array to return
-  if (sum === value) {
-    var heights = new Array(lng);
-    for (i = 0; i < half; i++) {
-      heights[i] = ranges.values[i][ranges.currentIndex[i]];
-      heights[lng - i - 1] = ranges.values[i][ranges.currentIndex[i]];
-    }
-    return heights;
-  }
-  return null;
-}
+        if (peaksO.length > 0) {
+          nHi = nHi * signals[i].integralData.value / sum;
+          signals[i].integralData.value -= nHi;
+          var peaks1 = [];
+          for (j = peaksO.length - 1; j >= 0; j--) {
+            peaks1.push(peaksO[j]);
+          }
+          options.nH = nHi;
+          var _ranges = detectSignals(spectrum, peaks1, options);
 
-/**
- * This function generates the possible values that each peak can contribute
- * to the multiplet.
- * @param {Array} peaks Array of objects with peaks information {intensity}
- * @return {{values: Array, currentIndex: Array, active: number}}
- * @private
- */
-function getRanges(peaks) {
-  var ranges = new Array(peaks.length);
-  var currentIndex = new Array(peaks.length);
-  var min, max;
-  ranges[0] = [1];
-  ranges[peaks.length - 1] = [1];
-  currentIndex[0] = -1;
-  currentIndex[peaks.length - 1] = 0;
-  for (var i = 1; i < peaks.length - 1; i++) {
-    min = Math.round(peaks[i].intensity * 0.85);
-    max = Math.round(peaks[i].intensity * 1.15);
-    ranges[i] = [];
-    for (var j = min; j <= max; j++) {
-      ranges[i].push(j);
-    }
-    currentIndex[i] = 0;
-  }
-  return { values: ranges, currentIndex: currentIndex, active: 0 };
-}
-/**
- * Performs a symmetrization of the signal by using different aproximations to the center.
- * It will return the result of the symmetrization that removes less peaks from the signal
- * @param {object} signal
- * @param {number} maxError
- * @param {number} iteration
- * @return {*}
- * @private
- */
-function symmetrizeChoiseBest(signal, maxError, iteration) {
-  var symRank1 = symmetrize(signal, maxError, iteration);
-  var tmpPeaks = signal.peaksComp;
-  var tmpMask = signal.mask;
-  var cs = signal.delta1;
-  signal.delta1 = (signal.peaks[0].x + signal.peaks[signal.peaks.length - 1].x) / 2;
-  var symRank2 = symmetrize(signal, maxError, iteration);
-  if (signal.peaksComp.length > tmpPeaks.length) {
-    return symRank2;
-  } else {
-    signal.delta1 = cs;
-    signal.peaksComp = tmpPeaks;
-    signal.mask = tmpMask;
-    return symRank1;
-  }
-}
-
-/**
- * This function will return a set of symmetric peaks that will
- * be the enter point for the patter compilation process.
- * @param {object} signal
- * @param {number} maxError
- * @param {number} iteration
- * @return {number}
- * @private
- */
-function symmetrize(signal, maxError, iteration) {
-  // Before to symmetrize we need to keep only the peaks that possibly conforms the multiplete
-  var max, min, avg, ratio, avgWidth, i;
-  var peaks = new Array(signal.peaks.length);
-  // Make a deep copy of the peaks and convert PPM ot HZ
-  for (i = 0; i < peaks.length; i++) {
-    peaks[i] = { x: signal.peaks[i].x * signal.observe,
-      intensity: signal.peaks[i].intensity,
-      width: signal.peaks[i].width };
-  }
-  // Join the peaks that are closer than 0.25 Hz
-  for (i = peaks.length - 2; i >= 0; i--) {
-    if (Math.abs(peaks[i].x - peaks[i + 1].x) < 0.25) {
-      peaks[i].x = peaks[i].x * peaks[i].intensity + peaks[i + 1].x * peaks[i + 1].intensity;
-      peaks[i].intensity = peaks[i].intensity + peaks[i + 1].intensity;
-      peaks[i].x /= peaks[i].intensity;
-      peaks[i].intensity /= 2;
-      peaks[i].width += peaks[i + 1].width;
-      peaks.splice(i + 1, 1);
-    }
-  }
-  signal.peaksComp = peaks;
-  var nbPeaks = peaks.length;
-  var mask = new Array(nbPeaks);
-  signal.mask = mask;
-  var left = 0;
-  var right = peaks.length - 1;
-  var cs = signal.delta1 * signal.observe;
-  var middle = [(peaks[0].x + peaks[nbPeaks - 1].x) / 2, 1];
-  maxError = error(Math.abs(cs - middle[0]));
-  var heightSum = 0;
-  // We try to symmetrize the extreme peaks. We consider as candidates for symmetricing those which have
-  // ratio smaller than 3
-  for (i = 0; i < nbPeaks; i++) {
-    mask[i] = true;
-    heightSum += signal.peaks[i].intensity;
-  }
-
-  while (left <= right) {
-    mask[left] = true;
-    mask[right] = true;
-    if (left === right) {
-      if (nbPeaks > 2 && Math.abs(peaks[left].x - cs) > maxError) {
-        mask[left] = false;
-      }
-    } else {
-      max = Math.max(peaks[left].intensity, peaks[right].intensity);
-      min = Math.min(peaks[left].intensity, peaks[right].intensity);
-      ratio = max / min;
-      if (ratio > symRatio) {
-        if (peaks[left].intensity === min) {
-          mask[left] = false;
-          right++;
-        } else {
-          mask[right] = false;
-          left--;
-        }
-      } else {
-        var diffL = Math.abs(peaks[left].x - cs);
-        var diffR = Math.abs(peaks[right].x - cs);
-
-        if (Math.abs(diffL - diffR) < maxError) {
-          avg = Math.min(peaks[left].intensity, peaks[right].intensity);
-          avgWidth = Math.min(peaks[left].width, peaks[right].width);
-          peaks[left].intensity = peaks[right].intensity = avg;
-          peaks[left].width = peaks[right].width = avgWidth;
-          middle = [middle[0] + (peaks[right].x + peaks[left].x) / 2, middle[1] + 1];
-        } else {
-          if (Math.max(diffL, diffR) === diffR) {
-            mask[right] = false;
-            left--;
-          } else {
-            mask[left] = false;
-            right++;
+          for (j = 0; j < _ranges.length; j++) {
+            signals.push(_ranges[j]);
           }
         }
       }
     }
-    left++;
-    right--;
-    // Only alter cs if it is the first iteration of the sym process.
-    if (iteration === 1) {
-      cs = chemicalShift(peaks, mask);
-      // There is not more available peaks
-      if (isNaN(cs)) {
-        return 0;
-      }
+    // it was a updateIntegrals function.
+    var sumIntegral = 0;
+    var sumObserved = 0;
+    for (i = 0; i < signals.length; i++) {
+      sumObserved += Math.round(signals[i].integralData.value);
     }
-    maxError = error(Math.abs(cs - middle[0] / middle[1]));
-  }
-  // To remove the weak peaks and recalculate the cs
-  for (i = nbPeaks - 1; i >= 0; i--) {
-    if (mask[i] === false) {
-      peaks.splice(i, 1);
-    }
-  }
-  cs = chemicalShift(peaks);
-  if (isNaN(cs)) {
-    return 0;
-  }
-  signal.delta1 = cs / signal.observe;
-  // Now, the peak should be symmetric in heights, but we need to know if it is symmetric in x
-  var symFactor = 0;
-  var weight = 0;
-  if (peaks.length > 1) {
-    for (i = Math.ceil(peaks.length / 2) - 1; i >= 0; i--) {
-      symFactor += (3 + Math.min(Math.abs(peaks[i].x - cs), Math.abs(peaks[peaks.length - 1 - i].x - cs))) / (3 + Math.max(Math.abs(peaks[i].x - cs), Math.abs(peaks[peaks.length - 1 - i].x - cs))) * peaks[i].intensity;
-      weight += peaks[i].intensity;
-    }
-    symFactor /= weight;
-  } else {
-    if (peaks.length === 1) {
-      symFactor = 1;
-    }
-  }
-  var newSumHeights = 0;
-  for (i = 0; i < peaks.length; i++) {
-    newSumHeights += peaks[i].intensity;
-  }
-  symFactor -= (heightSum - newSumHeights) / heightSum * 0.12; // Removed peaks penalty
-  // Sometimes we need a second opinion after the first symmetrization.
-  if (symFactor > 0.8 && symFactor < 0.97 && iteration < 2) {
-    return symmetrize(signal, maxErrorIter2, 2);
-  } else {
-    // Center the given pattern at cs and symmetrize x
-    if (peaks.length > 1) {
-      var dxi = void 0;
-      for (i = Math.ceil(peaks.length / 2) - 1; i >= 0; i--) {
-        dxi = (peaks[i].x - peaks[peaks.length - 1 - i].x) / 2.0;
-        peaks[i].x = cs + dxi;
-        peaks[peaks.length - 1 - i].x = cs - dxi;
+    if (sumObserved !== nH) {
+      sumIntegral = nH / sumObserved;
+      for (i = 0; i < signals.length; i++) {
+        signals[i].integralData.value *= sumIntegral;
       }
     }
   }
-  return symFactor;
-}
-/**
- * Error validator
- * @param {number} value
- * @return {number}
- * @private
- */
-function error(value) {
-  var maxError = value * 2.5;
-  if (maxError < 0.75) {
-    maxError = 0.75;
-  }
-  if (maxError > 3) {
-    maxError = 3;
-  }
-  return maxError;
-}
-/**
- * @private
- * 2 stages normalizarion of the peaks heights to Math.pow(2,n).
- * Creates a new mask with the peaks that could contribute to the multiplete
- * @param {object} signal
- * @param {number} n
- * @return {*}
- */
-function normalize(signal, n) {
-  // Perhaps this is slow
-  var peaks = JSON.parse(JSON.stringify(signal.peaksComp));
-  var norm = 0;
-  var norm2 = 0;
-  for (var i = 0; i < peaks.length; i++) {
-    norm += peaks[i].intensity;
-  }
-  norm = Math.pow(2, n) / norm;
-  signal.mask2 = JSON.parse(JSON.stringify(signal.mask));
 
-  var index = signal.mask2.length - 1;
-  for (i = peaks.length - 1; i >= 0; i--) {
-    peaks[i].intensity *= norm;
-    while (index >= 0 && signal.mask2[index] === false) {
-      index--;
+  signals.sort(function (a, b) {
+    return b.delta1 - a.delta1;
+  });
+
+  if (options.clean) {
+    for (i = signals.length - 1; i >= 0; i--) {
+      if (signals[i].integralData.value < options.clean) {
+        signals.splice(i, 1);
+      }
     }
-    if (peaks[i].intensity < 0.75) {
-      peaks.splice(i, 1);
-      signal.mask2[index] = false;
+  }
+
+  var ranges = new Array(signals.length);
+  for (i = 0; i < signals.length; i++) {
+    var signal = signals[i];
+    ranges[i] = {
+      from: round(signal.integralData.from, 5),
+      to: round(signal.integralData.to, 5),
+      integral: round(signal.integralData.value, 5),
+      signal: [{
+        nbAtoms: 0,
+        diaID: [],
+        multiplicity: signal.multiplicity,
+        kind: '',
+        remark: ''
+      }]
+    };
+    if (options.keepPeaks) {
+      ranges[i].signal[0].peak = signal.peaks;
+    }
+    if (signal.nmrJs) {
+      ranges[i].signal[0].j = signal.nmrJs;
+    }
+    if (!signal.asymmetric || signal.multiplicity === 'm') {
+      ranges[i].signal[0].delta = round(signal.delta1, 5);
+    }
+  }
+
+  return new spectraDataRanges.Ranges(ranges);
+}
+
+/**
+ * Extract the signals from the peakList and the given spectrum.
+ * @param {object} spectrum - spectra data
+ * @param {object} peakList - nmr signals
+ * @param {object} options
+ * @param {...number} options.nH - Number of hydrogens or some number to normalize the integral data, If it's zero return the absolute integral value
+ * @param {string} options.integralType - option to chose between approx area with peaks or the sum of the points of given range
+ * @param {...number} options.frequencyCluster - distance limit to clustering the peaks.
+ * range = frequencyCluster / observeFrequency -> Peaks withing this range are considered to belongs to the same signal1D
+ * @return {Array} nmr signals
+ * @private
+ */
+function detectSignals(spectrum, peakList, options = {}) {
+  var _options$nH = options.nH,
+      nH = _options$nH === undefined ? 100 : _options$nH,
+      _options$integralType = options.integralType,
+      integralType = _options$integralType === undefined ? 'sum' : _options$integralType,
+      _options$frequencyClu = options.frequencyCluster,
+      frequencyCluster = _options$frequencyClu === undefined ? 16 : _options$frequencyClu,
+      _options$frequency = options.frequency,
+      frequency = _options$frequency === undefined ? spectrum.observeFrequencyX() : _options$frequency;
+
+
+  var i = void 0,
+      j = void 0,
+      signal1D = void 0,
+      peaks = void 0;
+  var signals = [];
+  var prevPeak = { x: 100000 };
+  var spectrumIntegral = 0;
+  frequencyCluster /= frequency;
+  for (i = 0; i < peakList.length; i++) {
+    if (Math.abs(peakList[i].x - prevPeak.x) > frequencyCluster) {
+      signal1D = {
+        nbPeaks: 1,
+        units: 'PPM',
+        startX: peakList[i].x - peakList[i].width,
+        stopX: peakList[i].x + peakList[i].width,
+        multiplicity: '',
+        pattern: '',
+        observe: frequency,
+        nucleus: spectrum.getNucleus(1),
+        integralData: {
+          from: peakList[i].x - peakList[i].width * 3,
+          to: peakList[i].x + peakList[i].width * 3
+        },
+        peaks: [{
+          x: peakList[i].x,
+          intensity: peakList[i].y,
+          width: peakList[i].width
+        }]
+      };
+      signals.push(signal1D);
     } else {
-      norm2 += peaks[i].intensity;
+      var tmp = peakList[i].x + peakList[i].width;
+      signal1D.stopX = Math.max(signal1D.stopX, tmp);
+      signal1D.startX = Math.min(signal1D.startX, tmp);
+      signal1D.nbPeaks++;
+      signal1D.peaks.push({
+        x: peakList[i].x,
+        intensity: peakList[i].y,
+        width: peakList[i].width
+      });
+      signal1D.integralData.from = Math.min(signal1D.integralData.from, peakList[i].x - peakList[i].width * 3);
+      signal1D.integralData.to = Math.max(signal1D.integralData.to, peakList[i].x + peakList[i].width * 3);
     }
-    index--;
+    prevPeak = peakList[i];
   }
-  norm2 = Math.pow(2, n) / norm2;
-  for (i = peaks.length - 1; i >= 0; i--) {
-    peaks[i].intensity *= norm2;
-  }
-  return peaks;
-}
 
-/**
- * @private
- * Calculates the chemical shift as the weighted sum of the peaks
- * @param {Array} peaks
- * @param {Array} mask
- * @return {number}
- */
-function chemicalShift(peaks, mask) {
-  var sum = 0;
-  var cs = 0;
-  var i, area;
-  if (mask) {
-    for (i = 0; i < peaks.length; i++) {
-      if (mask[i] === true) {
-        area = getArea(peaks[i]);
-        sum += area;
-        cs += area * peaks[i].x;
-      }
+  for (i = 0; i < signals.length; i++) {
+    peaks = signals[i].peaks;
+    var integral = signals[i].integralData;
+    var _chemicalShift = 0;
+    var integralPeaks = 0;
+
+    for (j = 0; j < peaks.length; j++) {
+      var area = computeArea(peaks[j]);
+      _chemicalShift += peaks[j].x * area;
+      integralPeaks += area;
     }
-  } else {
-    for (i = 0; i < peaks.length; i++) {
-      area = getArea(peaks[i]);
-      sum += area;
-      cs += area * peaks[i].x;
+    signals[i].delta1 = _chemicalShift / integralPeaks;
+
+    if (integralType === 'sum') {
+      integral.value = spectrum.getArea(integral.from, integral.to);
+    } else {
+      integral.value = integralPeaks;
+    }
+    spectrumIntegral += integral.value;
+  }
+
+  if (nH > 0) {
+    var integralFactor = nH / spectrumIntegral;
+    for (i = 0; i < signals.length; i++) {
+      var _integral = signals[i].integralData;
+      _integral.value *= integralFactor;
     }
   }
-  return cs / sum;
+
+  return signals;
 }
 
 /**
@@ -37262,24 +41077,466 @@ function chemicalShift(peaks, mask) {
  * @return {number}
  * @private
  */
-function getArea(peak) {
-  return Math.abs(peak.intensity * peak.width * 1.57); // 1.772453851);
+function computeArea(peak) {
+  return Math.abs(peak.intensity * peak.width * 1.57); // todo add an option with this value: 1.772453851
 }
 
-},{}],174:[function(require,module,exports){
-"use strict";
+/**
+ * @class NMR
+ * @extends SD
+ */
+class NMR extends SD {
+  /**
+   * This function creates a SD instance from the given 1D prediction
+   * @param {Array} prediction
+   * @param {object} options
+   * @return {SD}
+   */
+  static fromSignals(prediction, options = {}) {
+    options = Object.assign({}, {
+      nbPoints: 16 * 1024,
+      maxClusterSize: 8,
+      output: 'xy'
+    }, options);
 
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
+    var spinSystem = nmrSimulation.SpinSystem.fromPrediction(prediction);
+
+    spinSystem.ensureClusterSize(options);
+    var data = nmrSimulation.simulate1D(spinSystem, options);
+    return NMR.fromXY(data.x, data.y, options);
+  }
+
+  /**
+   * This function create a SD instance from xy data
+   * @param {Array} x - X data.
+   * @param {Array} y - Y data.
+   * @param {object} options - Optional parameters
+   * @return {NMR} SD instance from x and y data
+   */
+  static fromXY(x, y, options) {
+    options = Object.assign({}, options, {
+      xUnit: 'PPM',
+      yUnit: 'Intensity',
+      dataType: 'NMR SPECTRUM'
+    });
+    var spectraData = SD.fromXY(x, y, options);
+    var spectrum = spectraData.sd.spectra[0];
+
+    spectrum.observeFrequency = options.frequency || 400;
+    spectraData.putParam('observefrequency', spectrum.observeFrequency);
+    spectraData.putParam('.SOLVENTNAME', options.solvent || 'none');
+    // eslint-disable-next-line camelcase
+    spectraData.putParam('$SW_h', Math.abs(spectrum.lastX - spectrum.firstX) * spectrum.observeFrequency);
+    spectraData.putParam('$SW', Math.abs(spectrum.lastX - spectrum.firstX));
+    spectraData.putParam('$TD', spectrum.nbPoints);
+    spectraData.sd.xType = options.nucleus || '1H';
+    return new NMR(spectraData.sd);
+  }
+
+  /**
+   * This function returns a NMR instance from Array of folders or zip file with folders
+   * @param {Array | zipFile} brukerFile - spectra data in two possible input
+   * @param {object} options - the options dependent on brukerFile input, but some parameter are permanents like:
+   * @option {boolean} xy - The spectraData should not be a oneD array but an object with x and y
+   * @option {boolean} keepSpectra - keep the spectra in 2D NMR instance
+   * @option {boolean} noContours - option to generate not generate countour plot for 2Dnmr spectra
+   * @option {string} keepRecordsRegExp - regular expressions to parse data
+   * @return {*}
+   */
+  static fromBruker(brukerFile, options) {
+    options = Object.assign({}, { xy: true, keepSpectra: true, keepRecordsRegExp: /^.+$/ }, options);
+    var brukerSpectra = null;
+    if (Array.isArray(brukerFile)) {
+      brukerSpectra = Brukerconverter.converFolder(brukerFile, options);
+    } else {
+      brukerSpectra = Brukerconverter.convertZip(brukerFile, options);
+    }
+    if (brukerSpectra) {
+      return brukerSpectra.map(function (spectrum) {
+        return new NMR(spectrum);
+      });
+    }
+    return null;
+  }
+
+  /**
+   * create a SD instance with the magnitude mode spectra for 1D data.
+   * @return {NMR} absolute value spectra-data instance.
+   */
+  getMagnitude() {
+    return new NMR(absoluteValue(this));
+  }
+
+  /**
+   * @private
+   * Returns the observed nucleus. A dimension parameter is accepted for compatibility with 2DNMR
+   * @param {number} dim
+   * @return {string}
+   */
+  getNucleus(dim) {
+    if (!dim || dim === 0 || dim === 1) {
+      return this.sd.xType;
+    } else {
+      return '';
+    }
+  }
+
+  /**
+   * @private
+   * Returns the solvent name.
+   * @return {string|XML}
+   */
+  getSolventName() {
+    return (this.sd.info['.SOLVENTNAME'] || this.sd.info.$SOLVENT || '').replace('<', '').replace('>', '');
+  }
+
+  /**
+   * @private
+   * Returns the observe frequency in the direct dimension
+   * @return {number}
+   */
+  observeFrequencyX() {
+    return this.sd.spectra[0].observeFrequency;
+  }
+
+  /**
+   * @private
+   * Returns the noise factor depending on the nucleus.
+   * @param {string} nucleus
+   * @return {number}
+   */
+  getNMRPeakThreshold(nucleus) {
+    if (nucleus === '1H') {
+      return 3.0;
+    }
+    if (nucleus === '13C') {
+      return 5.0;
+    }
+    return 1.0;
+  }
+
+  /**
+   * This function adds white noise to the the given spectraData. The intensity of the noise is
+   * calculated from the given signal to noise ratio.
+   * @param SNR Signal to noise ratio
+   * @return {NMR} this object
+   */
+  /* addNoise(SNR) {
+        //@TODO Implement addNoise filter
+    }*/
+
+  /**
+   *  This filter performs a linear combination of two spectraDatas.
+   * A=spec1
+   * B=spec2
+   * After to apply this filter you will get:
+   *      A=A*factor1+B*factor2
+   * if autoscale is set to 'true' then you will obtain:
+   *  A=A*factor1+B*k*factor2
+   * Where the k is a factor such that the maximum peak in A is equal to the maximum peak in spectraData2
+   * @param spec2 spectraData2
+   * @param factor1 linear factor for spec1
+   * @param factor2 linear factor for spec2
+   * @param autoscale Auto-adjust scales before combine the spectraDatas
+   * @return {NMR} this object
+   * @example spec1 = addSpectraDatas(spec1,spec2,1,-1, false) This subtract spec2 from spec1
+   */
+  /* addSpectraDatas(spec2, factor1, factor2, autoscale) {
+        //@TODO Implement addSpectraDatas filter
+     }*/
+
+  /**
+   * Automatically corrects the base line of a given spectraData. After this process the spectraData
+   * should have meaningful integrals.
+   * @return {NMR} this object
+   */
+  /* autoBaseline() {
+        //@TODO Implement autoBaseline filter
+    }*/
+
+  /**
+   * Fourier transforms the given spectraData (Note. no 2D handling yet) this spectraData have to be
+   * of type NMR_FID or 2DNMR_FID
+   * @return {NMR} this object
+   */
+  fourierTransform() {
+    return fourierTransform(this);
+  }
+
+  /**
+   * This filter makes an phase 1 correction that corrects the problem of the spectra that has been obtained
+   * on spectrometers using the Bruker digital filters. This method is used in cases when the BrukerSpectra
+   * filter could not find the correct number of points to perform a circular shift.
+   * The actual problem is that not all of the spectra has the necessary parameters for use only one method for
+   * correcting the problem of the Bruker digital filters.
+   * @param {number} ph1corr - Phase 1 correction value in radians.
+   * @return {NMR} this object
+   */
+  postFourierTransform(ph1corr) {
+    return phaseCorrection(0, ph1corr);
+  }
+
+  /**
+   * This function increase the size of the spectrum, filling the new positions with zero values. Doing it one
+   * could increase artificially the spectral resolution.
+   * @param {number} nPointsX - Number of new zero points in the direct dimension
+   * @param {number} nPointsY - Number of new zero points in the indirect dimension
+   * @return {NMR} this object
+   */
+  zeroFilling(nPointsX, nPointsY) {
+    return zeroFilling(this, nPointsX);
+  }
+
+  /**
+   * Applies a baseline correction as described in J Magn Resonance 183 (2006) 145-151 10.1016/j.jmr.2006.07.013
+   * The needed parameters are the wavelet scale and the lambda used in the whittaker smoother.
+   * @param waveletScale To be described
+   * @param whittakerLambda To be described
+   * @return {NMR} this object
+   */
+  /* haarWhittakerBaselineCorrection(waveletScale, whittakerLambda) {
+        //@TODO Implement haarWhittakerBaselineCorrection filter
+    }*/
+
+  /**
+   * Applies a baseline correction as described in J Magn Resonance 183 (2006) 145-151 10.1016/j.jmr.2006.07.013
+   * The needed parameters are the Wavelet scale and the lambda used in the Whittaker smoother.
+   * @param waveletScale To be described
+   * @param whittakerLambda To be described
+   * @param ranges A string containing the ranges of no signal.
+   * @return {NMR} this object
+   */
+  /* whittakerBaselineCorrection(whittakerLambda, ranges) {
+        //@TODO Implement whittakerBaselineCorrection filter
+    }*/
+
+  /**
+   * This filter applies a circular shift(phase 1 correction in the time domain) to an NMR FID spectrum that
+   * have been obtained on spectrometers using the Bruker digital filters. The amount of shift depends on the
+   * parameters DECIM and DSPFVS. This spectraData have to be of type NMR_FID
+   * @return {NMR} this object
+   */
+  brukerFilter() {
+    return digitalFilter(this, { brukerFilter: true });
+  }
+
+  /**
+   * This filter applies a circular shift(phase 1 correction in the time domain) to an NMR FID spectrum that
+   * have been obtained on spectrometers using the Bruker digital filters. The amount of shift depends on the
+   * parameters DECIM and DSPFVS. This spectraData have to be of type NMR_FID
+   * @param {object} options ->
+   * nbPoints: The number of points to shift. Positive values will shift the values to the rigth
+   * and negative values will do to the left.
+   * @return {NMR} this object
+   */
+  digitalFilter(options) {
+    return digitalFilter(this, options);
+  }
+
+  /**
+   * That decodes an Echo-Antiecho 2D spectrum.
+   * @return {NMR} this object
+   */
+  echoAntiechoFilter() {
+    // @TODO Implement echoAntiechoFilter filter
+    return this;
+  }
+
+  /**
+   * This function apply a Standard Normal Variate Transformation over the given spectraData. Mainly used for IR spectra.
+   * @return {NMR} this object
+   */
+  SNVFilter() {
+    // @TODO Implement SNVFilter
+    return this;
+  }
+
+  /**
+   * This function applies a power to all the Y values. If the power is less than 1 and the spectrum has negative values,
+   * it will be shifted so that the lowest value is zero
+   * @param {number} power - The power value to apply
+   * @return {NMR} this object
+   */
+  powerFilter(power) {
+    var minY = this.getMinY();
+    if (power < 1 && minY < 0) {
+      this.YShift(-1 * minY);
+      // console.warn('SD.powerFilter: The spectrum had negative values and was automatically shifted before applying the function.');
+    }
+    // @TODO Implement powerFilter
+    return this;
+  }
+
+  /**
+   * This function applies a log to all the Y values.<br>If the spectrum has negative or zero values, it will be shifted so that the lowest value is 1
+   * @param   base    The base to use
+   * @return this object
+   */
+  /* logarithmFilter(base) {
+        var minY = this.getMinY();
+        if (minY <= 0) {
+            this.yShift((-1 * minY) + 1);
+            //console.warn('SD.logarithmFilter: The spectrum had negative values and was automatically shifted before applying the function.');
+        }
+        //@TODO Implement logarithmFilter filter
+    }*/
+
+  /**
+   * This function correlates the given spectraData with the given vector func. The correlation
+   * operation (*) is defined as:
+   *
+   *                    __ inf
+   *  c(x)=f(x)(*)g(x)= \        f(x)*g(x+i)
+   *                   ./
+   *                    -- i=-inf
+   * @param func A double array containing the function to correlates the spectraData
+   * @return this object
+   * @example var smoothedSP = SD.correlationFilter(spectraData,[1,1]) returns a smoothed version of the
+   * given spectraData.
+   */
+  /* correlationFilter(func) {
+        //@TODO Implement correlationFilter filter
+    }*/
+
+  /**
+   * Applies the phase correction (phi0,phi1) to a Fourier transformed spectraData. The angles must be given in radians.
+   * @param {number} phi0 - the value of Zero order phase correction
+   * @param {number} phi1 - the value of first order phase correction
+   * @return {NMR}
+   */
+  phaseCorrection(phi0, phi1) {
+    return phaseCorrection(this, phi0, phi1);
+  }
+
+  /**
+   * This function determines automatically the correct parameters phi0 and phi1 for a phaseCorrection
+   * function and applies it.
+   * @return {NMR}
+   */
+  /* automaticPhase() {
+        //@TODO Implement automaticPhase filter
+    }*/
+
+  /**
+   * This function process the given spectraData and tries to determine the NMR signals. Returns an NMRSignal1D array
+   * containing all the detected 1D-NMR Signals
+   * @param {object} options - A JSONObject containing the optional parameters:
+   * @option fromX:   Lower limit.
+   * @option toX:     Upper limit.
+   * @option threshold: The minimum intensity to consider a peak as a signal, expressed as a percentage of the highest peak.
+   * @option stdev: Number of standard deviation of the noise for the threshold calculation if a threshold is not specified.
+   * @return {*}
+   */
+  getRanges(options = {}) {
+    if (this.ranges) {
+      return this.ranges;
+    } else {
+      var peaks = this.getPeaks(options);
+      var ranges = createRanges(this, peaks, options);
+      return ranges;
+    }
+  }
+
+  /**
+   * This function compute again the process of the given spectraData and tries to determine the NMR signals.
+   * Returns an NMRSignal1D array containing all the detected 1D-NMR Signals
+   * @param {object} options - A JSONObject containing the optional parameters:
+   * @option fromX:   Lower limit.
+   * @option toX:     Upper limit.
+   * @option threshold: The minimum intensity to consider a peak as a signal, expressed as a percentage of the highest peak.
+   * @option stdev: Number of standard deviation of the noise for the threshold calculation if a threshold is not specified.
+   * @return {null|*}
+   */
+  createRanges(options) {
+    this.ranges = null;
+    this.peaks = null;
+    this.ranges = this.getRanges(options);
+    return this.ranges;
+  }
+
+  /**
+   * Return the information with respect to residual signal solvent
+   * @param {string} solvent - solvent name
+   * @return {object}
+   */
+  getResidual(solvent) {
+    return this.getImpurity(solvent, 'solvent_residual_peak');
+  }
+
+  /**
+   * Return an object with possible impurities in a NMR spectrum with respect to a solvent
+   * @param {string} solvent - solvent name
+   * @return {object}
+   */
+  getImpurities(solvent) {
+    return this.getImpurity(solvent);
+  }
+
+  /**
+   * Return the impurity information with respect to a solvent
+   * @param {string} solvent - solvent name
+   * @param {string} impurity - impurity name
+   * @return {object}
+   */
+  getImpurity(solvent, impurity = null) {
+    solvent = solvent.toLowerCase();
+    if (solvent === '(cd3)2so') solvent = 'dmso';
+    var result = impurities[solvent];
+    if (impurity) {
+      result = result[impurity.toLocaleLowerCase()];
+    }
+    return result;
+  }
+
+  /**
+   * Change the intensities of a respective impurities signals based on peak picking and solvent impurities
+   * @param {string} solvent - solvent name
+   * @param {object} [options = {}] - object may have the peak picking options if this.peaks does not exist.
+   * @param {string} [options.impurity = null] - options to fill a particular impurity of the solvent some thing like 'solvent_residual_peak'
+   * @param {number} [options.value = 0] - value to fill
+   * @param {number} [options.error = 0.025] - tolerance to find the chemical shift of the impurities.
+   */
+  fillImpurity(solvent, options = {}) {
+    var _options$impurity = options.impurity,
+        impurity = _options$impurity === undefined ? null : _options$impurity,
+        _options$value = options.value,
+        value = _options$value === undefined ? 0 : _options$value,
+        _options$error2 = options.error,
+        error = _options$error2 === undefined ? 0.025 : _options$error2;
+
+
+    var solventImpurities = this.getImpurities(solvent, impurity);
+    if (!solventImpurities) {
+      throw Error('The solvent does not mach with a impurities into the list');
+    }
+
+    var peaks = this.getPeaks(options);
+
+    peaks.forEach(peak => {
+      for (var _impurity in solventImpurities) {
+        for (var signal of _impurity) {
+          if (peak.width + error > Math.abs(signal.shift - peak.x)) {
+            var from = peak.x + peak.width;
+            var to = peak.x - peak.width;
+            this.fill(from, to, value);
+          }
+        }
+      }
+    });
+  }
+}
+
+// node packages/nmr-learning/src/index.js
+// node --experimental-modules  packages/nmr-predictor/example/predict.js
+// node   packages/nmr-predictor/example/predict.js ./node_modules/.bin/jest -o packages/nmr-predictor/
+
 var diagonalError = 0.05;
 var tolerance = 0.05;
 
-exports.default = {
-
+var PeakOptimizer = {
   clean: function clean(peaks, threshold) {
     var max = Number.NEGATIVE_INFINITY;
-    var i;
+    var i = void 0;
     // double min = Double.MAX_VALUE;
     for (i = peaks.length - 1; i >= 0; i--) {
       if (Math.abs(peaks[i].z) > max) {
@@ -37300,8 +41557,10 @@ exports.default = {
     var output = signals;
 
     // First step of the optimization: Symmetry validation
-    var i, hits, index;
-    var signal;
+    var i = void 0,
+        hits = void 0,
+        index = void 0;
+    var signal = void 0;
     for (i = output.length - 1; i >= 0; i--) {
       signal = output[i];
       if (signal.peaks.length > 1) {
@@ -37349,11 +41608,11 @@ exports.default = {
   },
 
   /**
-     * This function maps the corresponding 2D signals to the given set of 1D signals
-     * @param {Array} signals2D
-     * @param {Array} references
-     * @private
-     */
+   * This function maps the corresponding 2D signals to the given set of 1D signals
+   * @param {Array} signals2D
+   * @param {Array} references
+   * @private
+   */
   alignDimensions: function alignDimensions(signals2D, references) {
     // For each reference dimension
     for (var i = 0; i < references.length; i++) {
@@ -37373,7 +41632,10 @@ function completeMissingIfNeeded(output, properties, thisSignal, thisProp) {
   var tmpProp = null;
   if (index < 0) {
     // If this signal have no a symmetry image, we have to include it
-    newSignal = { nucleusX: thisSignal.nucleusX, nucleusY: thisSignal.nucleusY };
+    newSignal = {
+      nucleusX: thisSignal.nucleusX,
+      nucleusY: thisSignal.nucleusY
+    };
     newSignal.resolutionX = thisSignal.resolutionX;
     newSignal.resolutionY = thisSignal.resolutionY;
     newSignal.shiftX = thisSignal.shiftY;
@@ -37385,7 +41647,8 @@ function completeMissingIfNeeded(output, properties, thisSignal, thisProp) {
     addedPeaks++;
   }
   // Check for diagonal peaks
-  var j, signal;
+  var j = void 0,
+      signal = void 0;
   var diagX = false;
   var diagY = false;
   for (j = output.length - 1; j >= 0; j--) {
@@ -37400,7 +41663,10 @@ function completeMissingIfNeeded(output, properties, thisSignal, thisProp) {
     }
   }
   if (diagX === false) {
-    newSignal = { nucleusX: thisSignal.nucleusX, nucleusY: thisSignal.nucleusY };
+    newSignal = {
+      nucleusX: thisSignal.nucleusX,
+      nucleusY: thisSignal.nucleusY
+    };
     newSignal.resolutionX = thisSignal.resolutionX;
     newSignal.resolutionY = thisSignal.resolutionY;
     newSignal.shiftX = thisSignal.shiftX;
@@ -37412,7 +41678,10 @@ function completeMissingIfNeeded(output, properties, thisSignal, thisProp) {
     addedPeaks++;
   }
   if (diagY === false) {
-    newSignal = { nucleusX: thisSignal.nucleusX, nucleusY: thisSignal.nucleusY };
+    newSignal = {
+      nucleusX: thisSignal.nucleusX,
+      nucleusY: thisSignal.nucleusY
+    };
     newSignal.resolutionX = thisSignal.resolutionX;
     newSignal.resolutionY = thisSignal.resolutionY;
     newSignal.shiftX = thisSignal.shiftY;
@@ -37432,7 +41701,7 @@ function checkCrossPeaks(output, properties, signal, updateProperties) {
   var shift = signal.shiftX * 4;
   var crossPeaksX = [];
   var crossPeaksY = [];
-  var cross;
+  var cross = void 0;
   for (var i = output.length - 1; i >= 0; i--) {
     cross = output[i];
     if (properties[i][0] !== 0) {
@@ -37545,7 +41814,8 @@ function alignSingleDimension(signals2D, references) {
   // For each 2D signal
   var center = 0;
   var width = 0;
-  var i, j;
+  var i = void 0,
+      j = void 0;
   for (i = 0; i < signals2D.length; i++) {
     var signal2D = signals2D[i];
     for (j = 0; j < references.length; j++) {
@@ -37564,105 +41834,6 @@ function alignSingleDimension(signals2D, references) {
       }
     }
   }
-}
-
-},{}],175:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = extractPeaks;
-
-var _mlGsd = require('ml-gsd');
-
-var _mlGsd2 = _interopRequireDefault(_mlGsd);
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
-}
-
-/**
- * Implementation of the peak picking method described by Cobas in:
- * A new approach to improving automated analysis of proton NMR spectra
- * through Global Spectral Deconvolution (GSD)
- * http://www.spectroscopyeurope.com/images/stories/ColumnPDFs/TD_23_1.pdf
- * @param {SD} spectrum - SD instance.
- * @param {Object} peakList - nmr signals.
- * @param {Object} options - options object with some parameter for GSD.
- * @param {boolean} [options.compile = true] - If true, the Janalyzer function is run over signals to compile the patterns.
- * @param {number} [options.minMaxRatio = 0.01] - Threshold to determine if a given peak should be considered as a noise, bases on its relative height compared to the highest peak.
- * @param {number} [options.broadRatio = 0.00025] - If broadRatio is higher than 0, then all the peaks which second derivative smaller than broadRatio * maxAbsSecondDerivative will be marked with the soft mask equal to true.
- * @param {boolean} [options.smoothY = true] - Select the peak intensities from a smoothed version of the independent variables?
- * @param {number} [options.nL = 4] - factor to determine the width at the moment to group the peaks in signals in 'GSD.optimizePeaks' function.
- * @param {boolean} [options.optimize = true] - if it's true adjust an train of gaussian or lorentzian shapes to spectrum.
- * @param {string} [options.functionType = 'gaussian'] - This option allows us choose between 'gaussian' or 'lorentzian' function when options.optimize is true.
- * @param {number} [options.broadWidth = 0.25] - Threshold to determine if some peak is candidate to clustering into range.
- * @return {Array}
- */
-
-var defaultOptions = {
-  thresholdFactor: 1,
-  minMaxRatio: 0.01,
-  broadRatio: 0.00025,
-  smoothY: true,
-  widthFactor: 4,
-  realTop: true,
-  functionName: 'gaussian',
-  broadWidth: 0.25,
-  sgOptions: { windowSize: 9, polynomial: 3 }
-};
-
-function extractPeaks(spectrum, options = {}) {
-  options = Object.assign({}, defaultOptions, options, { optimize: false, broadWidth: false });
-
-  var _options = options,
-      from = _options.from,
-      to = _options.to,
-      broadWidth = _options.broadWidth,
-      optimize = _options.optimize,
-      _options$noiseLevel = _options.noiseLevel,
-      noiseLevel = _options$noiseLevel === undefined ? Math.abs(spectrum.getNoiseLevel(options)) * options.thresholdFactor : _options$noiseLevel;
-
-
-  var data = from !== undefined && to !== undefined ? spectrum.getVector({ from, to, outputX: true }) : spectrum.getSpectrumData();
-
-  var peakList = _mlGsd2.default.gsd(data.x, data.y, options);
-
-  if (broadWidth) {
-    peakList = _mlGsd2.default.post.joinBroadPeaks(peakList, { width: options.broadWidth });
-  }
-  if (optimize) {
-    peakList = _mlGsd2.default.post.optimizePeaks(peakList, data.x, data.y, options);
-  }
-
-  return peakList.filter(p => p.y >= noiseLevel);
-}
-
-},{"ml-gsd":63}],176:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = getZones;
-
-var _mlSimpleClustering = require('ml-simple-clustering');
-
-var _mlSimpleClustering2 = _interopRequireDefault(_mlSimpleClustering);
-
-var _mlMatrixPeaksFinder = require('ml-matrix-peaks-finder');
-
-var _mlMatrixPeaksFinder2 = _interopRequireDefault(_mlMatrixPeaksFinder);
-
-var _mlFft = require('ml-fft');
-
-var _peakOptimizer = require('./peakOptimizer');
-
-var _peakOptimizer2 = _interopRequireDefault(_peakOptimizer);
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
 }
 
 var smallFilter = [[0, 0, 1, 2, 2, 2, 1, 0, 0], [0, 1, 4, 7, 7, 7, 4, 1, 0], [1, 4, 5, 3, 0, 3, 5, 4, 1], [2, 7, 3, -12, -23, -12, 3, 7, 2], [2, 7, 0, -23, -40, -23, 0, 7, 2], [2, 7, 3, -12, -23, -12, 3, 7, 2], [1, 4, 5, 3, 0, 3, 5, 4, 1], [0, 1, 3, 7, 7, 7, 3, 1, 0], [0, 0, 1, 2, 2, 2, 1, 0, 0]];
@@ -37693,19 +41864,34 @@ function getZones(spectraData, thresholdFactor) {
 
   var nStdDev = getLoGnStdDevNMR(spectraData);
   if (isHomonuclear) {
-    var convolutedSpectrum = _mlFft.FFTUtils.convolute(data, smallFilter, nbSubSpectra, nbPoints);
-    var peaksMC1 = _mlMatrixPeaksFinder2.default.findPeaks2DRegion(data, { filteredData: convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: nStdDev * thresholdFactor }); // )1.5);
-    var peaksMax1 = _mlMatrixPeaksFinder2.default.findPeaks2DMax(data, { filteredData: convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: (nStdDev + 0.5) * thresholdFactor }); // 2.0);
+    var convolutedSpectrum = fft.FFTUtils.convolute(data, smallFilter, nbSubSpectra, nbPoints);
+    var peaksMC1 = matrixPeakFinders.findPeaks2DRegion(data, {
+      filteredData: convolutedSpectrum,
+      rows: nbSubSpectra,
+      cols: nbPoints,
+      nStdDev: nStdDev * thresholdFactor
+    }); // )1.5);
+    var peaksMax1 = matrixPeakFinders.findPeaks2DMax(data, {
+      filteredData: convolutedSpectrum,
+      rows: nbSubSpectra,
+      cols: nbPoints,
+      nStdDev: (nStdDev + 0.5) * thresholdFactor
+    }); // 2.0);
     for (var i = 0; i < peaksMC1.length; i++) {
       peaksMax1.push(peaksMC1[i]);
     }
-    return _peakOptimizer2.default.enhanceSymmetry(createSignals2D(peaksMax1, spectraData, 24));
+    return PeakOptimizer.enhanceSymmetry(createSignals2D(peaksMax1, spectraData, 24));
   } else {
-    var _convolutedSpectrum = _mlFft.FFTUtils.convolute(data, smallFilter, nbSubSpectra, nbPoints);
-    var _peaksMC = _mlMatrixPeaksFinder2.default.findPeaks2DRegion(data, { filteredData: _convolutedSpectrum, rows: nbSubSpectra, cols: nbPoints, nStdDev: nStdDev * thresholdFactor });
+    var _convolutedSpectrum = fft.FFTUtils.convolute(data, smallFilter, nbSubSpectra, nbPoints);
+    var _peaksMC = matrixPeakFinders.findPeaks2DRegion(data, {
+      filteredData: _convolutedSpectrum,
+      rows: nbSubSpectra,
+      cols: nbPoints,
+      nStdDev: nStdDev * thresholdFactor
+    });
     // Peak2D[] peaksMC1 = matrixPeakFinders.findPeaks2DMax(data, nbSubSpectra, nbPoints, (nStdDev+0.5)*thresholdFactor);
     // Remove peaks with less than 3% of the intensity of the highest peak
-    return createSignals2D(_peakOptimizer2.default.clean(_peaksMC, 0.05), spectraData, 24);
+    return createSignals2D(PeakOptimizer.clean(_peaksMC, 0.05), spectraData, 24);
   }
 }
 
@@ -37733,7 +41919,7 @@ function createSignals2D(peaks, spectraData, tolerance) {
 
   var firstY = spectraData.getFirstY();
   var dy = spectraData.getDeltaY();
-  var i;
+  var i = void 0;
   for (i = peaks.length - 1; i >= 0; i--) {
     peaks[i].x = spectraData.arrayPointToUnits(peaks[i].x);
     peaks[i].y = firstY + dy * peaks[i].y;
@@ -37761,12 +41947,15 @@ function createSignals2D(peaks, spectraData, tolerance) {
     }
   }
 
-  var clusters = (0, _mlSimpleClustering2.default)(connectivity);
+  var clusters = simpleClustering(connectivity);
 
   var signals = [];
   if (peaks != null) {
     for (var iCluster = 0; iCluster < clusters.length; iCluster++) {
-      var signal = { nucleusX: spectraData.getNucleus(1), nucleusY: spectraData.getNucleus(2) };
+      var signal = {
+        nucleusX: spectraData.getNucleus(1),
+        nucleusY: spectraData.getNucleus(2)
+      };
       signal.resolutionX = (spectraData.getLastX() - spectraData.getFirstX()) / spectraData.getNbPoints();
       signal.resolutionY = dy;
       var peaks2D = [];
@@ -37781,7 +41970,6 @@ function createSignals2D(peaks, spectraData, tolerance) {
             x: peaks[jPeak].x,
             y: peaks[jPeak].y,
             z: peaks[jPeak].z
-
           });
           signal.shiftX += peaks[jPeak].x * peaks[jPeak].z;
           signal.shiftY += peaks[jPeak].y * peaks[jPeak].z;
@@ -37810,352 +41998,378 @@ function createSignals2D(peaks, spectraData, tolerance) {
   return signals;
 }
 
-},{"./peakOptimizer":174,"ml-fft":61,"ml-matrix-peaks-finder":79,"ml-simple-clustering":109}],177:[function(require,module,exports){
-'use strict';
-
-Object.defineProperty(exports, "__esModule", {
-  value: true
-});
-exports.default = createRanges;
-
-var _spectraDataRanges = require('spectra-data-ranges');
-
-var _lodash = require('lodash.round');
-
-var _lodash2 = _interopRequireDefault(_lodash);
-
-var _jAnalyzer = require('./jAnalyzer');
-
-var _jAnalyzer2 = _interopRequireDefault(_jAnalyzer);
-
-var _ImpurityRemover = require('./ImpurityRemover');
-
-var _ImpurityRemover2 = _interopRequireDefault(_ImpurityRemover);
-
-function _interopRequireDefault(obj) {
-  return obj && obj.__esModule ? obj : { default: obj };
-}
-
-var defaultOptions = {
-  nH: 100,
-  clean: 0.5,
-  thresholdFactor: 1,
-  compile: true,
-  integralType: 'sum',
-  optimize: true,
-  frequencyCluster: 16,
-  keepPeaks: false
-};
-
-/**
- * This function clustering peaks and calculate the integral value for each range from the peak list returned from extractPeaks function.
- * @param {SD} spectrum - SD instance
- * @param {Object} peakList - nmr signals
- * @param {Object} options - options object with some parameter for GSD, detectSignal functions.
- * @param {number} [options.nH = 100] - Number of hydrogens or some number to normalize the integral data. If it's zero return the absolute integral value
- * @param {string} [options.integralType = 'sum'] - option to chose between approx area with peaks or the sum of the points of given range ('sum', 'peaks')
- * @param {number} [options.frequencyCluster = 16] - distance limit to clustering peaks.
- * @param {number} [options.clean] - If exits it remove all the signals with integral < clean value
- * @param {boolean} [options.compile = true] - If true, the Janalyzer function is run over signals to compile the patterns.
- * @param {boolean} [options.keepPeaks = false] - If true each signal will contain an array of peaks.
- * @returns {Array}
- */
-
-function createRanges(spectrum, peakList, options) {
-  options = Object.assign({}, defaultOptions, options);
-  var i, j;
-  var nH = options.nH;
-  peakList = (0, _ImpurityRemover2.default)(peakList, options.removeImpurity);
-  var signals = detectSignals(spectrum, peakList, options);
-
-  if (options.clean) {
-    for (i = 0; i < signals.length; i++) {
-      if (signals[i].integralData.value < options.clean) {
-        signals.splice(i, 1);
-      }
-    }
+class NMR2D extends SD {
+  /**
+   * This function creates a SD instance from the given 2D prediction
+   * @param {Array} prediction
+   * @param {object} options
+   * @return {SD}
+   */
+  static fromPrediction(prediction, options) {
+    var data = nmrSimulation.simulate2D(prediction, options);
+    var spectrum = NMR2D.fromMatrix(data, options);
+    var jcamp = spectrum.toJcamp({ type: 'NTUPLES' });
+    return NMR2D.fromJcamp(jcamp);
   }
 
-  if (options.compile) {
-    var nHi, sum;
-    for (i = 0; i < signals.length; i++) {
-      _jAnalyzer2.default.compilePattern(signals[i]);
-
-      if (signals[i].maskPattern && signals[i].multiplicity !== 'm' && signals[i].multiplicity !== '') {
-        // Create a new signal with the removed peaks
-        nHi = 0;
-        sum = 0;
-        var peaksO = [];
-        for (j = signals[i].maskPattern.length - 1; j >= 0; j--) {
-          sum += computeArea(signals[i].peaks[j]);
-          if (signals[i].maskPattern[j] === false) {
-            var peakR = signals[i].peaks.splice(j, 1)[0];
-            peaksO.push({ x: peakR.x, y: peakR.intensity, width: peakR.width });
-            signals[i].mask.splice(j, 1);
-            signals[i].mask2.splice(j, 1);
-            signals[i].maskPattern.splice(j, 1);
-            signals[i].nbPeaks--;
-            nHi += computeArea(peakR);
-          }
-        }
-        if (peaksO.length > 0) {
-          nHi = nHi * signals[i].integralData.value / sum;
-          signals[i].integralData.value -= nHi;
-          var peaks1 = [];
-          for (j = peaksO.length - 1; j >= 0; j--) {
-            peaks1.push(peaksO[j]);
-          }
-          options.nH = nHi;
-          var _ranges = detectSignals(spectrum, peaks1, options);
-
-          for (j = 0; j < _ranges.length; j++) {
-            signals.push(_ranges[j]);
-          }
-        }
-      }
+  /**
+   * This function return a NMR instance from Array of folders or zip file with folders
+   * @param {Array} brukerFile - spectra data in two possible input
+   * @param {object} options - the options dependent on brukerFile input, but some parameter are permanents like:
+   * @option {boolean} xy - The spectraData should not be a oneD array but an object with x and y
+   * @option {boolean} keepSpectra - keep the spectra in 2D NMR instance
+   * @option {boolean} noContours - option to generate not generate countour plot for 2Dnmr spectra
+   * @option {string} keepRecordsRegExp - regular expressions to parse data
+   * @return {*}
+   */
+  static fromBruker(brukerFile, options) {
+    options = Object.assign({}, { xy: true, keepSpectra: true, keepRecordsRegExp: /^.+$/ }, options);
+    var brukerSpectra = null;
+    if (Array.isArray(brukerFile)) {
+      // It is a folder
+      brukerSpectra = Brukerconverter.converFolder(brukerFile, options);
+    } else {
+      // It is a zip
+      brukerSpectra = Brukerconverter.convertZip(brukerFile, options);
     }
-    // it was a updateIntegrals function.
-    var sumIntegral = 0;
-    var sumObserved = 0;
-    for (i = 0; i < signals.length; i++) {
-      sumObserved += Math.round(signals[i].integralData.value);
+    if (brukerSpectra) {
+      return brukerSpectra.map(function (spectrum) {
+        return new NMR2D(spectrum);
+      });
     }
-    if (sumObserved !== nH) {
-      sumIntegral = nH / sumObserved;
-      for (i = 0; i < signals.length; i++) {
-        signals[i].integralData.value *= sumIntegral;
-      }
-    }
+    return null;
   }
 
-  signals.sort(function (a, b) {
-    return b.delta1 - a.delta1;
-  });
+  /**
+   * This function creates a 2D spectrum from a matrix containing the independent values of the spectrum and a set
+   * of options...
+   * @param {Array} data
+   * @param {object} options
+   * @return {*}
+   */
+  static fromMatrix(data, options) {
+    var result = {};
+    result.profiling = [];
+    result.logs = [];
+    var spectra = [];
+    var nbPoints = data[0].length;
+    result.spectra = spectra;
+    result.info = {};
+    var firstY = options.firstY || 0;
+    var lastY = options.lastY || data.length - 1;
+    var deltaY = (lastY - firstY) / (data.length - 1);
 
-  if (options.clean) {
-    for (i = signals.length - 1; i >= 0; i--) {
-      if (signals[i].integralData.value < options.clean) {
-        signals.splice(i, 1);
+    var firstX = options.firstX || 0;
+    var lastX = options.lastX || nbPoints - 1;
+    var deltaX = (lastY - firstY) / (nbPoints - 1);
+    var x = options.x;
+    if (!x) {
+      x = new Array(nbPoints);
+      for (var i = 0; i < nbPoints; i++) {
+        x[i] = firstX + deltaX * i;
       }
     }
-  }
 
-  var ranges = new Array(signals.length);
-  for (i = 0; i < signals.length; i++) {
-    var signal = signals[i];
-    ranges[i] = {
-      from: (0, _lodash2.default)(signal.integralData.from, 5),
-      to: (0, _lodash2.default)(signal.integralData.to, 5),
-      integral: (0, _lodash2.default)(signal.integralData.value, 5),
-      signal: [{
-        nbAtoms: 0,
-        diaID: [],
-        multiplicity: signal.multiplicity,
-        kind: '',
-        remark: ''
-      }]
+    var observeFrequency = options.frequencyX || 400;
+    var minZ = Number.MAX_SAFE_INTEGER;
+    var maxZ = Number.MIN_SAFE_INTEGER;
 
+    data.forEach((y, index) => {
+      var spectrum = {};
+      spectrum.isXYdata = true;
+      spectrum.nbPoints = nbPoints;
+      spectrum.firstX = firstX;
+      spectrum.firstY = y[0];
+      spectrum.lastX = lastX;
+      spectrum.lastY = y[spectrum.nbPoints - 1];
+      spectrum.xFactor = 1;
+      spectrum.yFactor = 1;
+      spectrum.deltaX = (spectrum.lastX - spectrum.firstX) / (spectrum.nbPoints - 1);
+      spectrum.title = options.title || 'spectra-data from matrix';
+      spectrum.dataType = options.dataType || 'nD NMR SPECTRUM';
+      spectrum.observeFrequency = observeFrequency;
+      spectrum.data = [{ x: x, y: y }];
+      spectrum.page = firstY + index * deltaY;
+      result.xType = options.xType || options.nucleusX || '1H';
+      spectra.push(spectrum);
+
+      // let minMax = StatArray.minMax(y);
+
+      minZ = Math.min(minZ, min(y));
+      maxZ = Math.max(maxZ, max(y));
+    });
+
+    result.ntuples = [{ units: options.xUnit || 'PPM' }, { units: options.yUnit || 'PPM' }, { units: options.zUnit || 'Intensity' }];
+    result.info['2D_Y_FREQUENCY'] = options.frequencyY || 400;
+    result.info['2D_X_FREQUENCY'] = options.frequencyX || 400;
+    result.info.observefrequency = result.info['2D_X_FREQUENCY'];
+    result.info.$BF1 = result.info.observefrequency;
+    result.info['.SOLVENTNAME'] = options.solvent || 'none';
+    // eslint-disable-next-line camelcase
+    result.info.$SW_h = Math.abs(lastX - firstX) * observeFrequency;
+    result.info.$SW = Math.abs(lastX - firstX);
+    result.info.$TD = nbPoints;
+    result.info.firstY = firstY;
+    result.info.lastY = lastY;
+    result.minMax = {
+      minY: firstY,
+      maxY: lastY,
+      minX: firstX,
+      maxX: lastX,
+      minZ: minZ,
+      maxZ: maxZ
     };
-    if (options.keepPeaks) {
-      ranges[i].signal[0].peak = signal.peaks;
-    }
-    if (signal.nmrJs) {
-      ranges[i].signal[0].j = signal.nmrJs;
-    }
-    if (!signal.asymmetric || signal.multiplicity === 'm') {
-      ranges[i].signal[0].delta = (0, _lodash2.default)(signal.delta1, 5);
-    }
+
+    result.yType = options.yType || options.nucleusY || '1H';
+    result.twoD = true;
+    return new NMR2D(result);
+  }
+  /**
+   * Return true if the it is an homo-nuclear experiment
+   * @return {boolean}
+   */
+  isHomoNuclear() {
+    return this.sd.xType === this.sd.yType;
   }
 
-  return new _spectraDataRanges.Ranges(ranges);
-}
-
-/**
- * Extract the signals from the peakList and the given spectrum.
- * @param {object} spectrum - spectra data
- * @param {object} peakList - nmr signals
- * @param {object} options
- * @param {...number} options.nH - Number of hydrogens or some number to normalize the integral data, If it's zero return the absolute integral value
- * @param {string} options.integralType - option to chose between approx area with peaks or the sum of the points of given range
- * @param {...number} options.frequencyCluster - distance limit to clustering the peaks.
- * range = frequencyCluster / observeFrequency -> Peaks withing this range are considered to belongs to the same signal1D
- * @return {Array} nmr signals
- * @private
- */
-function detectSignals(spectrum, peakList, options = {}) {
-  var _options$nH = options.nH,
-      nH = _options$nH === undefined ? 100 : _options$nH,
-      _options$integralType = options.integralType,
-      integralType = _options$integralType === undefined ? 'sum' : _options$integralType,
-      _options$frequencyClu = options.frequencyCluster,
-      frequencyCluster = _options$frequencyClu === undefined ? 16 : _options$frequencyClu,
-      _options$frequency = options.frequency,
-      frequency = _options$frequency === undefined ? spectrum.observeFrequencyX() : _options$frequency;
-
-
-  var i, j, signal1D, peaks;
-  var signals = [];
-  var prevPeak = { x: 100000 };
-  var spectrumIntegral = 0;
-  frequencyCluster /= frequency;
-  for (i = 0; i < peakList.length; i++) {
-    if (Math.abs(peakList[i].x - prevPeak.x) > frequencyCluster) {
-      signal1D = {
-        nbPeaks: 1, units: 'PPM',
-        startX: peakList[i].x - peakList[i].width,
-        stopX: peakList[i].x + peakList[i].width,
-        multiplicity: '', pattern: '',
-        observe: frequency, nucleus: spectrum.getNucleus(1),
-        integralData: {
-          from: peakList[i].x - peakList[i].width * 3,
-          to: peakList[i].x + peakList[i].width * 3
-        },
-        peaks: [{ x: peakList[i].x, intensity: peakList[i].y, width: peakList[i].width }]
-      };
-      signals.push(signal1D);
-    } else {
-      var tmp = peakList[i].x + peakList[i].width;
-      signal1D.stopX = Math.max(signal1D.stopX, tmp);
-      signal1D.startX = Math.min(signal1D.startX, tmp);
-      signal1D.nbPeaks++;
-      signal1D.peaks.push({ x: peakList[i].x, intensity: peakList[i].y, width: peakList[i].width });
-      signal1D.integralData.from = Math.min(signal1D.integralData.from, peakList[i].x - peakList[i].width * 3);
-      signal1D.integralData.to = Math.max(signal1D.integralData.to, peakList[i].x + peakList[i].width * 3);
-    }
-    prevPeak = peakList[i];
+  /**
+   * Return the observe frequency in the direct dimension
+   * @return {number}
+   */
+  observeFrequencyX() {
+    return this.sd.spectra[0].observeFrequency;
+  }
+  /**
+   * Return the observe frequency in the indirect dimension
+   * @return {number}
+   */
+  observeFrequencyY() {
+    return this.sd.indirectFrequency;
   }
 
-  for (i = 0; i < signals.length; i++) {
-    peaks = signals[i].peaks;
-    var integral = signals[i].integralData;
-    var chemicalShift = 0;
-    var integralPeaks = 0;
-
-    for (j = 0; j < peaks.length; j++) {
-      var area = computeArea(peaks[j]);
-      chemicalShift += peaks[j].x * area;
-      integralPeaks += area;
-    }
-    signals[i].delta1 = chemicalShift / integralPeaks;
-
-    if (integralType === 'sum') {
-      integral.value = spectrum.getArea(integral.from, integral.to);
-    } else {
-      integral.value = integralPeaks;
-    }
-    spectrumIntegral += integral.value;
+  /**
+   * Return the solvent name.
+   * @return {string|XML}
+   */
+  getSolventName() {
+    return (this.sd.info['.SOLVENTNAME'] || this.sd.info.$SOLVENT).replace('<', '').replace('>', '');
   }
 
-  if (nH > 0) {
-    var integralFactor = nH / spectrumIntegral;
-    for (i = 0; i < signals.length; i++) {
-      var _integral = signals[i].integralData;
-      _integral.value *= integralFactor;
-    }
+  /**
+   * This function Return the units of the direct dimension. It overrides the SD getXUnits function
+   * @return {ntuples.units|*|b.units}
+   */
+  getXUnits() {
+    return this.sd.ntuples[1].units;
+  }
+  /**
+   * This function Return the units of the indirect dimension. It overrides the SD getYUnits function
+   * @return {ntuples.units|*|b.units}
+   */
+  getYUnits() {
+    return this.sd.ntuples[0].units;
+  }
+  /**
+   * Return the units of the dependent variable
+   * @return {ntuples.units|*|b.units}
+   */
+  getZUnits() {
+    return this.sd.ntuples[2].units;
+  }
+  /**
+   * Return the min value in the indirect dimension.
+   * @return {sd.minMax.maxY}
+   */
+  getLastY() {
+    return this.sd.minMax.maxY;
   }
 
-  return signals;
-}
+  /**
+   * Return the min value in the indirect dimension.
+   * @return {sd.minMax.minY}
+   */
+  getFirstY() {
+    return this.sd.minMax.minY;
+  }
+  /**
+   * Return the separation between 2 consecutive points in the indirect domain
+   * @return {number}
+   */
+  getDeltaY() {
+    return (this.getLastY() - this.getFirstY()) / (this.getNbSubSpectra() - 1);
+  }
 
-/**
- * Return the area of a Lorentzian function
- * @param {object} peak - object with peak information
- * @return {number}
- * @private
- */
-function computeArea(peak) {
-  return Math.abs(peak.intensity * peak.width * 1.57); // todo add an option with this value: 1.772453851
-}
+  /**
+   * Return the minimum value of the independent variable
+   * @return {number}
+   */
+  getMinZ() {
+    return this.sd.minMax.minZ;
+  }
 
-},{"./ImpurityRemover":171,"./jAnalyzer":173,"lodash.round":43,"spectra-data-ranges":155}],178:[function(require,module,exports){
-module.exports={
-  "_from": "spectra-data@^3.4.5",
-  "_id": "spectra-data@3.4.5",
-  "_inBundle": false,
-  "_integrity": "sha512-xDKg4neffK+O/yzcKsfMHlAqpjl7MNvV7+a3F8+/cTd55z1M8z40lwsk7Gi3Ae9Pk02Ah/lmy/V0RliJnWABwA==",
-  "_location": "/spectra-data",
-  "_phantomChildren": {},
-  "_requested": {
-    "type": "range",
-    "registry": true,
-    "raw": "spectra-data@^3.4.5",
-    "name": "spectra-data",
-    "escapedName": "spectra-data",
-    "rawSpec": "^3.4.5",
-    "saveSpec": null,
-    "fetchSpec": "^3.4.5"
-  },
-  "_requiredBy": [
-    "/nmr-metadata"
-  ],
-  "_resolved": "https://registry.npmjs.org/spectra-data/-/spectra-data-3.4.5.tgz",
-  "_shasum": "dde5e7c37ec030b3b94f02c5bc6ccd4fa9911f9c",
-  "_spec": "spectra-data@^3.4.5",
-  "_where": "/usr/local/www/sites/www.lactame.com/node/grm-data/git/cheminfo/eln-plugin/node_modules/nmr-metadata",
-  "author": {
-    "name": "Andres Castillo"
-  },
-  "bugs": {
-    "url": "https://github.com/cheminfo-js/spectra/issues"
-  },
-  "bundleDependencies": false,
-  "contributors": [
-    {
-      "name": "Michaël Zasso"
-    },
-    {
-      "name": "Luc Patiny"
+  /**
+   * Return the maximum value of the independent variable
+   * @return {number}
+   */
+  getMaxZ() {
+    return this.sd.minMax.maxZ;
+  }
+
+  /**
+   * This function process the given spectraData and tries to determine the NMR signals.
+   * Return an NMRSignal2D array containing all the detected 2D-NMR Signals
+   * @param {object} options - Object containing the options.
+   * @option {number} thresholdFactor - A factor to scale the automatically determined noise threshold.
+   * @return  {*} set of NMRSignal2D.
+   */
+  getZones(options) {
+    options = options || {};
+    if (!options.thresholdFactor) {
+      options.thresholdFactor = 1;
     }
-  ],
-  "dependencies": {
-    "brukerconverter": "^1.0.1",
-    "jcampconverter": "^2.9.2",
-    "lodash.round": "^4.0.4",
-    "ml-array-max": "^1.0.1",
-    "ml-array-median": "^1.0.0",
-    "ml-array-min": "^1.0.1",
-    "ml-array-rescale": "^1.1.0",
-    "ml-array-utils": "^0.4.0",
-    "ml-curve-fitting": "^0.0.7",
-    "ml-fft": "^1.3.5",
-    "ml-gsd": "^2.0.1",
-    "ml-matrix-peaks-finder": "^0.2.1",
-    "ml-simple-clustering": "^0.1.0",
-    "nmr-simulation": "^1.0.17",
-    "spectra-data-ranges": "^1.1.5",
-    "spectra-nmr-utilities": "^1.0.5"
-  },
-  "deprecated": false,
-  "description": "spectra-data project - manipulate spectra",
-  "devDependencies": {
-    "jsdoc": "^3.5.5",
-    "nmr-predictor": "^1.1.11",
-    "should": "^13.2.3"
-  },
-  "files": [
-    "lib",
-    "src"
-  ],
-  "homepage": "https://github.com/cheminfo-js/spectra/packages/spectra-data",
-  "jest": {
-    "testEnvironment": "node"
-  },
-  "keywords": [
-    "spectra-data",
-    "project"
-  ],
-  "license": "MIT",
-  "main": "./lib/index.js",
-  "module": "./src/index.js",
-  "name": "spectra-data",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/cheminfo-js/spectra.git"
-  },
-  "version": "3.4.5"
+    var id = Math.round(Math.random() * 255);
+    if (options.idPrefix) {
+      id = options.idPrefix;
+    }
+    var peakList = getZones(this, options.thresholdFactor);
+
+    // lets add an unique ID for each peak.
+    for (var i = 0; i < peakList.length; i++) {
+      peakList[i]._highlight = [`${id}_${i}`];
+      peakList[i].signalID = `${id}_${i}`;
+    }
+    if (options.references) {
+      PeakOptimizer.alignDimensions(peakList, options.references);
+    }
+
+    if (options.format === 'new') {
+      var zones = new Array(peakList.length);
+      for (var k = peakList.length - 1; k >= 0; k--) {
+        var signal = peakList[k];
+        zones[k] = {
+          fromTo: signal.fromTo,
+          integral: signal.intensity || 1,
+          remark: '',
+          signal: [{
+            peak: signal.peaks,
+            delta: [signal.shiftX, signal.shiftY]
+          }],
+          _highlight: signal._highlight,
+          signalID: signal.signalID
+        };
+      }
+      peakList = zones;
+    }
+
+    this.zones = peakList;
+
+    return this.zones;
+  }
+
+  /**
+   * Return the noise factor depending on the nucleus.
+   * @param {string} nucleus
+   * @return {number}
+   */
+  getNMRPeakThreshold(nucleus) {
+    if (nucleus === '1H') {
+      return 3.0;
+    }
+    if (nucleus === '13C') {
+      return 5.0;
+    }
+    return 1.0;
+  }
+
+  /**
+   * Return the observed nucleus in the specified dimension
+   * @param {number} dim
+   * @return {string}
+   */
+  getNucleus(dim) {
+    if (dim === 1) {
+      return this.sd.xType;
+    }
+    if (dim === 2) {
+      return this.sd.yType;
+    }
+    return this.sd.xType;
+  }
+
+  /**
+   * This function increase the size of the spectrum, filling the new positions with zero values. Doing it one
+   * could increase artificially the spectral resolution.
+   * @param {number} nPointsX Number of new zero points in the direct dimension
+   * @param {number} nPointsY Number of new zero points in the indirect dimension
+   * @return {NMR2D} this object
+   */
+  zeroFilling(nPointsX, nPointsY) {
+    return zeroFilling(this, nPointsX);
+  }
+
+  /**
+   * This filter applies a circular shift(phase 1 correction in the time domain) to an NMR FID spectrum that
+   * have been obtained on spectrometers using the Bruker digital filters. The amount of shift depends on the
+   * parameters DECIM and DSPFVS. This spectraData have to be of type NMR_FID
+   * @return {NMR2D} this object
+   */
+  brukerFilter() {
+    return digitalFilter(this, { brukerFilter: true });
+  }
+
+  /**
+   * This filter applies a circular shift(phase 1 correction in the time domain) to an NMR FID spectrum that
+   * have been obtained on spectrometers using the Bruker digital filters. The amount of shift depends on the
+   * parameters DECIM and DSPFVS. This spectraData have to be of type NMR_FID
+   * @param {object} options - some options are availables:
+   * @option nbPoints: The number of points to shift. Positive values will shift the values to the rigth
+   * and negative values will do to the left.
+   * @option brukerSpectra
+   * @return {NMR2D} this object
+   */
+  digitalFilter(options) {
+    return digitalFilter(this, options);
+  }
+
+  /**
+   * Fourier transforms the given spectraData (Note. no 2D handling yet) this spectraData have to be of type NMR_FID or 2DNMR_FID
+   * @return {NMR2D} this object
+   */
+  fourierTransform() {
+    return fourierTransform(this);
+  }
+
+  /**
+   * This filter makes an phase 1 correction that corrects the problem of the spectra that has been obtained
+   * on spectrometers using the Bruker digital filters. This method is used in cases when the BrukerSpectra
+   * filter could not find the correct number of points to perform a circular shift.
+   * The actual problem is that not all of the spectra has the necessary parameters for use only one method for
+   * correcting the problem of the Bruker digital filters.
+   * @param {number} ph1corr - Phase 1 correction value in radians.
+   * @return {NMR2D} this object
+   */
+  postFourierTransform(ph1corr) {
+    return phaseCorrection(0, ph1corr);
+  }
 }
 
-},{}],179:[function(require,module,exports){
+Object.defineProperty(exports, 'Ranges', {
+  enumerable: true,
+  get: function get() {
+    return spectraDataRanges.Ranges;
+  }
+});
+Object.defineProperty(exports, 'getACS', {
+  enumerable: true,
+  get: function get() {
+    return spectraDataRanges.getACS;
+  }
+});
+exports.NMR = NMR;
+exports.NMR2D = NMR2D;
+exports.SD = SD;
+
+},{"brukerconverter":6,"jcampconverter":24,"lodash.round":61,"ml-array-max":63,"ml-array-median":64,"ml-array-min":65,"ml-array-rescale":66,"ml-array-utils":69,"ml-fft":79,"ml-gsd":81,"ml-matrix-peaks-finder":97,"ml-simple-clustering":124,"nmr-simulation":149,"spectra-data-ranges":189}],193:[function(require,module,exports){
 'use strict';
 
 Object.defineProperty(exports, "__esModule", {
@@ -38287,7 +42501,7 @@ function group(signals, options = {}) {
       // signals[i].multiplicity = module.exports.compilePattern(signals[i], options.tolerance);
     }
     // console.log(signals[i]);
-    signals[i].multiplicity = module.exports.compilePattern(signals[i], options.tolerance);
+    signals[i].multiplicity = compilePattern(signals[i], options.tolerance);
   }
   return signals;
 }
@@ -38317,27 +42531,519 @@ function compilePattern(signal, tolerance = 0.05) {
   return pattern;
 }
 
-},{}],180:[function(require,module,exports){
-(function (global){
+},{}],194:[function(require,module,exports){
 'use strict';
 
-/*! https://mths.be/utf8js v2.1.2 by @mathias */
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+module.exports = Stream;
+
+var EE = require('events').EventEmitter;
+var inherits = require('inherits');
+
+inherits(Stream, EE);
+Stream.Readable = require('readable-stream/readable.js');
+Stream.Writable = require('readable-stream/writable.js');
+Stream.Duplex = require('readable-stream/duplex.js');
+Stream.Transform = require('readable-stream/transform.js');
+Stream.PassThrough = require('readable-stream/passthrough.js');
+
+// Backwards-compat with node 0.4.x
+Stream.Stream = Stream;
+
+// old-style streams.  Note that the pipe method (the only relevant
+// part of this class) is overridden in the Readable class.
+
+function Stream() {
+  EE.call(this);
+}
+
+Stream.prototype.pipe = function (dest, options) {
+  var source = this;
+
+  function ondata(chunk) {
+    if (dest.writable) {
+      if (false === dest.write(chunk) && source.pause) {
+        source.pause();
+      }
+    }
+  }
+
+  source.on('data', ondata);
+
+  function ondrain() {
+    if (source.readable && source.resume) {
+      source.resume();
+    }
+  }
+
+  dest.on('drain', ondrain);
+
+  // If the 'end' option is not supplied, dest.end() will be called when
+  // source gets the 'end' or 'close' events.  Only dest.end() once.
+  if (!dest._isStdio && (!options || options.end !== false)) {
+    source.on('end', onend);
+    source.on('close', onclose);
+  }
+
+  var didOnEnd = false;
+  function onend() {
+    if (didOnEnd) return;
+    didOnEnd = true;
+
+    dest.end();
+  }
+
+  function onclose() {
+    if (didOnEnd) return;
+    didOnEnd = true;
+
+    if (typeof dest.destroy === 'function') dest.destroy();
+  }
+
+  // don't leave dangling pipes when there are errors.
+  function onerror(er) {
+    cleanup();
+    if (EE.listenerCount(this, 'error') === 0) {
+      throw er; // Unhandled stream error in pipe.
+    }
+  }
+
+  source.on('error', onerror);
+  dest.on('error', onerror);
+
+  // remove all the event listeners that were added.
+  function cleanup() {
+    source.removeListener('data', ondata);
+    dest.removeListener('drain', ondrain);
+
+    source.removeListener('end', onend);
+    source.removeListener('close', onclose);
+
+    source.removeListener('error', onerror);
+    dest.removeListener('error', onerror);
+
+    source.removeListener('end', cleanup);
+    source.removeListener('close', cleanup);
+
+    dest.removeListener('close', cleanup);
+  }
+
+  source.on('end', cleanup);
+  source.on('close', cleanup);
+
+  dest.on('close', cleanup);
+
+  dest.emit('pipe', source);
+
+  // Allow for unix-like usage: A.pipe(B).pipe(C)
+  return dest;
+};
+
+},{"events":9,"inherits":19,"readable-stream/duplex.js":173,"readable-stream/passthrough.js":182,"readable-stream/readable.js":183,"readable-stream/transform.js":184,"readable-stream/writable.js":185}],195:[function(require,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+'use strict';
+
+/*<replacement>*/
+
+var Buffer = require('safe-buffer').Buffer;
+/*</replacement>*/
+
+var isEncoding = Buffer.isEncoding || function (encoding) {
+  encoding = '' + encoding;
+  switch (encoding && encoding.toLowerCase()) {
+    case 'hex':case 'utf8':case 'utf-8':case 'ascii':case 'binary':case 'base64':case 'ucs2':case 'ucs-2':case 'utf16le':case 'utf-16le':case 'raw':
+      return true;
+    default:
+      return false;
+  }
+};
+
+function _normalizeEncoding(enc) {
+  if (!enc) return 'utf8';
+  var retried;
+  while (true) {
+    switch (enc) {
+      case 'utf8':
+      case 'utf-8':
+        return 'utf8';
+      case 'ucs2':
+      case 'ucs-2':
+      case 'utf16le':
+      case 'utf-16le':
+        return 'utf16le';
+      case 'latin1':
+      case 'binary':
+        return 'latin1';
+      case 'base64':
+      case 'ascii':
+      case 'hex':
+        return enc;
+      default:
+        if (retried) return; // undefined
+        enc = ('' + enc).toLowerCase();
+        retried = true;
+    }
+  }
+};
+
+// Do not cache `Buffer.isEncoding` when checking encoding names as some
+// modules monkey-patch it to support additional encodings
+function normalizeEncoding(enc) {
+  var nenc = _normalizeEncoding(enc);
+  if (typeof nenc !== 'string' && (Buffer.isEncoding === isEncoding || !isEncoding(enc))) throw new Error('Unknown encoding: ' + enc);
+  return nenc || enc;
+}
+
+// StringDecoder provides an interface for efficiently splitting a series of
+// buffers into a series of JS strings without breaking apart multi-byte
+// characters.
+exports.StringDecoder = StringDecoder;
+function StringDecoder(encoding) {
+  this.encoding = normalizeEncoding(encoding);
+  var nb;
+  switch (this.encoding) {
+    case 'utf16le':
+      this.text = utf16Text;
+      this.end = utf16End;
+      nb = 4;
+      break;
+    case 'utf8':
+      this.fillLast = utf8FillLast;
+      nb = 4;
+      break;
+    case 'base64':
+      this.text = base64Text;
+      this.end = base64End;
+      nb = 3;
+      break;
+    default:
+      this.write = simpleWrite;
+      this.end = simpleEnd;
+      return;
+  }
+  this.lastNeed = 0;
+  this.lastTotal = 0;
+  this.lastChar = Buffer.allocUnsafe(nb);
+}
+
+StringDecoder.prototype.write = function (buf) {
+  if (buf.length === 0) return '';
+  var r;
+  var i;
+  if (this.lastNeed) {
+    r = this.fillLast(buf);
+    if (r === undefined) return '';
+    i = this.lastNeed;
+    this.lastNeed = 0;
+  } else {
+    i = 0;
+  }
+  if (i < buf.length) return r ? r + this.text(buf, i) : this.text(buf, i);
+  return r || '';
+};
+
+StringDecoder.prototype.end = utf8End;
+
+// Returns only complete characters in a Buffer
+StringDecoder.prototype.text = utf8Text;
+
+// Attempts to complete a partial non-UTF-8 character using bytes from a Buffer
+StringDecoder.prototype.fillLast = function (buf) {
+  if (this.lastNeed <= buf.length) {
+    buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, this.lastNeed);
+    return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+  }
+  buf.copy(this.lastChar, this.lastTotal - this.lastNeed, 0, buf.length);
+  this.lastNeed -= buf.length;
+};
+
+// Checks the type of a UTF-8 byte, whether it's ASCII, a leading byte, or a
+// continuation byte. If an invalid byte is detected, -2 is returned.
+function utf8CheckByte(byte) {
+  if (byte <= 0x7F) return 0;else if (byte >> 5 === 0x06) return 2;else if (byte >> 4 === 0x0E) return 3;else if (byte >> 3 === 0x1E) return 4;
+  return byte >> 6 === 0x02 ? -1 : -2;
+}
+
+// Checks at most 3 bytes at the end of a Buffer in order to detect an
+// incomplete multi-byte UTF-8 character. The total number of bytes (2, 3, or 4)
+// needed to complete the UTF-8 character (if applicable) are returned.
+function utf8CheckIncomplete(self, buf, i) {
+  var j = buf.length - 1;
+  if (j < i) return 0;
+  var nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) self.lastNeed = nb - 1;
+    return nb;
+  }
+  if (--j < i || nb === -2) return 0;
+  nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) self.lastNeed = nb - 2;
+    return nb;
+  }
+  if (--j < i || nb === -2) return 0;
+  nb = utf8CheckByte(buf[j]);
+  if (nb >= 0) {
+    if (nb > 0) {
+      if (nb === 2) nb = 0;else self.lastNeed = nb - 3;
+    }
+    return nb;
+  }
+  return 0;
+}
+
+// Validates as many continuation bytes for a multi-byte UTF-8 character as
+// needed or are available. If we see a non-continuation byte where we expect
+// one, we "replace" the validated continuation bytes we've seen so far with
+// a single UTF-8 replacement character ('\ufffd'), to match v8's UTF-8 decoding
+// behavior. The continuation byte check is included three times in the case
+// where all of the continuation bytes for a character exist in the same buffer.
+// It is also done this way as a slight performance increase instead of using a
+// loop.
+function utf8CheckExtraBytes(self, buf, p) {
+  if ((buf[0] & 0xC0) !== 0x80) {
+    self.lastNeed = 0;
+    return '\ufffd';
+  }
+  if (self.lastNeed > 1 && buf.length > 1) {
+    if ((buf[1] & 0xC0) !== 0x80) {
+      self.lastNeed = 1;
+      return '\ufffd';
+    }
+    if (self.lastNeed > 2 && buf.length > 2) {
+      if ((buf[2] & 0xC0) !== 0x80) {
+        self.lastNeed = 2;
+        return '\ufffd';
+      }
+    }
+  }
+}
+
+// Attempts to complete a multi-byte UTF-8 character using bytes from a Buffer.
+function utf8FillLast(buf) {
+  var p = this.lastTotal - this.lastNeed;
+  var r = utf8CheckExtraBytes(this, buf, p);
+  if (r !== undefined) return r;
+  if (this.lastNeed <= buf.length) {
+    buf.copy(this.lastChar, p, 0, this.lastNeed);
+    return this.lastChar.toString(this.encoding, 0, this.lastTotal);
+  }
+  buf.copy(this.lastChar, p, 0, buf.length);
+  this.lastNeed -= buf.length;
+}
+
+// Returns all complete UTF-8 characters in a Buffer. If the Buffer ended on a
+// partial character, the character's bytes are buffered until the required
+// number of bytes are available.
+function utf8Text(buf, i) {
+  var total = utf8CheckIncomplete(this, buf, i);
+  if (!this.lastNeed) return buf.toString('utf8', i);
+  this.lastTotal = total;
+  var end = buf.length - (total - this.lastNeed);
+  buf.copy(this.lastChar, 0, end);
+  return buf.toString('utf8', i, end);
+}
+
+// For UTF-8, a replacement character is added when ending on a partial
+// character.
+function utf8End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) return r + '\ufffd';
+  return r;
+}
+
+// UTF-16LE typically needs two bytes per character, but even if we have an even
+// number of bytes available, we need to check if we end on a leading/high
+// surrogate. In that case, we need to wait for the next two bytes in order to
+// decode the last character properly.
+function utf16Text(buf, i) {
+  if ((buf.length - i) % 2 === 0) {
+    var r = buf.toString('utf16le', i);
+    if (r) {
+      var c = r.charCodeAt(r.length - 1);
+      if (c >= 0xD800 && c <= 0xDBFF) {
+        this.lastNeed = 2;
+        this.lastTotal = 4;
+        this.lastChar[0] = buf[buf.length - 2];
+        this.lastChar[1] = buf[buf.length - 1];
+        return r.slice(0, -1);
+      }
+    }
+    return r;
+  }
+  this.lastNeed = 1;
+  this.lastTotal = 2;
+  this.lastChar[0] = buf[buf.length - 1];
+  return buf.toString('utf16le', i, buf.length - 1);
+}
+
+// For UTF-16LE we do not explicitly append special replacement characters if we
+// end on a partial character, we simply let v8 handle that.
+function utf16End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) {
+    var end = this.lastTotal - this.lastNeed;
+    return r + this.lastChar.toString('utf16le', 0, end);
+  }
+  return r;
+}
+
+function base64Text(buf, i) {
+  var n = (buf.length - i) % 3;
+  if (n === 0) return buf.toString('base64', i);
+  this.lastNeed = 3 - n;
+  this.lastTotal = 3;
+  if (n === 1) {
+    this.lastChar[0] = buf[buf.length - 1];
+  } else {
+    this.lastChar[0] = buf[buf.length - 2];
+    this.lastChar[1] = buf[buf.length - 1];
+  }
+  return buf.toString('base64', i, buf.length - n);
+}
+
+function base64End(buf) {
+  var r = buf && buf.length ? this.write(buf) : '';
+  if (this.lastNeed) return r + this.lastChar.toString('base64', 0, 3 - this.lastNeed);
+  return r;
+}
+
+// Pass bytes on through for single-byte encodings (e.g. ascii, latin1, hex)
+function simpleWrite(buf) {
+  return buf.toString(this.encoding);
+}
+
+function simpleEnd(buf) {
+  return buf && buf.length ? this.write(buf) : '';
+}
+
+},{"safe-buffer":186}],196:[function(require,module,exports){
+(function (setImmediate,clearImmediate){
+"use strict";
+
+var nextTick = require('process/browser.js').nextTick;
+var apply = Function.prototype.apply;
+var slice = Array.prototype.slice;
+var immediateIds = {};
+var nextImmediateId = 0;
+
+// DOM APIs, for completeness
+
+exports.setTimeout = function () {
+  return new Timeout(apply.call(setTimeout, window, arguments), clearTimeout);
+};
+exports.setInterval = function () {
+  return new Timeout(apply.call(setInterval, window, arguments), clearInterval);
+};
+exports.clearTimeout = exports.clearInterval = function (timeout) {
+  timeout.close();
+};
+
+function Timeout(id, clearFn) {
+  this._id = id;
+  this._clearFn = clearFn;
+}
+Timeout.prototype.unref = Timeout.prototype.ref = function () {};
+Timeout.prototype.close = function () {
+  this._clearFn.call(window, this._id);
+};
+
+// Does not start the time, just sets up the members needed.
+exports.enroll = function (item, msecs) {
+  clearTimeout(item._idleTimeoutId);
+  item._idleTimeout = msecs;
+};
+
+exports.unenroll = function (item) {
+  clearTimeout(item._idleTimeoutId);
+  item._idleTimeout = -1;
+};
+
+exports._unrefActive = exports.active = function (item) {
+  clearTimeout(item._idleTimeoutId);
+
+  var msecs = item._idleTimeout;
+  if (msecs >= 0) {
+    item._idleTimeoutId = setTimeout(function onTimeout() {
+      if (item._onTimeout) item._onTimeout();
+    }, msecs);
+  }
+};
+
+// That's not how node.js implements it but the exposed api is the same.
+exports.setImmediate = typeof setImmediate === "function" ? setImmediate : function (fn) {
+  var id = nextImmediateId++;
+  var args = arguments.length < 2 ? false : slice.call(arguments, 1);
+
+  immediateIds[id] = true;
+
+  nextTick(function onNextTick() {
+    if (immediateIds[id]) {
+      // fn.call() is faster so we optimize for the common use-case
+      // @see http://jsperf.com/call-apply-segu
+      if (args) {
+        fn.apply(null, args);
+      } else {
+        fn.call(null);
+      }
+      // Prevent ids from leaking
+      exports.clearImmediate(id);
+    }
+  });
+
+  return id;
+};
+
+exports.clearImmediate = typeof clearImmediate === "function" ? clearImmediate : function (id) {
+  delete immediateIds[id];
+};
+
+}).call(this,require("timers").setImmediate,require("timers").clearImmediate)
+},{"process/browser.js":172,"timers":196}],197:[function(require,module,exports){
+'use strict';
+
+/*! https://mths.be/utf8js v3.0.0 by @mathias */
 ;(function (root) {
-
-	// Detect free variables `exports`
-	var freeExports = typeof exports == 'object' && exports;
-
-	// Detect free variable `module`
-	var freeModule = typeof module == 'object' && module && module.exports == freeExports && module;
-
-	// Detect free variable `global`, from Node.js or Browserified code,
-	// and use it as `root`
-	var freeGlobal = typeof global == 'object' && global;
-	if (freeGlobal.global === freeGlobal || freeGlobal.window === freeGlobal) {
-		root = freeGlobal;
-	}
-
-	/*--------------------------------------------------------------------------*/
 
 	var stringFromCharCode = String.fromCharCode;
 
@@ -38532,45 +43238,91 @@ function compilePattern(signal, tolerance = 0.05) {
 
 	/*--------------------------------------------------------------------------*/
 
-	var utf8 = {
-		'version': '2.1.2',
-		'encode': utf8encode,
-		'decode': utf8decode
-	};
+	root.version = '3.0.0';
+	root.encode = utf8encode;
+	root.decode = utf8decode;
+})(typeof exports === 'undefined' ? undefined.utf8 = {} : exports);
 
-	// Some AMD build optimizers, like r.js, check for specific condition patterns
-	// like the following:
-	if (typeof define == 'function' && typeof define.amd == 'object' && define.amd) {
-		define(function () {
-			return utf8;
-		});
-	} else if (freeExports && !freeExports.nodeType) {
-		if (freeModule) {
-			// in Node.js or RingoJS v0.8.0+
-			freeModule.exports = utf8;
-		} else {
-			// in Narwhal or RingoJS v0.7.0-
-			var object = {};
-			var hasOwnProperty = object.hasOwnProperty;
-			for (var key in utf8) {
-				hasOwnProperty.call(utf8, key) && (freeExports[key] = utf8[key]);
-			}
-		}
-	} else {
-		// in Rhino or a web browser
-		root.utf8 = utf8;
-	}
-})(undefined);
+},{}],198:[function(require,module,exports){
+(function (global){
+'use strict';
+
+/**
+ * Module exports.
+ */
+
+module.exports = deprecate;
+
+/**
+ * Mark that a method should not be used.
+ * Returns a modified function which warns once by default.
+ *
+ * If `localStorage.noDeprecation = true` is set, then it is a no-op.
+ *
+ * If `localStorage.throwDeprecation = true` is set, then deprecated functions
+ * will throw an Error when invoked.
+ *
+ * If `localStorage.traceDeprecation = true` is set, then deprecated functions
+ * will invoke `console.trace()` instead of `console.error()`.
+ *
+ * @param {Function} fn - the function to deprecate
+ * @param {String} msg - the string to print to the console when `fn` is invoked
+ * @returns {Function} a new "deprecated" version of `fn`
+ * @api public
+ */
+
+function deprecate(fn, msg) {
+  if (config('noDeprecation')) {
+    return fn;
+  }
+
+  var warned = false;
+  function deprecated() {
+    if (!warned) {
+      if (config('throwDeprecation')) {
+        throw new Error(msg);
+      } else if (config('traceDeprecation')) {
+        console.trace(msg);
+      } else {
+        console.warn(msg);
+      }
+      warned = true;
+    }
+    return fn.apply(this, arguments);
+  }
+
+  return deprecated;
+}
+
+/**
+ * Checks `localStorage` for boolean values for the given `name`.
+ *
+ * @param {String} name
+ * @returns {Boolean}
+ * @api private
+ */
+
+function config(name) {
+  // accessing global.localStorage can trigger a DOMException in sandboxed iframes
+  try {
+    if (!global.localStorage) return false;
+  } catch (_) {
+    return false;
+  }
+  var val = global.localStorage[name];
+  if (null == val) return false;
+  return String(val).toLowerCase() === 'true';
+}
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],181:[function(require,module,exports){
+},{}],199:[function(require,module,exports){
 'use strict';
 
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object' && typeof arg.copy === 'function' && typeof arg.fill === 'function' && typeof arg.readUInt8 === 'function';
 };
 
-},{}],182:[function(require,module,exports){
+},{}],200:[function(require,module,exports){
 (function (process,global){
 'use strict';
 
@@ -39120,7 +43872,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":181,"_process":153,"inherits":15}],183:[function(require,module,exports){
+},{"./support/isBuffer":199,"_process":172,"inherits":19}],201:[function(require,module,exports){
 'use strict';
 
 var types = require('./types');
@@ -39231,7 +43983,7 @@ function getFromJpath(doc, typeProcessor) {
   return doc;
 }
 
-},{"./types":184,"./types/common":185,"./util/defaults":205}],184:[function(require,module,exports){
+},{"./types":202,"./types/common":203,"./util/defaults":223}],202:[function(require,module,exports){
 'use strict';
 
 var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "cyclicVoltammetry": require("./types/sample/cyclicVoltammetry.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "elementAnalysis": require("./types/sample/elementAnalysis.js"), "genbank": require("./types/sample/genbank.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "iv": require("./types/sample/iv.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "uv": require("./types/sample/uv.js"), "xray": require("./types/sample/xray.js") } } };
@@ -39265,7 +44017,7 @@ module.exports = {
   }
 };
 
-},{"./types/common.js":185,"./types/default.js":186,"./types/nmr.js":187,"./types/reaction/general.js":188,"./types/sample/chromatogram.js":189,"./types/sample/cyclicVoltammetry.js":190,"./types/sample/differentialScanningCalorimetry.js":191,"./types/sample/elementAnalysis.js":192,"./types/sample/genbank.js":193,"./types/sample/general.js":194,"./types/sample/image.js":195,"./types/sample/ir.js":196,"./types/sample/iv.js":197,"./types/sample/mass.js":198,"./types/sample/nmr.js":199,"./types/sample/physical.js":200,"./types/sample/raman.js":201,"./types/sample/thermogravimetricAnalysis.js":202,"./types/sample/uv.js":203,"./types/sample/xray.js":204}],185:[function(require,module,exports){
+},{"./types/common.js":203,"./types/default.js":204,"./types/nmr.js":205,"./types/reaction/general.js":206,"./types/sample/chromatogram.js":207,"./types/sample/cyclicVoltammetry.js":208,"./types/sample/differentialScanningCalorimetry.js":209,"./types/sample/elementAnalysis.js":210,"./types/sample/genbank.js":211,"./types/sample/general.js":212,"./types/sample/image.js":213,"./types/sample/ir.js":214,"./types/sample/iv.js":215,"./types/sample/mass.js":216,"./types/sample/nmr.js":217,"./types/sample/physical.js":218,"./types/sample/raman.js":219,"./types/sample/thermogravimetricAnalysis.js":220,"./types/sample/uv.js":221,"./types/sample/xray.js":222}],203:[function(require,module,exports){
 'use strict';
 
 var atob = require('atob');
@@ -39373,7 +44125,7 @@ common.getBufferContent = function getBufferContent(content) {
   }
 };
 
-},{"atob":1,"base64-js":2}],186:[function(require,module,exports){
+},{"atob":1,"base64-js":2}],204:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39386,7 +44138,7 @@ module.exports = {
   }
 };
 
-},{}],187:[function(require,module,exports){
+},{}],205:[function(require,module,exports){
 'use strict';
 
 var nmrMetadata = require('nmr-metadata');
@@ -39395,7 +44147,7 @@ exports.getMetadata = nmrMetadata.parseJcamp;
 exports.getSpectrumType = nmrMetadata.getSpectrumType;
 exports.getNucleusFrom2DExperiment = nmrMetadata.getNucleusFrom2DExperiment;
 
-},{"nmr-metadata":129}],188:[function(require,module,exports){
+},{"nmr-metadata":147}],206:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39416,7 +44168,7 @@ module.exports = {
   }
 };
 
-},{}],189:[function(require,module,exports){
+},{}],207:[function(require,module,exports){
 'use strict';
 
 var parseNetCDF = require('netcdf-gcms');
@@ -39443,7 +44195,7 @@ module.exports = {
   process
 };
 
-},{"../common":185,"netcdf-gcms":119}],190:[function(require,module,exports){
+},{"../common":203,"netcdf-gcms":135}],208:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39454,7 +44206,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],191:[function(require,module,exports){
+},{"../common":203}],209:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39465,7 +44217,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],192:[function(require,module,exports){
+},{"../common":203}],210:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39476,7 +44228,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],193:[function(require,module,exports){
+},{"../common":203}],211:[function(require,module,exports){
 'use strict';
 
 var genbankParser = require('genbank-parser');
@@ -39509,7 +44261,7 @@ module.exports = {
   jpath: ['biology', 'nucleic']
 };
 
-},{"../common":185,"genbank-parser":8}],194:[function(require,module,exports){
+},{"../common":203,"genbank-parser":11}],212:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39529,7 +44281,7 @@ module.exports = {
   }
 };
 
-},{}],195:[function(require,module,exports){
+},{}],213:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39540,7 +44292,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],196:[function(require,module,exports){
+},{"../common":203}],214:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39551,7 +44303,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],197:[function(require,module,exports){
+},{"../common":203}],215:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39562,7 +44314,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],198:[function(require,module,exports){
+},{"../common":203}],216:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39573,7 +44325,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],199:[function(require,module,exports){
+},{"../common":203}],217:[function(require,module,exports){
 'use strict';
 
 var isFid = /[^a-z]fid[^a-z]/i;
@@ -39628,7 +44380,7 @@ function getReference(filename) {
   return reference;
 }
 
-},{"../common":185,"../nmr":187}],200:[function(require,module,exports){
+},{"../common":203,"../nmr":205}],218:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -39638,7 +44390,7 @@ module.exports = {
   }
 };
 
-},{}],201:[function(require,module,exports){
+},{}],219:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39649,7 +44401,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],202:[function(require,module,exports){
+},{"../common":203}],220:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39660,7 +44412,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],203:[function(require,module,exports){
+},{"../common":203}],221:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39671,7 +44423,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],204:[function(require,module,exports){
+},{"../common":203}],222:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -39682,7 +44434,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":185}],205:[function(require,module,exports){
+},{"../common":203}],223:[function(require,module,exports){
 /*
     Modified from https://github.com/justmoon/node-extend
     Copyright (c) 2014 Stefan Thomas
@@ -39784,5 +44536,5 @@ module.exports = function defaults() {
   return target;
 };
 
-},{}]},{},[183])(183)
+},{}]},{},[201])(201)
 });
