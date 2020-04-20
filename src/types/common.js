@@ -51,6 +51,9 @@ common.getTargetProperty = function (filename) {
     case 'pdb':
       return 'pdb';
     case 'xml':
+    case 'mzml':
+    case 'mzxml':
+    case 'mzdata':
       return 'xml';
     case 'cdf':
     case 'nc':
