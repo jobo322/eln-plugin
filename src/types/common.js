@@ -46,6 +46,11 @@ common.getTargetProperty = function (filename) {
     case 'tiff':
     case 'svg':
       return 'image';
+    case 'mp4':
+    case 'm4a':
+    case 'avi':
+    case 'wav':
+      return 'video';
     case 'cif':
       return 'cif';
     case 'pdb':
