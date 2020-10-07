@@ -43964,10 +43964,10 @@ function getFromJpath(doc, typeProcessor) {
   return doc;
 }
 
-},{"./types":202,"./types/common":203,"./util/defaults":226}],202:[function(require,module,exports){
+},{"./types":202,"./types/common":203,"./util/defaults":227}],202:[function(require,module,exports){
 'use strict';
 
-var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "cyclicVoltammetry": require("./types/sample/cyclicVoltammetry.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "elementAnalysis": require("./types/sample/elementAnalysis.js"), "genbank": require("./types/sample/genbank.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "iv": require("./types/sample/iv.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "uv": require("./types/sample/uv.js"), "video": require("./types/sample/video.js"), "xps": require("./types/sample/xps.js"), "xray": require("./types/sample/xray.js"), "xrd": require("./types/sample/xrd.js") } } };
+var lib = { "types": { "common": require("./types/common.js"), "default": require("./types/default.js"), "nmr": require("./types/nmr.js"), "reaction": { "general": require("./types/reaction/general.js") }, "sample": { "chromatogram": require("./types/sample/chromatogram.js"), "cyclicVoltammetry": require("./types/sample/cyclicVoltammetry.js"), "differentialScanningCalorimetry": require("./types/sample/differentialScanningCalorimetry.js"), "elementAnalysis": require("./types/sample/elementAnalysis.js"), "genbank": require("./types/sample/genbank.js"), "general": require("./types/sample/general.js"), "image": require("./types/sample/image.js"), "ir": require("./types/sample/ir.js"), "isotherm": require("./types/sample/isotherm.js"), "iv": require("./types/sample/iv.js"), "mass": require("./types/sample/mass.js"), "nmr": require("./types/sample/nmr.js"), "physical": require("./types/sample/physical.js"), "raman": require("./types/sample/raman.js"), "thermogravimetricAnalysis": require("./types/sample/thermogravimetricAnalysis.js"), "uv": require("./types/sample/uv.js"), "video": require("./types/sample/video.js"), "xps": require("./types/sample/xps.js"), "xray": require("./types/sample/xray.js"), "xrd": require("./types/sample/xrd.js") } } };
 
 module.exports = {
   getType(type, kind, custom) {
@@ -43998,7 +43998,7 @@ module.exports = {
   }
 };
 
-},{"./types/common.js":203,"./types/default.js":204,"./types/nmr.js":205,"./types/reaction/general.js":206,"./types/sample/chromatogram.js":207,"./types/sample/cyclicVoltammetry.js":208,"./types/sample/differentialScanningCalorimetry.js":209,"./types/sample/elementAnalysis.js":210,"./types/sample/genbank.js":211,"./types/sample/general.js":212,"./types/sample/image.js":213,"./types/sample/ir.js":214,"./types/sample/iv.js":215,"./types/sample/mass.js":216,"./types/sample/nmr.js":217,"./types/sample/physical.js":218,"./types/sample/raman.js":219,"./types/sample/thermogravimetricAnalysis.js":220,"./types/sample/uv.js":221,"./types/sample/video.js":222,"./types/sample/xps.js":223,"./types/sample/xray.js":224,"./types/sample/xrd.js":225}],203:[function(require,module,exports){
+},{"./types/common.js":203,"./types/default.js":204,"./types/nmr.js":205,"./types/reaction/general.js":206,"./types/sample/chromatogram.js":207,"./types/sample/cyclicVoltammetry.js":208,"./types/sample/differentialScanningCalorimetry.js":209,"./types/sample/elementAnalysis.js":210,"./types/sample/genbank.js":211,"./types/sample/general.js":212,"./types/sample/image.js":213,"./types/sample/ir.js":214,"./types/sample/isotherm.js":215,"./types/sample/iv.js":216,"./types/sample/mass.js":217,"./types/sample/nmr.js":218,"./types/sample/physical.js":219,"./types/sample/raman.js":220,"./types/sample/thermogravimetricAnalysis.js":221,"./types/sample/uv.js":222,"./types/sample/video.js":223,"./types/sample/xps.js":224,"./types/sample/xray.js":225,"./types/sample/xrd.js":226}],203:[function(require,module,exports){
 'use strict';
 
 var atob = require('atob');
@@ -44299,7 +44299,7 @@ module.exports = {
 var common = require('../common');
 
 module.exports = {
-  jpath: ['spectra', 'iv'],
+  jpath: ['spectra', 'isotherm'],
   find: common.basenameFind,
   getProperty: common.getTargetProperty
 };
@@ -44310,12 +44310,23 @@ module.exports = {
 var common = require('../common');
 
 module.exports = {
-  jpath: ['spectra', 'mass'],
+  jpath: ['spectra', 'iv'],
   find: common.basenameFind,
   getProperty: common.getTargetProperty
 };
 
 },{"../common":203}],217:[function(require,module,exports){
+'use strict';
+
+var common = require('../common');
+
+module.exports = {
+  jpath: ['spectra', 'mass'],
+  find: common.basenameFind,
+  getProperty: common.getTargetProperty
+};
+
+},{"../common":203}],218:[function(require,module,exports){
 'use strict';
 
 var isFid = /[^a-z]fid[^a-z]/i;
@@ -44370,7 +44381,7 @@ function getReference(filename) {
   return reference;
 }
 
-},{"../common":203,"../nmr":205}],218:[function(require,module,exports){
+},{"../common":203,"../nmr":205}],219:[function(require,module,exports){
 'use strict';
 
 module.exports = {
@@ -44380,7 +44391,7 @@ module.exports = {
   }
 };
 
-},{}],219:[function(require,module,exports){
+},{}],220:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -44391,7 +44402,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":203}],220:[function(require,module,exports){
+},{"../common":203}],221:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -44402,7 +44413,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":203}],221:[function(require,module,exports){
+},{"../common":203}],222:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -44413,7 +44424,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":203}],222:[function(require,module,exports){
+},{"../common":203}],223:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -44424,7 +44435,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":203}],223:[function(require,module,exports){
+},{"../common":203}],224:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -44435,7 +44446,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":203}],224:[function(require,module,exports){
+},{"../common":203}],225:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -44446,7 +44457,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":203}],225:[function(require,module,exports){
+},{"../common":203}],226:[function(require,module,exports){
 'use strict';
 
 var common = require('../common');
@@ -44457,7 +44468,7 @@ module.exports = {
   getProperty: common.getTargetProperty
 };
 
-},{"../common":203}],226:[function(require,module,exports){
+},{"../common":203}],227:[function(require,module,exports){
 /*
     Modified from https://github.com/justmoon/node-extend
     Copyright (c) 2014 Stefan Thomas
