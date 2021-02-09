@@ -1,4 +1,5 @@
 {
+  "comments": false,
   "presets": [
     [
       "env",
@@ -14,6 +15,6 @@
     ]
   ],
   "plugins": [
-    "babel-plugin-transform-es2015-block-scoping"
+    "@babel/plugin-transform-block-scoping"
   ]
 }
