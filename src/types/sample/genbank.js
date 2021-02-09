@@ -22,10 +22,10 @@ module.exports = {
     let toReturn;
     const parsed = genbankParser(textContent);
     toReturn = {
-      seq: parsed.map((p) => p.parsedSequence)
+      seq: parsed.map((p) => p.parsedSequence),
     };
     return toReturn;
   },
 
-  jpath: ['biology', 'nucleic']
+  jpath: ['biology', 'nucleic'],
 };

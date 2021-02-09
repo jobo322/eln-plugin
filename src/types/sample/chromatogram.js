@@ -6,7 +6,7 @@ const common = require('../common');
 
 function process(filename, content) {
   const extension = common.getExtension(filename);
-  var metaData = {};
+  let metaData = {};
   if (extension === 'cdf' || extension === 'netcdf') {
     let bufferContent = common.getBufferContent(content);
     let parsed = parseNetCDF(bufferContent, { meta: true });
@@ -21,5 +21,5 @@ module.exports = {
   jpath: ['spectra', 'chromatogram'],
   find: common.basenameFind,
   getProperty: common.getTargetProperty,
-  process
+  process,
 };

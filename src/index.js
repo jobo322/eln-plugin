@@ -1,8 +1,8 @@
 'use strict';
 
 const types = require('./types');
-const defaults = require('./util/defaults');
 const util = require('./types/common');
+const defaults = require('./util/defaults');
 
 module.exports = {
   util,
@@ -28,7 +28,7 @@ module.exports = {
     const metadata = typeProcessor.process(filename, content);
 
     metadata[property] = {
-      filename: module.exports.getFilename(type, content.filename)
+      filename: module.exports.getFilename(type, content.filename),
     };
 
     if (options.keepContent) {
@@ -51,7 +51,7 @@ module.exports = {
   },
 
   getFilename(type, filename) {
-    var match = /[^/]*$/.exec(filename);
+    let match = /[^/]*$/.exec(filename);
     if (match) filename = match[0];
     const typeProcessor = types.getType(type);
     const jpath = typeProcessor.jpath;
@@ -70,10 +70,10 @@ module.exports = {
   },
 
   defaults(kind, content) {
-    var empty = module.exports.getEmpty(kind);
+    let empty = module.exports.getEmpty(kind);
     defaults(true, content, empty);
     return content;
-  }
+  },
 };
 
 function createFromJpath(doc, typeProcessor) {

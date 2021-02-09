@@ -13,7 +13,7 @@ module.exports = {
           lib.types.default,
           lib.types[kind].default,
           lib.types[kind][type],
-          custom
+          custom,
         );
       }
     } else {
@@ -24,7 +24,7 @@ module.exports = {
             lib.types.default,
             lib.types[kind].default,
             lib.types[kind][type],
-            custom
+            custom,
           );
         }
       }
@@ -34,13 +34,13 @@ module.exports = {
   },
 
   getAllTypes(kind, custom) {
-    var all = [];
+    let all = [];
 
-    for (var type in lib.types[kind]) {
+    for (let type in lib.types[kind]) {
       if (type !== 'default') {
         all.push(module.exports.getType(type, kind, custom));
       }
     }
     return all;
-  }
+  },
 };

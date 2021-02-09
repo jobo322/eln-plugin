@@ -13,7 +13,7 @@ module.exports = {
       keyword: [],
       meta: {},
       sequence: '',
-      kind: ''
+      kind: '',
     };
-  }
+  },
 };

@@ -27,7 +27,7 @@ module.exports = {
 
   process(filename, content) {
     const extension = common.getExtension(filename);
-    var metaData = {};
+    let metaData = {};
     if (extension === 'jdx' || extension === 'dx' || extension === 'jcamp') {
       let textContent = common.getTextContent(content);
       metaData = nmrLib.getMetadata(textContent);
@@ -35,7 +35,7 @@ module.exports = {
     return metaData;
   },
 
-  jpath: ['spectra', 'nmr']
+  jpath: ['spectra', 'nmr'],
 };
 
 const reg2 = /(.*)\.(.*)/;
