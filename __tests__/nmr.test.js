@@ -18,6 +18,7 @@ test('nmr meta info', () => {
     experiment: '1d',
     expno: 1,
     frequency: 400.082470657773,
+    isComplex: true,
     isFid: false,
     isFt: true,
     nucleus: ['1H'],
